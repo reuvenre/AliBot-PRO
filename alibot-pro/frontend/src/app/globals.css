@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #080a13;
+  --bg-secondary: #0d0f1a;
+  --bg-tertiary: #111320;
+  --border: rgba(255, 255, 255, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--bg-primary);
+  min-height: 100vh;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
+
+/* Input autofill dark */
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px #0d0f1a inset;
+  -webkit-text-fill-color: white;
+}
+
+/* Recharts override */
+.recharts-cartesian-axis-tick text { font-size: 10px; }
+
+/* Login hero gradient text */
+.gradient-text-hero {
+  background: linear-gradient(90deg, #60a5fa, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

@@ -1,0 +1,81 @@
+import {
+  Controller, Get, Post, Patch, Delete, Body, Param,
+  Query, Req, UseGuards, HttpCode,
+} from '@nestjs/common';
+import { Request } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CampaignsService } from './campaigns.service';
+import { PostsService } from '../posts/posts.service';
+import { CampaignDto } from './dto/campaign.dto';
+
+@Controller('campaigns')
+@UseGuards(JwtAuthGuard)
+export class CampaignsController {
+  constructor(
+    private readonly svc: CampaignsService,
+    private readonly posts: PostsService,
+  ) {}
+
+  private uid(req: Request) { return (req.user as any).id; }
+
+  @Get()
+  list(
+    @Req() req: Request,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @Query('status') status?: string,
+  ) {
+    return this.svc.list(this.uid(req), +page, +limit, status);
+  }
+
+  @Get(':id')
+  get(@Req() req: Request, @Param('id') id: string) {
+    return this.svc.get(this.uid(req), id);
+  }
+
+  @Post()
+  create(@Req() req: Request, @Body() dto: CampaignDto) {
+    return this.svc.create(this.uid(req), dto);
+  }
+
+  @Patch(':id')
+  update(@Req() req: Request, @Param('id') id: string, @Body() dto: Partial<CampaignDto>) {
+    return this.svc.update(this.uid(req), id, dto);
+  }
+
+  @Delete(':id')
+  delete(@Req() req: Request, @Param('id') id: string) {
+    return this.svc.delete(this.uid(req), id);
+  }
+
+  @Post(':id/pause')
+  @HttpCode(200)
+  pause(@Req() req: Request, @Param('id') id: string) {
+    return this.svc.pause(this.uid(req), id);
+  }
+
+  @Post(':id/resume')
+  @HttpCode(200)
+  resume(@Req() req: Request, @Param('id') id: string) {
+    return this.svc.resume(this.uid(req), id);
+  }
+
+  @Post(':id/run')
+  @HttpCode(200)
+  async runNow(@Req() req: Request, @Param('id') id: string) {
+    const campaign = await this.svc.get(this.uid(req), id);
+    // Fire-and-forget
+    this.posts.runCampaign(campaign, this.uid(req)).catch(() => {});
+    return { queued: true, jobId: `manual-${id}-${Date.now()}` };
+  }
+
+  @Get(':id/posts')
+  campaignPosts(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.posts.list(this.uid(req), +page, +limit, undefined, id);
+  }
+}

@@ -1,0 +1,25 @@
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+dist/
+.next/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes (local)
+postgres_data/
+redis_data/
