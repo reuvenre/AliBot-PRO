@@ -2,11 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Wand2, Star, ShoppingBag, Tag, DollarSign, Percent,
+  Wand2, Star, ShoppingBag, Tag, DollarSign, Percent, Languages, Loader2,
 } from 'lucide-react';
 import type { AliProduct, PostTemplate } from '@/types';
 
-const SYMBOLS: Record<string, string> = { ILS: '₪', EUR: '€', GBP: '£', USD: '$' };
+const SYMBOLS: Record<string, string> = { ILS: 'âª', EUR: 'â¬', GBP: 'Â£', USD: '$' };
+const HE_RE = /[\u0590-\u05FF]/;
+
+async function translateToHebrew(text: string): Promise<string> {
+  if (HE_RE.test(text)) return text;
+  try {
+    const resp = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|he`
+    );
+    const data = await resp.json();
+    if (data.responseData?.translatedText && HE_RE.test(data.responseData.translatedText)) {
+      return data.responseData.translatedText;
+    }
+  } catch {}
+  return text;
+}
+
 
 interface ProductEditPanelProps {
   product: AliProduct;
@@ -25,14 +41,18 @@ export function ProductEditPanel({
   isGenerating,
 }: ProductEditPanelProps) {
   const [title, setTitle] = useState(product.title);
-  const sym = SYMBOLS[product.currency] || product.currency || '₪';
+  const sym = SYMBOLS[product.currency] || product.currency || 'âª';
   const [salePrice, setSalePrice] = useState(product.sale_price);
   const [origPrice, setOrigPrice] = useState(product.original_price);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   useEffect(() => {
-    setTitle(product.title);
     setSalePrice(product.sale_price);
     setOrigPrice(product.original_price);
+    setIsTranslating(true);
+    translateToHebrew(product.title)
+      .then(translated => setTitle(translated))
+      .finally(() => setIsTranslating(false));
   }, [product.product_id]);
 
   const discountPct =
@@ -55,7 +75,7 @@ export function ProductEditPanel({
     <div className="bg-[#0d0f1a] border border-white/8 rounded-xl overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/5">
-        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">עריכת מוצר</p>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">×¢×¨×××ª ×××¦×¨</p>
       </div>
 
       <div className="p-4 space-y-4">
@@ -67,7 +87,7 @@ export function ProductEditPanel({
           </span>
           <span className="flex items-center gap-1">
             <ShoppingBag size={10} />
-            {product.orders_count.toLocaleString()} הזמנות
+            {product.orders_count.toLocaleString()} ×××× ××ª
           </span>
           {product.category && (
             <span className="flex items-center gap-1 truncate">
@@ -80,11 +100,18 @@ export function ProductEditPanel({
         {/* Editable title */}
         <div>
           <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider">
-            שם המוצר
+            ×©× ××××¦×¨
           </label>
+          {isTranslating && (
+            <span className="text-xs text-white/40 flex items-center gap-1 mt-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              מתרגם...
+            </span>
+          )}
           <textarea
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={isTranslating}
             rows={3}
             className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors resize-none leading-relaxed"
             dir="auto"
@@ -95,7 +122,7 @@ export function ProductEditPanel({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign size={9} /> מחיר מבצע ({sym})
+              <DollarSign size={9} /> ××××¨ ×××¦×¢ ({sym})
             </label>
             <input
               type="number"
@@ -108,7 +135,7 @@ export function ProductEditPanel({
           </div>
           <div>
             <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign size={9} /> מחיר מקורי ({sym})
+              <DollarSign size={9} /> ××××¨ ××§××¨× ({sym})
             </label>
             <input
               type="number"
@@ -125,9 +152,9 @@ export function ProductEditPanel({
         {discountPct > 0 && (
           <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
             <Percent size={12} className="text-red-400 shrink-0" />
-            <span className="text-red-400">הנחה מחושבת: <strong>{discountPct}%</strong></span>
+            <span className="text-red-400">×× ×× ××××©××ª: <strong>{discountPct}%</strong></span>
             <span className="text-white/30 mr-auto">
-              חיסכון: {sym}{(origPrice - salePrice).toFixed(2)}
+              ×××¡×××: {sym}{(origPrice - salePrice).toFixed(2)}
             </span>
           </div>
         )}
@@ -136,7 +163,7 @@ export function ProductEditPanel({
         {activeTemplate && activeTemplate.id !== 'builtin_default' && (
           <div className="flex items-center gap-2 text-[11px] bg-white/3 border border-white/8 rounded-lg px-3 py-2">
             <span>{activeTemplate.icon}</span>
-            <span className="text-white/40">תבנית:</span>
+            <span className="text-white/40">×ª×× ××ª:</span>
             <span className="text-white/70 font-medium">{activeTemplate.name}</span>
           </div>
         )}
@@ -148,7 +175,7 @@ export function ProductEditPanel({
           className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all"
         >
           <Wand2 size={14} className={isGenerating ? 'animate-pulse' : ''} />
-          {isGenerating ? 'מייצר פוסט...' : 'צור פוסט'}
+          {isGenerating ? '××××¦×¨ ×¤××¡×...' : '×¦××¨ ×¤××¡×'}
         </button>
       </div>
     </div>
