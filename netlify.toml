@@ -1,0 +1,12 @@
+[build]
+  base = "alibot-pro"
+
+[experimental]
+  [experimental.services.frontend]
+    entrypoint = "frontend"
+    routePrefix = "/"
+    framework = "nextjs"
+
+  [experimental.services.backend]
+    entrypoint = "backend"
+    routePrefix = "/_/backend"

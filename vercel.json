@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd alibot-pro/frontend && npm install && npm run build",
+  "outputDirectory": "alibot-pro/frontend/.next",
+  "installCommand": "cd alibot-pro/frontend && npm install",
+  "framework": "nextjs"
+}
