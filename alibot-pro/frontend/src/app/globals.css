@@ -2,11 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
-  --bg-primary: #080a13;
+  --bg-primary:   #080a13;
   --bg-secondary: #0d0f1a;
-  --bg-tertiary: #111320;
-  --border: rgba(255, 255, 255, 0.06);
+  --bg-tertiary:  #111320;
+  --border:       rgba(255,255,255,0.06);
+}
+
+[data-theme="light"] {
+  --bg-primary:   #f1f3f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary:  #e8ecf4;
+  --border:       rgba(0,0,0,0.07);
 }
 
 * { box-sizing: border-box; }
@@ -16,24 +24,111 @@ body {
   min-height: 100vh;
 }
 
-/* Smooth scrollbar */
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
-
-/* Input autofill dark */
-input:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0 100px #0d0f1a inset;
-  -webkit-text-fill-color: white;
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
 }
 
-/* Recharts override */
+/* ── Input autofill ────────────────────────────────────────────────────────── */
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px var(--bg-secondary) inset;
+  -webkit-text-fill-color: var(--text-primary, white);
+}
+
+/* ── Recharts ──────────────────────────────────────────────────────────────── */
 .recharts-cartesian-axis-tick text { font-size: 10px; }
 
-/* Login hero gradient text */
+/* ── Hero gradient text ────────────────────────────────────────────────────── */
 .gradient-text-hero {
   background: linear-gradient(90deg, #60a5fa, #818cf8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME OVERRIDES
+   Targets Tailwind's hardcoded dark classes and inverts them for light mode
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Main backgrounds */
+[data-theme="light"] .bg-\[\#080a13\]  { background-color: #f1f3f9 !important; }
+[data-theme="light"] .bg-\[\#0d0f1a\]  { background-color: #ffffff !important; }
+[data-theme="light"] .bg-\[\#111320\]  { background-color: #eaecf5 !important; }
+[data-theme="light"] .bg-\[\#0a0c18\]  { background-color: #f4f6fc !important; }
+[data-theme="light"] .bg-\[\#12141f\]  { background-color: #f0f2f9 !important; }
+
+/* Text colors */
+[data-theme="light"] .text-white       { color: #0f1117 !important; }
+[data-theme="light"] .text-white\/90   { color: rgba(15,17,23,0.90) !important; }
+[data-theme="light"] .text-white\/80   { color: rgba(15,17,23,0.80) !important; }
+[data-theme="light"] .text-white\/70   { color: rgba(15,17,23,0.70) !important; }
+[data-theme="light"] .text-white\/60   { color: rgba(15,17,23,0.60) !important; }
+[data-theme="light"] .text-white\/50   { color: rgba(15,17,23,0.55) !important; }
+[data-theme="light"] .text-white\/45   { color: rgba(15,17,23,0.50) !important; }
+[data-theme="light"] .text-white\/40   { color: rgba(15,17,23,0.45) !important; }
+[data-theme="light"] .text-white\/35   { color: rgba(15,17,23,0.42) !important; }
+[data-theme="light"] .text-white\/30   { color: rgba(15,17,23,0.38) !important; }
+[data-theme="light"] .text-white\/25   { color: rgba(15,17,23,0.32) !important; }
+[data-theme="light"] .text-white\/20   { color: rgba(15,17,23,0.28) !important; }
+[data-theme="light"] .text-white\/15   { color: rgba(15,17,23,0.22) !important; }
+[data-theme="light"] .text-white\/10   { color: rgba(15,17,23,0.18) !important; }
+
+/* Borders */
+[data-theme="light"] .border-white\/5  { border-color: rgba(0,0,0,0.07) !important; }
+[data-theme="light"] .border-white\/6  { border-color: rgba(0,0,0,0.08) !important; }
+[data-theme="light"] .border-white\/8  { border-color: rgba(0,0,0,0.09) !important; }
+[data-theme="light"] .border-white\/10 { border-color: rgba(0,0,0,0.11) !important; }
+[data-theme="light"] .border-white\/15 { border-color: rgba(0,0,0,0.13) !important; }
+[data-theme="light"] .border-white\/20 { border-color: rgba(0,0,0,0.16) !important; }
+
+/* Translucent white backgrounds → translucent dark */
+[data-theme="light"] .bg-white\/3      { background-color: rgba(0,0,0,0.03) !important; }
+[data-theme="light"] .bg-white\/5      { background-color: rgba(0,0,0,0.05) !important; }
+[data-theme="light"] .bg-white\/8      { background-color: rgba(0,0,0,0.06) !important; }
+[data-theme="light"] .bg-white\/10     { background-color: rgba(0,0,0,0.07) !important; }
+[data-theme="light"] .bg-white\/15     { background-color: rgba(0,0,0,0.09) !important; }
+
+/* Hover states */
+[data-theme="light"] .hover\:bg-white\/5:hover  { background-color: rgba(0,0,0,0.05) !important; }
+[data-theme="light"] .hover\:bg-white\/3:hover  { background-color: rgba(0,0,0,0.03) !important; }
+[data-theme="light"] .hover\:bg-white\/8:hover  { background-color: rgba(0,0,0,0.06) !important; }
+[data-theme="light"] .hover\:text-white\/80:hover { color: rgba(15,17,23,0.80) !important; }
+[data-theme="light"] .hover\:text-white\/70:hover { color: rgba(15,17,23,0.70) !important; }
+[data-theme="light"] .hover\:text-white\/60:hover { color: rgba(15,17,23,0.60) !important; }
+[data-theme="light"] .hover\:text-white\/90:hover { color: rgba(15,17,23,0.90) !important; }
+
+/* Sidebar active state */
+[data-theme="light"] .bg-blue-600\/20  { background-color: rgba(37,99,235,0.12) !important; }
+
+/* Input fields */
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  color: #0f1117 !important;
+}
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: rgba(15,17,23,0.35) !important;
+}
+
+/* White text inside colored buttons — keep white */
+[data-theme="light"] .bg-blue-600 .text-white,
+[data-theme="light"] .bg-blue-500 .text-white,
+[data-theme="light"] .bg-blue-600.text-white,
+[data-theme="light"] .bg-blue-500.text-white,
+[data-theme="light"] button.bg-blue-600,
+[data-theme="light"] button.bg-blue-500 {
+  color: #ffffff !important;
+}
+
+/* Card shadows in light mode */
+[data-theme="light"] .rounded-xl.border {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }

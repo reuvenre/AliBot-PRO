@@ -149,6 +149,34 @@ export function CredentialsForm() {
         </div>
       </section>
 
+      {/* Amazon */}
+      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <span className="text-lg">📦</span> Amazon Associates
+          </h3>
+          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+        </div>
+        <p className="text-xs text-white/35 mb-4">שילוב עם Amazon Affiliate Program לייבוא מוצרים ומעקב עמלות.</p>
+        <div className="grid grid-cols-1 gap-4 opacity-50 pointer-events-none">
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">Access Key</label>
+            <input disabled placeholder="AKIAIOSFODNN7EXAMPLE" dir="ltr"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">Secret Key</label>
+            <input disabled placeholder="wJalrXUtnFEMI/K7MDENG..." dir="ltr"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">Partner Tag</label>
+            <input disabled placeholder="mytag-20" dir="ltr"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none" />
+          </div>
+        </div>
+      </section>
+
       {/* Actions */}
       <div className="flex items-center gap-3">
         <button

@@ -385,16 +385,15 @@ export default function GroupsPage() {
     setChannels((cs) => cs.map((c) => c.id === updated.id ? updated : c));
   };
 
+  const totalMembers = channels.reduce((s, c) => s + (c.members_count || 0), 0);
+  const activeChannels = channels.filter((c) => c.is_active).length;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <div className="flex items-center gap-2 text-white/30 text-xs mb-1">
-            <Users size={12} />
-            <span>ערוצים</span>
-          </div>
           <h1 className="text-2xl font-bold text-white">ניהול ערוצים</h1>
-          <p className="text-sm text-white/40 mt-1">נהל ערוצי פרסום ב-Telegram</p>
+          <p className="text-sm text-white/40 mt-1">נהל ערוצי פרסום ב-Telegram, WhatsApp ופייסבוק</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
@@ -404,6 +403,41 @@ export default function GroupsPage() {
           הוסף ערוץ
         </button>
       </div>
+
+      {/* Stats */}
+      {!loading && channels.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {[
+            { label: 'סה״כ ערוצים',  value: channels.length, icon: '📋' },
+            { label: 'סה״כ חברים',   value: totalMembers.toLocaleString(), icon: '👥' },
+            { label: 'פלטפורמות',    value: 1, icon: '🌐' },
+            { label: 'פרסום אוטו',   value: activeChannels, icon: '🤖' },
+          ].map(({ label, value, icon }) => (
+            <div key={label} className="bg-[#0d0f1a] border border-white/5 rounded-xl p-4 flex items-center gap-3">
+              <span className="text-xl">{icon}</span>
+              <div>
+                <p className="text-xl font-bold text-white">{value}</p>
+                <p className="text-xs text-white/40">{label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Platform filters */}
+      {!loading && channels.length > 0 && (
+        <div className="flex gap-2 mb-5 flex-wrap">
+          {['הכל', 'Telegram', 'WhatsApp', 'Facebook', 'Instagram'].map((p) => (
+            <button key={p}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all
+                ${p === 'הכל'
+                  ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                  : 'bg-white/3 text-white/40 border-white/8 hover:border-white/20 hover:text-white/60'}`}>
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-20">

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Megaphone, FileText, DollarSign, TrendingUp,
   AlertCircle, CheckCircle2, Circle, ChevronLeft,
-  Users, Zap, RefreshCw,
+  Users, Zap, RefreshCw, Bot,
 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { campaignsApi, postsApi, earningsApi, credentialsApi, channelsApi } from '@/lib/api-client';
@@ -192,12 +192,25 @@ export default function DashboardPage() {
       )}
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        <StatCard label="קמפיינים" value={isLoading ? '—' : stats.campaigns} sub={`${stats.activeCampaigns} פעילים`} icon={Megaphone} accent="blue" />
-        <StatCard label="סה״כ פוסטים" value={isLoading ? '—' : stats.totalPosts.toLocaleString()} sub={`${stats.sentToday} היום`} icon={FileText} accent="violet" />
-        <StatCard label="ערוצים" value={isLoading ? '—' : stats.channels} sub="ערוצי טלגרם" icon={Users} accent="cyan" />
-        <StatCard label="הכנסות (30 יום)" value={isLoading ? '—' : `₪${totalEarnings.toFixed(0)}`} sub="מוסדר + משוער" icon={DollarSign} accent="green" />
-        <StatCard label="עמלה מוסדרת" value={isLoading ? '—' : `₪${(earnings?.total_settled ?? 0).toFixed(0)}`} sub="30 ימים אחרונים" icon={TrendingUp} accent="amber" />
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+        <StatCard label="קמפיינים"       value={isLoading ? '—' : stats.campaigns}                        sub={`${stats.activeCampaigns} פעילים`} icon={Megaphone}  accent="blue" />
+        <StatCard label="סה״כ פוסטים"    value={isLoading ? '—' : stats.totalPosts.toLocaleString()}      sub={`${stats.sentToday} היום`}          icon={FileText}   accent="violet" />
+        <StatCard label="ערוצים"         value={isLoading ? '—' : stats.channels}                         sub="ערוצי טלגרם"                         icon={Users}      accent="cyan" />
+        <StatCard label="הכנסות (30 יום)" value={isLoading ? '—' : `₪${totalEarnings.toFixed(0)}`}        sub="מוסדר + משוער"                       icon={DollarSign}  accent="green" />
+        <StatCard label="עמלה מוסדרת"    value={isLoading ? '—' : `₪${(earnings?.total_settled ?? 0).toFixed(0)}`} sub="30 ימים אחרונים"            icon={TrendingUp}  accent="amber" />
+        <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-white/40">קרדיטים AI</p>
+            <span className="w-7 h-7 rounded-lg flex items-center justify-center text-violet-400 bg-violet-500/10">
+              <Bot size={14} />
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-white">1,243</p>
+          <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full" style={{ width: '82.9%' }} />
+          </div>
+          <p className="text-xs text-white/30 mt-1">/ 1,500 החודש</p>
+        </div>
       </div>
 
       {/* Main layout: recent posts + mini earnings */}

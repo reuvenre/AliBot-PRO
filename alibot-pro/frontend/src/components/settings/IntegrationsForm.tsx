@@ -119,6 +119,48 @@ export function IntegrationsForm() {
         </div>
       </section>
 
+      {/* WhatsApp */}
+      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <span className="text-lg">💬</span> WhatsApp Business
+          </h3>
+          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+        </div>
+        <p className="text-xs text-white/35">שילוב עם WhatsApp Business API לשליחת פוסטים לקבוצות ואנשי קשר.</p>
+        <button disabled className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/5 text-white/30 text-xs rounded-xl cursor-not-allowed opacity-50">
+          <Plus size={12} /> חבר WhatsApp
+        </button>
+      </section>
+
+      {/* Facebook */}
+      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <span className="text-lg">📘</span> Facebook Pages
+          </h3>
+          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+        </div>
+        <p className="text-xs text-white/35">פרסום לדפי פייסבוק ישירות מהמערכת.</p>
+        <button disabled className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/5 text-white/30 text-xs rounded-xl cursor-not-allowed opacity-50">
+          <Plus size={12} /> חבר דף פייסבוק
+        </button>
+      </section>
+
+      {/* Instagram */}
+      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <span className="text-lg">📸</span> Instagram Business
+          </h3>
+          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+        </div>
+        <p className="text-xs text-white/35">פרסום Reels ופוסטים לחשבון Instagram Business שלך.</p>
+        <button disabled className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/5 text-white/30 text-xs rounded-xl cursor-not-allowed opacity-50">
+          <Plus size={12} /> חבר חשבון Instagram
+        </button>
+      </section>
+
       {/* Additional Channels */}
       <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">

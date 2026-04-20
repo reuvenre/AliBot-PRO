@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   FileText, RefreshCw, Loader2, RotateCcw,
-  CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight,
+  CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, Settings2,
 } from 'lucide-react';
+import Link from 'next/link';
 import { postsApi } from '@/lib/api-client';
 import type { Post } from '@/types';
 
@@ -134,14 +135,21 @@ export default function PostsPage() {
           </div>
           <h1 className="text-2xl font-bold text-white">ניהול פוסטים</h1>
         </div>
-        <button
-          onClick={() => load({ silent: true })}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all"
-        >
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-          רענן
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href="/posts/settings"
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all">
+            <Settings2 size={13} />
+            הגדרות
+          </Link>
+          <button
+            onClick={() => load({ silent: true })}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            רענן
+          </button>
+        </div>
       </div>
 
       {/* Status tabs */}
