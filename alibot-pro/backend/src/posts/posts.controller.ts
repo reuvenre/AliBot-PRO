@@ -42,8 +42,13 @@ export class PostsController {
     @Body('scheduled_at') scheduledAt: string,
     @Body('text') text?: string,
     @Body('channel_override') channelOverride?: string,
+    @Body('product_image') productImage?: string,
+    @Body('affiliate_url') affiliateUrlOverride?: string,
   ) {
-    return this.svc.schedulePost(this.uid(req), productId, new Date(scheduledAt), text, channelOverride);
+    return this.svc.schedulePost(
+      this.uid(req), productId, new Date(scheduledAt),
+      text, channelOverride, productImage, affiliateUrlOverride,
+    );
   }
 
   @Post('quick')
@@ -52,8 +57,12 @@ export class PostsController {
     @Body('product_id') productId: string,
     @Body('text') text?: string,
     @Body('channel_override') channelOverride?: string,
+    @Body('product_image') productImage?: string,
+    @Body('affiliate_url') affiliateUrlOverride?: string,
   ) {
-    return this.svc.quickPost(this.uid(req), productId, text, channelOverride);
+    return this.svc.quickPost(
+      this.uid(req), productId, text, channelOverride, productImage, affiliateUrlOverride,
+    );
   }
 
   @Post(':id/retry')

@@ -67,24 +67,39 @@ export class PostsService {
 
   // ── Quick post ────────────────────────────────────────────────────────────
 
-  async quickPost(userId: string, productId: string, textOverride?: string, channelOverride?: string) {
+  async quickPost(
+    userId: string,
+    productId: string,
+    textOverride?: string,
+    channelOverride?: string,
+    productImageOverride?: string,   // image URL already known by frontend — avoids wrong re-fetch
+    affiliateUrlOverride?: string,   // affiliate link already fetched by frontend
+  ) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
-    const product = await this.searchProduct(productId, creds);
-    const affiliateUrl = await this.getAffiliateLink(productId, creds);
 
-    const text = textOverride || await this.generateText(product, 'he', rate, creds);
-    const priceIls = +(product.sale_price * rate).toFixed(2);
+    // Only fetch the product from AliExpress if we don't already have the image
+    const product = productImageOverride
+      ? null
+      : await this.searchProduct(productId, creds);
+
+    const affiliateUrl = affiliateUrlOverride
+      || await this.getAffiliateLink(productId, creds);
+
+    const text = textOverride || await this.generateText(
+      product || { title: productId, sale_price: 0, original_price: 0, discount_percent: 0, orders_count: 0, rating: 0, currency: 'USD' },
+      'he', rate, creds,
+    );
 
     const post = this.repo.create({
       user_id: userId,
       product_id: productId,
-      product_title: product.title,
-      product_image: product.image_url,
+      product_title: product?.title || '',
+      product_image: productImageOverride || product?.image_url || '',
       affiliate_url: affiliateUrl,
-      original_price_usd: product.original_price,
-      sale_price_usd: product.sale_price,
-      price_ils: priceIls,
+      original_price_usd: product?.original_price || 0,
+      sale_price_usd: product?.sale_price || 0,
+      price_ils: product ? +(product.sale_price * rate).toFixed(2) : 0,
       generated_text: text,
       status: 'pending',
     });
@@ -96,24 +111,39 @@ export class PostsService {
 
   // ── Schedule post ─────────────────────────────────────────────────────────
 
-  async schedulePost(userId: string, productId: string, scheduledAt: Date, textOverride?: string, channelOverride?: string) {
+  async schedulePost(
+    userId: string,
+    productId: string,
+    scheduledAt: Date,
+    textOverride?: string,
+    channelOverride?: string,
+    productImageOverride?: string,
+    affiliateUrlOverride?: string,
+  ) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
-    const product = await this.searchProduct(productId, creds);
-    const affiliateUrl = await this.getAffiliateLink(productId, creds);
 
-    const text = textOverride || await this.generateText(product, 'he', rate, creds);
-    const priceLocal = +(product.sale_price * rate).toFixed(2);
+    const product = productImageOverride
+      ? null
+      : await this.searchProduct(productId, creds);
+
+    const affiliateUrl = affiliateUrlOverride
+      || await this.getAffiliateLink(productId, creds);
+
+    const text = textOverride || await this.generateText(
+      product || { title: productId, sale_price: 0, original_price: 0, discount_percent: 0, orders_count: 0, rating: 0, currency: 'USD' },
+      'he', rate, creds,
+    );
 
     const post = this.repo.create({
       user_id: userId,
       product_id: productId,
-      product_title: product.title,
-      product_image: product.image_url,
+      product_title: product?.title || '',
+      product_image: productImageOverride || product?.image_url || '',
       affiliate_url: affiliateUrl,
-      original_price_usd: product.original_price,
-      sale_price_usd: product.sale_price,
-      price_ils: priceLocal,
+      original_price_usd: product?.original_price || 0,
+      sale_price_usd: product?.sale_price || 0,
+      price_ils: product ? +(product.sale_price * rate).toFixed(2) : 0,
       generated_text: text,
       status: 'scheduled',
       scheduled_at: scheduledAt,
@@ -209,7 +239,13 @@ export class PostsService {
       const channel = normalizeTelegramChatId(rawChannel);
       if (!token || !channel) throw new Error('Missing Telegram credentials');
 
-      const caption = `${post.generated_text}\n\n🔗 ${post.affiliate_url}`;
+      // Only append the affiliate link if it's not already present in the text
+      // (the frontend may have already included it in the generated_text)
+      const linkAlreadyInText = post.affiliate_url &&
+        post.generated_text.includes(post.affiliate_url);
+      const caption = (post.affiliate_url && !linkAlreadyInText)
+        ? `${post.generated_text}\n\n🔗 ${post.affiliate_url}`
+        : post.generated_text;
 
       const res = await axios.post(
         `https://api.telegram.org/bot${token}/sendPhoto`,

@@ -207,7 +207,7 @@ export const postsApi = {
   preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string) =>
     http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template }).then(extract),
 
-  quickPost: (data: { product_id: string; text?: string; channel_override?: string }) =>
+  quickPost: (data: { product_id: string; text?: string; channel_override?: string; product_image?: string; affiliate_url?: string }) =>
     http.post<Post>('/posts/quick', data).then(extract),
 
   list: (params?: { page?: number; limit?: number; status?: string; campaign_id?: string }) =>
@@ -215,7 +215,7 @@ export const postsApi = {
 
   retry: (id: string) => http.post<Post>(`/posts/${id}/retry`).then(extract),
 
-  schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string }) =>
+  schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string; product_image?: string; affiliate_url?: string }) =>
     http.post<Post>('/posts/schedule', data).then(extract),
 };
 

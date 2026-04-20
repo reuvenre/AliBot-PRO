@@ -244,7 +244,14 @@ export default function QuickPostPage() {
     if (!selected) return;
     setIsPosting(true);
     try {
-      await postsApi.quickPost({ product_id: selected.product_id, text });
+      await postsApi.quickPost({
+        product_id: selected.product_id,
+        text,
+        // Pass the image and affiliate link so the backend uses the correct product image
+        // instead of re-fetching via searchProduct (which returns wrong results)
+        product_image: preview?.product?.image_url || selected.image_url || undefined,
+        affiliate_url: affiliateUrl || undefined,
+      });
       setPosted(true);
       setTimeout(() => { setPosted(false); handleBackToProducts(); }, 3000);
     } finally {
@@ -254,7 +261,13 @@ export default function QuickPostPage() {
 
   const handleSchedule = async (text: string, scheduledAt: string) => {
     if (!selected) return;
-    await postsApi.schedulePost({ product_id: selected.product_id, text, scheduled_at: scheduledAt });
+    await postsApi.schedulePost({
+      product_id: selected.product_id,
+      text,
+      scheduled_at: scheduledAt,
+      product_image: preview?.product?.image_url || selected.image_url || undefined,
+      affiliate_url: affiliateUrl || undefined,
+    });
     setPosted(true);
     setTimeout(() => { setPosted(false); handleBackToProducts(); }, 3000);
   };
