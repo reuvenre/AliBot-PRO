@@ -140,6 +140,7 @@ export interface PostTemplate {
   name: string;
   content: string;
   icon: string;
+  type?: 'body' | 'footer';
   builtin?: boolean;  // client-side flag for predefined templates
   created_at?: string;
 }

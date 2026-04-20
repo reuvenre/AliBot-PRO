@@ -253,10 +253,10 @@ export const channelsApi = {
 export const templatesApi = {
   list: () => http.get<PostTemplate[]>('/templates').then(extract),
 
-  create: (data: { name: string; content: string; icon?: string }) =>
+  create: (data: { name: string; content: string; icon?: string; type?: string }) =>
     http.post<PostTemplate>('/templates', data).then(extract),
 
-  update: (id: string, data: { name?: string; content?: string; icon?: string }) =>
+  update: (id: string, data: { name?: string; content?: string; icon?: string; type?: string }) =>
     http.patch<PostTemplate>(`/templates/${id}`, data).then(extract),
 
   remove: (id: string) => http.delete(`/templates/${id}`).then(extract),

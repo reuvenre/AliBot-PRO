@@ -1,71 +1,169 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText, Plus, Check, MoreHorizontal, X, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Plus, Check, Pencil, Trash2, X, Loader2, Save } from 'lucide-react';
+import { templatesApi } from '@/lib/api-client';
+import type { PostTemplate } from '@/types';
 
-interface Template {
-  id: string;
-  name: string;
-  icon: string;
-  content: string;
-  builtin: boolean;
-}
+// ── Built-in body templates (read-only, not stored in DB) ─────────────────────
 
-const BUILTIN: Template[] = [
-  { id: 'builtin_default',  name: 'תבנית ברירת מחדל', icon: '✨', content: 'תבנית מערכת המלאכת לפרסום מוצרים',                                                                    builtin: true },
-  { id: 'builtin_price',    name: 'תבנית מפורטת',      icon: '💰', content: 'תבנית מפורטת עם כלל הפרטים על המוצר',                                                              builtin: true },
-  { id: 'builtin_compact',  name: 'Compact',            icon: '⚡', content: 'תבנית קצרה עם דירוג, מכירות והנחה',                                                                builtin: true },
+const BUILTIN_BODY: PostTemplate[] = [
+  {
+    id: 'builtin_default',
+    name: 'תבנית ברירת מחדל',
+    icon: '✨',
+    content: '',
+    type: 'body',
+    builtin: true,
+  },
+  {
+    id: 'builtin_price',
+    name: 'מחיר וחיסכון',
+    icon: '💰',
+    content: 'כתוב פוסט שיווקי שמדגיש את המחיר הנמוך והחיסכון. פתח עם שאלה שמעוררת עניין. ציין בדיוק כמה חוסכים. כתוב בעברית עם אמוג\'ים.',
+    type: 'body',
+    builtin: true,
+  },
+  {
+    id: 'builtin_fomo',
+    name: 'דחיפות / FOMO',
+    icon: '⏰',
+    content: 'כתוב פוסט שיוצר תחושת דחיפות ופחד להחמיץ. הדגש שהמחיר עלול להשתנות. השתמש במילים כמו "מהר", "עכשיו", "אל תפספס". כתוב בעברית.',
+    type: 'body',
+    builtin: true,
+  },
+  {
+    id: 'builtin_review',
+    name: 'המלצה / ביקורת',
+    icon: '⭐',
+    content: 'כתוב פוסט בסגנון המלצה אישית. ציין את הדירוג הגבוה ומספר הרוכשים. כתוב כאילו אתה ממליץ לחברים. כתוב בעברית.',
+    type: 'body',
+    builtin: true,
+  },
 ];
 
-// Sample preview texts per template
-const PREVIEWS: Record<string, string> = {
-  builtin_default:  '✨ אוזניות Bluetooth איכותיות\n\n🔧 אוזניות איכותיות עם תמיכה בבלוטוס, סוללה ל-20 שעות עם סאונד ברור ועשיר\n\n⭐ דירוג: 4.9',
-  builtin_price:    '🔥 50% הנחה!\n\n💰 מחיר: ₪149.90 🏷️\n\n⭐⭐⭐⭐⭐\n\n🔧 אוזניות איכותיות עם תמיכה בבלוטוס, סוללה ל-20 שעות עם סאונד ברור ועשיר',
-  builtin_compact:  '✨ דירוג של 4.9 📦 340 מכירות\n\n❌ עכשיו ב-33% הנחה!\n\n🔧 אוזניות איכותיות עם תמיכה בבלוטוס, סוללה ל-20 שעות עם סאונד ברור ועשיר',
+// Sample preview texts for builtin templates
+const BUILTIN_PREVIEWS: Record<string, string> = {
+  builtin_default: '✨ אוזניות Bluetooth איכותיות\n\n🔧 אוזניות עם תמיכה בבלוטוס, סוללה ל-20 שעות עם סאונד ברור ועשיר\n\n💰 מחיר: ₪149\n🏷️ הנחה: 33%\n\n🔗 קישור לרכישה',
+  builtin_price:   '💰 מחפש אוזניות במחיר מעולה?\n\n✅ חוסך ₪75 ביחס למחיר המקורי!\n\n🔧 אוזניות Bluetooth איכותיות, סוללה ל-20 שעות\n\n💵 רק ₪149 — הנחה 33%!\n\n🔗 להזמנה',
+  builtin_fomo:    '⏰ עכשיו או לעולם לא!\n\n🔥 אוזניות Bluetooth — רק ₪149!\nהמחיר הזה לא יישמר לנצח!\n\n⚡ מהר לפני שנגמר!\n\n🔗 לחץ כאן לרכישה מיידית',
+  builtin_review:  '⭐ 4.9/5 — 2,300 רוכשים מרוצים!\n\nבדקתי את האוזניות האלה ואני חייב להמליץ — הסאונד מדהים, הסוללה מחזיקה 20 שעות\n\n💰 ₪149 בלבד\n\n🔗 קישור לרכישה',
 };
 
-function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (t: Template) => void }) {
-  const [name, setName] = useState('');
-  const [instructions, setInstructions] = useState('');
+// ── Template form modal (create & edit) ──────────────────────────────────────
+
+interface TemplateModalProps {
+  initial?: PostTemplate | null;
+  templateType: 'body' | 'footer';
+  onClose: () => void;
+  onSaved: (t: PostTemplate) => void;
+}
+
+function TemplateModal({ initial, templateType, onClose, onSaved }: TemplateModalProps) {
+  const isEdit = !!initial;
+  const [name, setName] = useState(initial?.name || '');
+  const [icon, setIcon] = useState(initial?.icon || (templateType === 'footer' ? '📌' : '📝'));
+  const [content, setContent] = useState(initial?.content || '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSave = async () => {
-    if (!name.trim() || !instructions.trim()) return;
+    if (!name.trim() || !content.trim()) {
+      setError('נא למלא שם ותוכן');
+      return;
+    }
     setSaving(true);
-    await new Promise(r => setTimeout(r, 500));
-    onCreate({ id: Date.now().toString(), name: name.trim(), icon: '📝', content: instructions.trim(), builtin: false });
-    onClose();
-    setSaving(false);
+    setError('');
+    try {
+      let saved: PostTemplate;
+      if (isEdit && initial) {
+        saved = await templatesApi.update(initial.id, { name: name.trim(), content: content.trim(), icon: icon.trim() || '📝' });
+      } else {
+        saved = await templatesApi.create({ name: name.trim(), content: content.trim(), icon: icon.trim() || '📝', type: templateType });
+      }
+      onSaved({ ...saved, type: templateType, builtin: false });
+      onClose();
+    } catch {
+      setError('שגיאה בשמירה — נסה שוב');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl w-full max-w-md p-6">
+      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-white">צור תבנית חדשה</h2>
-          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors"><X size={16} /></button>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs text-white/50 mb-1.5">שם התבנית</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="לדוגמה: תבנית מבצעי קיץ"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
-          </div>
-          <div>
-            <label className="block text-xs text-white/50 mb-1.5">הוראות לבינה מלאכותית</label>
-            <textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={4}
-              placeholder="לדוגמה: כתוב פוסט שמדגיש את ההנחה ויוצר תחושת דחיפות..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none" />
-          </div>
-        </div>
-        <div className="flex gap-3 mt-5">
-          <button onClick={handleSave} disabled={saving || !name.trim() || !instructions.trim()}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            צור תבנית
+          <h2 className="text-base font-bold text-white">
+            {isEdit ? 'עריכת תבנית' : templateType === 'footer' ? 'הוסף כותרת תחתונה' : 'צור תבנית חדשה'}
+          </h2>
+          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors">
+            <X size={16} />
           </button>
-          <button onClick={onClose}
-            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all">
+        </div>
+
+        <div className="space-y-4">
+          {/* Name + icon */}
+          <div className="flex gap-3">
+            <div className="shrink-0">
+              <label className="block text-xs text-white/50 mb-1.5">אייקון</label>
+              <input
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                maxLength={2}
+                className="w-14 text-center bg-white/5 border border-white/10 rounded-xl px-2 py-2.5 text-lg text-white outline-none focus:border-blue-500/50"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs text-white/50 mb-1.5">שם התבנית *</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={templateType === 'footer' ? 'לדוגמה: כותרת ערוץ הדילים' : 'לדוגמה: תבנית מבצעי קיץ'}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50"
+              />
+            </div>
+          </div>
+
+          {/* Content */}
+          <div>
+            <label className="block text-xs text-white/50 mb-1.5">
+              {templateType === 'footer'
+                ? 'טקסט הכותרת התחתונה *'
+                : 'הוראות לבינה מלאכותית *'}
+            </label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={5}
+              placeholder={
+                templateType === 'footer'
+                  ? 'לדוגמה: 📢 ערוץ הדילים הכי חם! @mychannel | linktr.ee/mystore'
+                  : 'לדוגמה: כתוב פוסט שמדגיש את ההנחה ויוצר תחושת דחיפות. פתח עם שאלה...'
+              }
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none leading-relaxed"
+            />
+            <p className="text-[10px] text-white/25 mt-1 text-left">{content.length} תווים</p>
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        <div className="flex gap-3 mt-5">
+          <button
+            onClick={handleSave}
+            disabled={saving || !name.trim() || !content.trim()}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {saving ? 'שומר...' : isEdit ? 'שמור שינויים' : 'צור תבנית'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all"
+          >
             ביטול
           </button>
         </div>
@@ -74,18 +172,151 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (t:
   );
 }
 
+// ── Template card ─────────────────────────────────────────────────────────────
+
+function TemplateCard({
+  template,
+  isSelected,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  template: PostTemplate;
+  isSelected: boolean;
+  onSelect: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const previewText = template.builtin
+    ? (BUILTIN_PREVIEWS[template.id] || template.content)
+    : template.content;
+
+  const handleDelete = async () => {
+    if (!confirm(`למחוק את "${template.name}"?`)) return;
+    setDeleting(true);
+    try {
+      await templatesApi.remove(template.id);
+      onDelete?.();
+    } catch {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div
+      className={`bg-[#0d0f1a] rounded-2xl border overflow-hidden transition-all flex flex-col
+        ${isSelected ? 'border-blue-500/50 ring-1 ring-blue-500/20' : 'border-white/8 hover:border-white/20'}`}
+    >
+      {/* Card header */}
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-lg shrink-0">{template.icon}</span>
+          <span className="text-sm font-semibold text-white truncate">{template.name}</span>
+          <span className="text-[10px] bg-white/8 text-white/40 border border-white/10 rounded-full px-2 py-0.5 shrink-0">
+            {template.builtin ? 'System' : 'Custom'}
+          </span>
+        </div>
+        {!template.builtin && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onEdit}
+              className="p-1.5 text-white/25 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-all"
+              title="ערוך"
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="p-1.5 text-white/25 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+              title="מחק"
+            >
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Preview */}
+      <div className="px-4 py-3 flex-1">
+        <p className="text-[10px] font-semibold text-white/35 uppercase tracking-wider mb-2">תצוגה מקדימה</p>
+        <div className="bg-white/3 border border-white/5 rounded-xl p-3 min-h-[90px]">
+          <p className="text-xs text-white/60 leading-relaxed whitespace-pre-line line-clamp-6">{previewText}</p>
+        </div>
+      </div>
+
+      {/* Select button */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={onSelect}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all
+            ${isSelected
+              ? 'bg-blue-600/20 border border-blue-500/40 text-blue-400'
+              : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white/80'}`}
+        >
+          {isSelected && <Check size={13} />}
+          {isSelected ? 'Selected ✓' : 'Select Template'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function TemplatesPage() {
   const [tab, setTab] = useState<'body' | 'footer'>('body');
-  const [templates, setTemplates] = useState<Template[]>(BUILTIN);
-  const [selectedId, setSelectedId] = useState('builtin_default');
-  const [showCreate, setShowCreate] = useState(false);
+  const [customTemplates, setCustomTemplates] = useState<PostTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBodyId, setSelectedBodyId] = useState('builtin_default');
+  const [selectedFooterId, setSelectedFooterId] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<PostTemplate | null>(null);
+
+  // Load saved templates from backend
+  useEffect(() => {
+    templatesApi.list()
+      .then((ts) => setCustomTemplates(ts.map((t) => ({ ...t, builtin: false }))))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const bodyTemplates = [
+    ...BUILTIN_BODY,
+    ...customTemplates.filter((t) => !t.type || t.type === 'body'),
+  ];
+  const footerTemplates = customTemplates.filter((t) => t.type === 'footer');
+
+  const handleSaved = (saved: PostTemplate) => {
+    setCustomTemplates((prev) => {
+      const exists = prev.find((t) => t.id === saved.id);
+      if (exists) return prev.map((t) => t.id === saved.id ? saved : t);
+      return [...prev, saved];
+    });
+  };
+
+  const handleDeleted = (id: string) => {
+    setCustomTemplates((prev) => prev.filter((t) => t.id !== id));
+    if (selectedBodyId === id) setSelectedBodyId('builtin_default');
+    if (selectedFooterId === id) setSelectedFooterId(null);
+  };
+
+  const openCreate = () => { setEditingTemplate(null); setShowModal(true); };
+  const openEdit = (t: PostTemplate) => { setEditingTemplate(t); setShowModal(true); };
+
+  const currentTemplates = tab === 'body' ? bodyTemplates : footerTemplates;
+  const currentSelectedId = tab === 'body' ? selectedBodyId : selectedFooterId;
+  const setCurrentSelected = tab === 'body' ? setSelectedBodyId : setSelectedFooterId;
 
   return (
     <div dir="rtl">
-      {showCreate && (
-        <CreateModal
-          onClose={() => setShowCreate(false)}
-          onCreate={(t) => setTemplates(prev => [...prev, t])}
+      {showModal && (
+        <TemplateModal
+          initial={editingTemplate}
+          templateType={tab}
+          onClose={() => { setShowModal(false); setEditingTemplate(null); }}
+          onSaved={handleSaved}
         />
       )}
 
@@ -99,74 +330,63 @@ export default function TemplatesPage() {
           <h1 className="text-2xl font-bold text-white">תבניות פוסטים</h1>
           <p className="text-sm text-white/40 mt-1">צור ונהל תבניות פוסטים</p>
         </div>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all">
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all"
+        >
           <Plus size={14} />
-          צור תבנית
+          {tab === 'footer' ? '+ כותרת תחתונה' : 'צור תבנית'}
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex bg-[#0d0f1a] border border-white/5 rounded-xl p-1 gap-1 mb-6 w-fit">
-        {[{ v: 'body' as const, l: 'תבניות גוף' }, { v: 'footer' as const, l: 'כותרות תחתונות לקבוצות' }].map(({ v, l }) => (
-          <button key={v} onClick={() => setTab(v)}
+        {[
+          { v: 'body' as const, l: 'תבניות גוף' },
+          { v: 'footer' as const, l: 'כותרות תחתונות לקבוצות' },
+        ].map(({ v, l }) => (
+          <button
+            key={v}
+            onClick={() => setTab(v)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all
-              ${tab === v ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}>
+              ${tab === v ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
+          >
             {l}
           </button>
         ))}
       </div>
 
-      {tab === 'footer' ? (
+      {/* Loading */}
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 size={24} className="animate-spin text-blue-400" />
+        </div>
+      ) : currentTemplates.length === 0 ? (
+        /* Empty state for footer tab */
         <div className="bg-[#0d0f1a] border border-dashed border-white/10 rounded-2xl p-16 text-center">
-          <p className="text-sm text-white/30">כותרות תחתונות לקבוצות — בקרוב</p>
+          <FileText size={36} className="text-white/15 mx-auto mb-4" />
+          <p className="text-sm text-white/40 mb-1">אין כותרות תחתונות עדיין</p>
+          <p className="text-xs text-white/25 mb-5">כותרת תחתונה מתווספת בסוף כל פוסט שנשלח לערוץ</p>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all"
+          >
+            <Plus size={14} />
+            הוסף כותרת תחתונה ראשונה
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {templates.map((t) => {
-            const isSelected = selectedId === t.id;
-            const previewText = PREVIEWS[t.id] || t.content;
-            return (
-              <div key={t.id}
-                className={`bg-[#0d0f1a] rounded-2xl border overflow-hidden transition-all
-                  ${isSelected ? 'border-blue-500/50 ring-1 ring-blue-500/20' : 'border-white/8 hover:border-white/20'}`}>
-                {/* Card header */}
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{t.icon}</span>
-                    <span className="text-sm font-semibold text-white">{t.name}</span>
-                    <span className="text-[10px] bg-white/8 text-white/40 border border-white/10 rounded-full px-2 py-0.5">
-                      {t.builtin ? 'System' : 'Custom'}
-                    </span>
-                  </div>
-                  <button className="p-1.5 text-white/25 hover:text-white/60 hover:bg-white/5 rounded-lg transition-all">
-                    <MoreHorizontal size={14} />
-                  </button>
-                </div>
-
-                {/* Preview */}
-                <div className="px-4 py-3">
-                  <p className="text-[10px] font-semibold text-white/35 uppercase tracking-wider mb-2">תצוגה מקדימה</p>
-                  <div className="bg-white/3 border border-white/5 rounded-xl p-3 min-h-[100px]">
-                    <p className="text-xs text-white/60 leading-relaxed whitespace-pre-line">{previewText}</p>
-                  </div>
-                </div>
-
-                {/* Select button */}
-                <div className="px-4 pb-4">
-                  <button
-                    onClick={() => setSelectedId(t.id)}
-                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all
-                      ${isSelected
-                        ? 'bg-blue-600/20 border border-blue-500/40 text-blue-400'
-                        : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white/80'}`}>
-                    {isSelected && <Check size={13} />}
-                    {isSelected ? 'Selected' : 'Select Template'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {currentTemplates.map((t) => (
+            <TemplateCard
+              key={t.id}
+              template={t}
+              isSelected={currentSelectedId === t.id}
+              onSelect={() => setCurrentSelected(t.id)}
+              onEdit={() => openEdit(t)}
+              onDelete={() => handleDeleted(t.id)}
+            />
+          ))}
         </div>
       )}
     </div>

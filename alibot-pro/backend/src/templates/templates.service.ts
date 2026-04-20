@@ -17,22 +17,24 @@ export class TemplatesService {
     });
   }
 
-  async create(userId: string, dto: { name: string; content: string; icon?: string }): Promise<Template> {
+  async create(userId: string, dto: { name: string; content: string; icon?: string; type?: string }): Promise<Template> {
     const t = this.repo.create({
       user_id: userId,
       name: dto.name.trim(),
       content: dto.content.trim(),
       icon: dto.icon?.trim() || '📝',
+      type: dto.type || 'body',
     });
     return this.repo.save(t);
   }
 
-  async update(userId: string, id: string, dto: { name?: string; content?: string; icon?: string }): Promise<Template> {
+  async update(userId: string, id: string, dto: { name?: string; content?: string; icon?: string; type?: string }): Promise<Template> {
     const t = await this.repo.findOne({ where: { id, user_id: userId } });
     if (!t) throw new NotFoundException('Template not found');
-    if (dto.name !== undefined)   t.name    = dto.name.trim();
+    if (dto.name !== undefined)    t.name    = dto.name.trim();
     if (dto.content !== undefined) t.content = dto.content.trim();
-    if (dto.icon !== undefined)   t.icon    = dto.icon.trim();
+    if (dto.icon !== undefined)    t.icon    = dto.icon.trim();
+    if (dto.type !== undefined)    t.type    = dto.type;
     return this.repo.save(t);
   }
 

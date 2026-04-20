@@ -24,8 +24,9 @@ export class TemplatesController {
     @Body('name') name: string,
     @Body('content') content: string,
     @Body('icon') icon?: string,
+    @Body('type') type?: string,
   ) {
-    return this.svc.create(this.uid(req), { name, content, icon });
+    return this.svc.create(this.uid(req), { name, content, icon, type });
   }
 
   @Patch(':id')
@@ -35,8 +36,9 @@ export class TemplatesController {
     @Body('name') name?: string,
     @Body('content') content?: string,
     @Body('icon') icon?: string,
+    @Body('type') type?: string,
   ) {
-    return this.svc.update(this.uid(req), id, { name, content, icon });
+    return this.svc.update(this.uid(req), id, { name, content, icon, type });
   }
 
   @Delete(':id')

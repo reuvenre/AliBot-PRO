@@ -19,6 +19,9 @@ export class Template {
   @Column({ default: '' })
   icon: string;
 
+  @Column({ default: 'body' })
+  type: string; // 'body' | 'footer'
+
   @Column({ default: 0 })
   sort_order: number;
 
