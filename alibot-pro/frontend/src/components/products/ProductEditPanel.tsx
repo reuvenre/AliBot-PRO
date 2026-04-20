@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import type { AliProduct, PostTemplate } from '@/types';
 
-const SYMBOLS: Record<string, string> = { ILS: 'âª', EUR: 'â¬', GBP: 'Â£', USD: '$' };
+const SYMBOLS: Record<string, string> = { ILS: '₪', EUR: '€', GBP: '£', USD: '$' };
 const HE_RE = /[\u0590-\u05FF]/;
 
 async function translateToHebrew(text: string): Promise<string> {
@@ -41,7 +41,7 @@ export function ProductEditPanel({
   isGenerating,
 }: ProductEditPanelProps) {
   const [title, setTitle] = useState(product.title);
-  const sym = SYMBOLS[product.currency] || product.currency || 'âª';
+  const sym = SYMBOLS[product.currency] || product.currency || '₪';
   const [salePrice, setSalePrice] = useState(product.sale_price);
   const [origPrice, setOrigPrice] = useState(product.original_price);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -75,7 +75,7 @@ export function ProductEditPanel({
     <div className="bg-[#0d0f1a] border border-white/8 rounded-xl overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/5">
-        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">×¢×¨×××ª ×××¦×¨</p>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">עריכת מוצר</p>
       </div>
 
       <div className="p-4 space-y-4">
@@ -87,7 +87,7 @@ export function ProductEditPanel({
           </span>
           <span className="flex items-center gap-1">
             <ShoppingBag size={10} />
-            {product.orders_count.toLocaleString()} ×××× ××ª
+            {product.orders_count.toLocaleString()} הזמנות
           </span>
           {product.category && (
             <span className="flex items-center gap-1 truncate">
@@ -100,7 +100,7 @@ export function ProductEditPanel({
         {/* Editable title */}
         <div>
           <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider">
-            ×©× ××××¦×¨
+            שם המוצר
           </label>
           {isTranslating && (
             <span className="text-xs text-white/40 flex items-center gap-1 mt-1">
@@ -122,7 +122,7 @@ export function ProductEditPanel({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign size={9} /> ××××¨ ×××¦×¢ ({sym})
+              <DollarSign size={9} /> מחיר מבצע ({sym})
             </label>
             <input
               type="number"
@@ -135,7 +135,7 @@ export function ProductEditPanel({
           </div>
           <div>
             <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign size={9} /> ××××¨ ××§××¨× ({sym})
+              <DollarSign size={9} /> מחיר מקורי ({sym})
             </label>
             <input
               type="number"
@@ -152,9 +152,9 @@ export function ProductEditPanel({
         {discountPct > 0 && (
           <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
             <Percent size={12} className="text-red-400 shrink-0" />
-            <span className="text-red-400">×× ×× ××××©××ª: <strong>{discountPct}%</strong></span>
+            <span className="text-red-400">הנחה מחושבת: <strong>{discountPct}%</strong></span>
             <span className="text-white/30 mr-auto">
-              ×××¡×××: {sym}{(origPrice - salePrice).toFixed(2)}
+              חיסכון: {sym}{(origPrice - salePrice).toFixed(2)}
             </span>
           </div>
         )}
@@ -163,7 +163,7 @@ export function ProductEditPanel({
         {activeTemplate && activeTemplate.id !== 'builtin_default' && (
           <div className="flex items-center gap-2 text-[11px] bg-white/3 border border-white/8 rounded-lg px-3 py-2">
             <span>{activeTemplate.icon}</span>
-            <span className="text-white/40">×ª×× ××ª:</span>
+            <span className="text-white/40">תבנית:</span>
             <span className="text-white/70 font-medium">{activeTemplate.name}</span>
           </div>
         )}
@@ -175,7 +175,7 @@ export function ProductEditPanel({
           className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all"
         >
           <Wand2 size={14} className={isGenerating ? 'animate-pulse' : ''} />
-          {isGenerating ? '××××¦×¨ ×¤××¡×...' : '×¦××¨ ×¤××¡×'}
+          {isGenerating ? 'מייצר פוסט...' : 'צור פוסט'}
         </button>
       </div>
     </div>
