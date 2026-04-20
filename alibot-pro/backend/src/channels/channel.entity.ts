@@ -34,6 +34,9 @@ export class Channel {
   @Column({ default: true })
   is_active: boolean;
 
+  @Column({ type: 'int', default: 0, nullable: true })
+  members_count: number;
+
   @CreateDateColumn()
   created_at: Date;
 

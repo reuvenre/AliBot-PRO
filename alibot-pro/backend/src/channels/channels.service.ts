@@ -18,6 +18,10 @@ export class ChannelsService {
       where: { user_id: userId },
       order: { created_at: 'ASC' },
     });
+
+    // Refresh member counts from Telegram in the background (fire-and-forget)
+    this.refreshMemberCounts(channels).catch(() => {});
+
     return channels.map((c) => this.toPublic(c));
   }
 
@@ -64,10 +68,54 @@ export class ChannelsService {
         { chat_id: chatId, text: '✅ AliBot Pro — test connection successful!' },
         { timeout: 10000 },
       );
+
+      // Also refresh member count on successful test
+      if (res.data?.ok === true) {
+        this.fetchMemberCount(token, chatId)
+          .then((count) => {
+            if (count !== null) {
+              this.repo.update(channel.id, { members_count: count });
+            }
+          })
+          .catch(() => {});
+      }
+
       return { ok: res.data?.ok === true };
     } catch (err) {
       return { ok: false, error: err?.response?.data?.description || err.message };
     }
+  }
+
+  /** Fetches member count from Telegram's getChatMemberCount API */
+  private async fetchMemberCount(token: string, chatId: string): Promise<number | null> {
+    try {
+      const res = await axios.get(
+        `https://api.telegram.org/bot${token}/getChatMemberCount`,
+        { params: { chat_id: chatId }, timeout: 8000 },
+      );
+      if (res.data?.ok && typeof res.data.result === 'number') {
+        return res.data.result;
+      }
+    } catch {
+      // Silently ignore — member count is best-effort
+    }
+    return null;
+  }
+
+  /** Refreshes member counts for all channels that have a token + channel_id */
+  private async refreshMemberCounts(channels: Channel[]): Promise<void> {
+    const eligible = channels.filter((c) => c.bot_token_enc && c.channel_id);
+    await Promise.all(
+      eligible.map(async (c) => {
+        const token = decrypt(c.bot_token_enc);
+        const chatId = normalizeTelegramChatId(c.channel_id);
+        const count = await this.fetchMemberCount(token, chatId);
+        if (count !== null && count !== c.members_count) {
+          await this.repo.update(c.id, { members_count: count });
+          c.members_count = count; // update in-memory so toPublic() returns the fresh value
+        }
+      }),
+    );
   }
 
   private async findOwned(userId: string, id: string): Promise<Channel> {
@@ -86,6 +134,7 @@ export class ChannelsService {
       is_active: c.is_active,
       has_token: !!c.bot_token_enc,
       bot_token_masked: c.bot_token_enc ? mask(decrypt(c.bot_token_enc)) : null,
+      members_count: c.members_count || 0,
       created_at: c.created_at,
       updated_at: c.updated_at,
     };

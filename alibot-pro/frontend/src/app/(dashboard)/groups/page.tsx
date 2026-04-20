@@ -293,6 +293,12 @@ function ChannelCard({
             <p className="text-xs text-white/40">
               {PLATFORM_LABEL[channel.platform]} · {channel.channel_id || 'ללא Channel ID'}
             </p>
+            {channel.members_count > 0 && (
+              <p className="text-xs text-white/50 mt-0.5">
+                <Users size={10} className="inline-block mr-1 mb-0.5" />
+                {channel.members_count.toLocaleString()} חברים
+              </p>
+            )}
             {channel.description && (
               <p className="text-xs text-white/30 mt-0.5 truncate">{channel.description}</p>
             )}

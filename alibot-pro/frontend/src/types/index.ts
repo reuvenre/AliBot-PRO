@@ -192,6 +192,7 @@ export interface Channel {
   is_active: boolean;
   has_token: boolean;
   bot_token_masked: string | null;
+  members_count: number;
   created_at: string;
   updated_at: string;
 }
