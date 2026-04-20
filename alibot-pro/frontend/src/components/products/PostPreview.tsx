@@ -57,9 +57,9 @@ export function PostPreview({
   return (
     <div className="space-y-4">
       {/* Telegram preview */}
-      <div className="bg-[#17212b] rounded-xl p-4 border border-white/5">
-        <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full bg-[#2aabee]" />
+      <div className="bg-[#0d0f1a] rounded-xl p-4 border border-white/8">
+        <p className="text-[10px] text-blue-400/60 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#2aabee]" />
           תצוגה מקדימה — Telegram
         </p>
 
@@ -75,7 +75,7 @@ export function PostPreview({
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={8}
-          className="w-full bg-transparent text-sm text-white/80 leading-relaxed resize-none outline-none font-mono"
+          className="w-full bg-transparent text-sm text-white leading-relaxed resize-none outline-none font-mono"
           dir="rtl"
         />
 

@@ -1,108 +1,171 @@
 'use client';
 
-import { Check, Zap, Star, Crown } from 'lucide-react';
+import { useState } from 'react';
+import { Check, Zap } from 'lucide-react';
+
+type Billing = 'monthly' | 'annual';
 
 const PLANS = [
   {
-    id: 'free',
-    name: 'Free',
-    icon: Zap,
-    price: '₪0',
-    period: 'לחודש',
-    color: 'white/30',
-    accent: 'white/10',
+    id: 'starter',
+    name: 'Starter',
+    priceMonthly: 69,
+    priceAnnual: 55,
+    credits: 500,
+    groups: '1',
+    groupsLabel: '1 קבוצות',
     current: false,
-    features: ['5 פוסטים ביום', '1 ערוץ', '100 קרדיטים AI בחודש', 'תבניות בסיסיות'],
+    popular: false,
+    features: ['AliExpress', 'טלגרם', 'כותב תוכן AI', 'פרסום אוטומטי'],
+    includesLabel: 'כולל',
   },
   {
-    id: 'pro',
-    name: 'Pro',
-    icon: Star,
-    price: '₪79',
-    period: 'לחודש',
-    color: 'blue-400',
-    accent: 'blue-500/20',
+    id: 'growth',
+    name: 'Growth',
+    priceMonthly: 149,
+    priceAnnual: 119,
+    credits: 1500,
+    groups: '5',
+    groupsLabel: '5 קבוצות',
     current: true,
-    features: ['פוסטים ללא הגבלה', 'ערוצים ללא הגבלה', '1,500 קרדיטים AI בחודש', 'כל התבניות', 'לוח זמנים מתקדם', 'Auto Pilot'],
+    popular: true,
+    features: ['פרסום חוזר אוטומטי', 'אינטגרציית אמזון', 'מעקב פוסטים', 'וואטסאפ', 'פייסבוק', 'אינסטגרם', 'משפר תמונות AI'],
+    includesLabel: 'כל מה שבתוכנית הקודמת, ובנוסף',
   },
   {
-    id: 'business',
-    name: 'Business',
-    icon: Crown,
-    price: '₪199',
-    period: 'לחודש',
-    color: 'violet-400',
-    accent: 'violet-500/20',
+    id: 'autopilot',
+    name: 'Autopilot',
+    priceMonthly: 259,
+    priceAnnual: 207,
+    credits: 3000,
+    groups: '10',
+    groupsLabel: '10 קבוצות',
     current: false,
-    features: ['הכל ב-Pro', '5,000 קרדיטים AI בחודש', 'WhatsApp + Facebook + Instagram', 'API גישה', 'תמיכה עדיפה', 'ניתוח מתקדם'],
+    popular: false,
+    features: ['מצב טייס אוטומטי', 'גילוי מוצרים AI'],
+    includesLabel: 'כל מה שבתוכנית הקודמת, ובנוסף',
+  },
+  {
+    id: 'scale',
+    name: 'Scale',
+    priceMonthly: 449,
+    priceAnnual: 359,
+    credits: 6000,
+    groups: '∞',
+    groupsLabel: 'ללא הגבלה',
+    current: false,
+    popular: false,
+    features: ['פינטרסט'],
+    includesLabel: 'כל מה שבתוכנית הקודמת, ובנוסף',
   },
 ];
 
 export function SubscriptionForm() {
+  const [billing, setBilling] = useState<Billing>('monthly');
+
   return (
-    <div className="space-y-6">
-      {/* Current plan banner */}
-      <section className="bg-blue-500/10 border border-blue-500/25 rounded-xl p-4 flex items-center gap-3">
-        <Star size={16} className="text-blue-400 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-white">תוכנית Pro פעילה</p>
-          <p className="text-xs text-white/50 mt-0.5">מתחדשת ב-20 במאי 2026 · ₪79 לחודש</p>
+    <div className="space-y-6" dir="rtl">
+      {/* Header banner */}
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-3">
+        <span className="text-xs bg-blue-600 text-white rounded-full px-2.5 py-0.5 font-semibold">ניסיון</span>
+        <span className="text-xs text-white/60">מתאפס ב 25 באפר׳</span>
+        <div className="mr-auto flex items-center gap-3 text-xs text-white/50">
+          <span>מתאפס ב 25 באפר׳</span>
+          <span>·</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+            0 /חודש
+          </span>
         </div>
-        <span className="mr-auto text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full px-2.5 py-0.5 font-semibold">פעיל</span>
-      </section>
+      </div>
 
-      {/* AI Credits usage */}
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white">קרדיטים AI החודש</h3>
-          <span className="text-xs text-white/40">1,243 / 1,500</span>
+      {/* Billing toggle */}
+      <div className="flex items-center justify-center gap-3">
+        <span className={`text-sm font-medium transition-colors ${billing === 'monthly' ? 'text-white' : 'text-white/40'}`}>חודשי</span>
+        <div className="relative">
+          <button
+            onClick={() => setBilling(billing === 'monthly' ? 'annual' : 'monthly')}
+            className={`relative w-11 h-6 rounded-full transition-colors ${billing === 'annual' ? 'bg-blue-600' : 'bg-white/15'}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${billing === 'annual' ? 'right-0.5' : 'right-5'}`} />
+          </button>
         </div>
-        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full" style={{ width: '82.9%' }} />
-        </div>
-        <p className="text-[10px] text-white/30 mt-2">257 קרדיטים נותרו · מתאפסים ב-1 במאי</p>
-      </section>
+        <span className={`text-sm font-medium transition-colors ${billing === 'annual' ? 'text-white' : 'text-white/40'}`}>שנתי</span>
+        {billing === 'annual' && (
+          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-2 py-0.5 font-medium">
+            חסון ₪298
+          </span>
+        )}
+      </div>
 
-      {/* Plans */}
-      <div className="grid grid-cols-1 gap-4">
+      {/* Plans grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {PLANS.map((plan) => {
-          const Icon = plan.icon;
+          const price = billing === 'annual' ? plan.priceAnnual : plan.priceMonthly;
           return (
             <div
               key={plan.id}
-              className={`bg-[#0d0f1a] border rounded-xl p-5 transition-all
-                ${plan.current ? 'border-blue-500/40' : 'border-white/5 hover:border-white/10'}`}
+              className={`relative flex flex-col rounded-2xl border p-5 transition-all
+                ${plan.current
+                  ? 'bg-blue-600/10 border-blue-500/50 ring-1 ring-blue-500/30'
+                  : 'bg-[#0d0f1a] border-white/8 hover:border-white/20'}`}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center bg-${plan.accent}`}>
-                    <Icon size={16} className={`text-${plan.color}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-white">{plan.name}</p>
-                    <p className="text-xs text-white/40">{plan.price} <span className="text-white/25">{plan.period}</span></p>
-                  </div>
+              {plan.popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  <span className="bg-blue-600 text-white text-[10px] font-bold rounded-full px-3 py-1 whitespace-nowrap">
+                    הבחירה הפופולרית
+                  </span>
                 </div>
-                {plan.current && (
-                  <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full px-2.5 py-0.5 font-semibold">התוכנית הנוכחית</span>
-                )}
-              </div>
-              <ul className="space-y-1.5 mb-4">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-xs text-white/55">
-                    <Check size={11} className="text-emerald-400 shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              {!plan.current && (
-                <button className={`w-full py-2 text-sm font-medium rounded-xl transition-all
-                  ${plan.id === 'business'
-                    ? 'bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 border border-violet-500/30'
-                    : 'bg-white/5 hover:bg-white/10 text-white/60 border border-white/10'}`}>
-                  {plan.id === 'free' ? 'שדרג למטה' : 'שדרג לתוכנית זו'}
-                </button>
               )}
+
+              {/* Plan header */}
+              <div className="mb-4 text-center">
+                <p className="text-base font-bold text-white mb-1">{plan.name}</p>
+                <div className="flex items-baseline justify-center gap-1">
+                  <span className="text-3xl font-extrabold text-white">₪{price}</span>
+                  <span className="text-xs text-white/40">חודש</span>
+                </div>
+                <p className="text-[10px] text-white/30 mt-0.5">מתחדש מדי חודש</p>
+              </div>
+
+              {/* Credits + groups */}
+              <div className="flex justify-center gap-4 mb-4 text-xs">
+                <div className="flex items-center gap-1 text-white/60">
+                  <Zap size={11} className="text-amber-400" />
+                  {plan.credits.toLocaleString()} קרדיטים
+                </div>
+                <div className="flex items-center gap-1 text-white/60">
+                  <span>📡</span>
+                  {plan.groupsLabel}
+                </div>
+              </div>
+
+              {/* CTA button */}
+              <button
+                disabled={plan.current}
+                className={`w-full py-2.5 rounded-xl text-sm font-semibold mb-4 transition-all
+                  ${plan.current
+                    ? 'bg-blue-600 text-white cursor-default'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+              >
+                {plan.current ? 'התוכנית הנוכחית' : 'לרכישה'}
+              </button>
+              {!plan.current && (
+                <p className="text-[9px] text-white/25 text-center -mt-3 mb-3">ניתן לבטל בכל עת, ללא התחייבות</p>
+              )}
+
+              {/* Features */}
+              <div className="border-t border-white/5 pt-3 mt-auto">
+                <p className="text-[10px] font-semibold text-white/40 mb-2">{plan.includesLabel}</p>
+                <ul className="space-y-1.5">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-center gap-2 text-xs text-white/60">
+                      <Check size={11} className="text-emerald-400 shrink-0" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           );
         })}

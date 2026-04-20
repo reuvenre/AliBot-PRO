@@ -15,13 +15,14 @@ interface Order {
   commissionStatus: 'confirmed' | 'estimated' | 'cancelled';
   status: OrderStatus;
   date: string;
+  date_iso: string;
 }
 
 const DEMO_ORDERS: Order[] = [
-  { id: '1', orderId: '8155340294738', product: { title: 'Universal Automotive Windshield Wiper Kit 12V', image: 'https://ae01.alicdn.com/kf/S1a2b3c.jpg' }, platform: 'aliexpress', amount: 23.50, commission: 0.94, commissionStatus: 'confirmed', status: 'completed', date: 'אפר׳ 19, 2026, 20:17' },
-  { id: '2', orderId: '8155340294739', product: { title: 'Wireless Bluetooth Earbuds Pro ANC', image: 'https://ae01.alicdn.com/kf/S4d5e6f.jpg' }, platform: 'aliexpress', amount: 15.99, commission: 0.64, commissionStatus: 'estimated', status: 'pending', date: 'אפר׳ 18, 2026, 15:30' },
-  { id: '3', orderId: '8155340294740', product: { title: 'Grill LED Light Drive Red Blue Emergency Remote', image: 'https://ae01.alicdn.com/kf/S7g8h9i.jpg' }, platform: 'aliexpress', amount: 8.75, commission: 0.35, commissionStatus: 'estimated', status: 'completed', date: 'אפר׳ 18, 2026, 09:11' },
-  { id: '4', orderId: '8155340294741', product: { title: '2Pcs Full Cover Tempered Glass Screen Protector', image: 'https://ae01.alicdn.com/kf/Sj0k1l2.jpg' }, platform: 'aliexpress', amount: 4.30, commission: 0.17, commissionStatus: 'confirmed', status: 'completed', date: 'אפר׳ 15, 2026, 07:22' },
+  { id: '1', orderId: '8155340294738', product: { title: 'Universal Automotive Windshield Wiper Kit 12V', image: 'https://ae01.alicdn.com/kf/S1a2b3c.jpg' }, platform: 'aliexpress', amount: 23.50, commission: 0.94, commissionStatus: 'confirmed', status: 'completed', date: 'אפר׳ 19, 2026, 20:17', date_iso: '2026-04-19' },
+  { id: '2', orderId: '8155340294739', product: { title: 'Wireless Bluetooth Earbuds Pro ANC', image: 'https://ae01.alicdn.com/kf/S4d5e6f.jpg' }, platform: 'aliexpress', amount: 15.99, commission: 0.64, commissionStatus: 'estimated', status: 'pending', date: 'אפר׳ 18, 2026, 15:30', date_iso: '2026-04-18' },
+  { id: '3', orderId: '8155340294740', product: { title: 'Grill LED Light Drive Red Blue Emergency Remote', image: 'https://ae01.alicdn.com/kf/S7g8h9i.jpg' }, platform: 'aliexpress', amount: 8.75, commission: 0.35, commissionStatus: 'estimated', status: 'completed', date: 'אפר׳ 18, 2026, 09:11', date_iso: '2026-04-18' },
+  { id: '4', orderId: '8155340294741', product: { title: '2Pcs Full Cover Tempered Glass Screen Protector', image: 'https://ae01.alicdn.com/kf/Sj0k1l2.jpg' }, platform: 'aliexpress', amount: 4.30, commission: 0.17, commissionStatus: 'confirmed', status: 'completed', date: 'אפר׳ 15, 2026, 07:22', date_iso: '2026-04-15' },
 ];
 
 const STATUS_CFG: Record<OrderStatus, { label: string; cls: string; icon: React.ElementType }> = {
@@ -40,8 +41,15 @@ export default function OrdersPage() {
   const [orders] = useState<Order[]>(DEMO_ORDERS);
   const [filter, setFilter] = useState<'all' | OrderStatus>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
-  const filtered = orders.filter((o) => filter === 'all' || o.status === filter);
+  const filtered = orders.filter((o) => {
+    if (filter !== 'all' && o.status !== filter) return false;
+    if (dateFrom && o.date_iso < dateFrom) return false;
+    if (dateTo && o.date_iso > dateTo) return false;
+    return true;
+  });
   const totalAmount = orders.reduce((s, o) => s + o.amount, 0);
   const totalComm   = orders.reduce((s, o) => s + o.commission, 0);
   const commRate    = totalAmount > 0 ? (totalComm / totalAmount) * 100 : 0;
@@ -88,6 +96,36 @@ export default function OrdersPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Date range filter */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-white/40">מ:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="bg-[#0d0f1a] border border-white/5 rounded-xl px-3 py-1.5 text-white/70 text-xs outline-none focus:border-blue-500/50 transition-colors"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-white/40">עד:</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="bg-[#0d0f1a] border border-white/5 rounded-xl px-3 py-1.5 text-white/70 text-xs outline-none focus:border-blue-500/50 transition-colors"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => { setDateFrom(''); setDateTo(''); }}
+            className="px-3 py-1.5 text-xs text-white/50 hover:text-white/80 bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+          >
+            נקה תאריכים
+          </button>
+        )}
       </div>
 
       {/* Filters */}

@@ -219,6 +219,10 @@ export default function QuickPostPage() {
     setIsLoadingPreview(true);
     try {
       const p = await postsApi.preview(editedProduct.product_id, postLang, editedProduct, selectedTemplate.content || undefined);
+      // Append affiliate link if available and not already in text
+      if (affiliateUrl && !p.generated_text.includes(affiliateUrl)) {
+        p.generated_text = p.generated_text + '\n\n🔗 ' + affiliateUrl;
+      }
       setPreview(p);
     } finally {
       setIsLoadingPreview(false);
@@ -260,6 +264,9 @@ export default function QuickPostPage() {
     setIsRegenerating(true);
     try {
       const p = await postsApi.preview(selected.product_id, postLang, preview?.product as any, selectedTemplate.content || undefined);
+      if (affiliateUrl && !p.generated_text.includes(affiliateUrl)) {
+        p.generated_text = p.generated_text + '\n\n🔗 ' + affiliateUrl;
+      }
       setPreview(p);
     } finally {
       setIsRegenerating(false);

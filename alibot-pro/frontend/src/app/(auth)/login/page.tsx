@@ -21,7 +21,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number } };
       if (!e.response) {
-        setError('לא ניתן להתחבר לשרת. ודא שהשרת פועל על פורט 3001.');
+        setError('שגיאת חיבור — ייתכן שהשרת לא פועל או שכתובת ה-API לא הוגדרה');
       } else {
         setError('אימייל או סיסמה שגויים');
       }
@@ -55,6 +55,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="john@example.com"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-white"
+                  style={{ WebkitTextFillColor: '#111827', color: '#111827' }}
                   dir="ltr"
                 />
               </div>
@@ -73,6 +74,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-white"
+                  style={{ WebkitTextFillColor: '#111827', color: '#111827' }}
                   dir="ltr"
                 />
               </div>
