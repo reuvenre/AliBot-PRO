@@ -113,9 +113,10 @@ input:-webkit-autofill {
 [data-theme="light"] .text-white\/80    { color: rgba(15,17,23,0.80) !important; }
 [data-theme="light"] .text-white\/70    { color: rgba(15,17,23,0.70) !important; }
 [data-theme="light"] .text-white\/60    { color: rgba(15,17,23,0.62) !important; }
-[data-theme="light"] .text-white\/50    { color: rgba(15,17,23,0.55) !important; }
-[data-theme="light"] .text-white\/45    { color: rgba(15,17,23,0.50) !important; }
-[data-theme="light"] .text-white\/40    { color: rgba(15,17,23,0.45) !important; }
+[data-theme="light"] .text-white\/55    { color: rgba(15,17,23,0.75) !important; }
+[data-theme="light"] .text-white\/50    { color: rgba(15,17,23,0.62) !important; }
+[data-theme="light"] .text-white\/45    { color: rgba(15,17,23,0.55) !important; }
+[data-theme="light"] .text-white\/40    { color: rgba(15,17,23,0.50) !important; }
 [data-theme="light"] .text-white\/35    { color: rgba(15,17,23,0.42) !important; }
 [data-theme="light"] .text-white\/30    { color: rgba(15,17,23,0.38) !important; }
 [data-theme="light"] .text-white\/25    { color: rgba(15,17,23,0.32) !important; }

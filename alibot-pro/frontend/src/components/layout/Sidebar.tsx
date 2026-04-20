@@ -81,7 +81,7 @@ export function Sidebar() {
         {NAV_SECTIONS.map((section) => (
           <div key={section.title}>
             {/* Section label */}
-            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20 px-2.5 mb-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.10em] text-white/55 px-2.5 mb-1.5">
               {section.title}
             </p>
 
