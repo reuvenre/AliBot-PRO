@@ -1,23 +1,24 @@
 'use client';
 
 import { Suspense, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { setAccessToken } from '@/lib/api-client';
 import { Loader2 } from 'lucide-react';
 
 function Handler() {
-  const router = useRouter();
   const params = useSearchParams();
 
   useEffect(() => {
     const token = params.get('token');
     if (token) {
       setAccessToken(token);
-      router.replace('/dashboard');
+      // Hard redirect so AuthProvider remounts and re-runs bootstrap()
+      // which picks up the new HttpOnly refresh cookie set by the backend
+      window.location.replace('/dashboard');
     } else {
-      router.replace('/login?error=google_failed');
+      window.location.replace('/login?error=google_failed');
     }
-  }, [params, router]);
+  }, [params]);
 
   return null;
 }
