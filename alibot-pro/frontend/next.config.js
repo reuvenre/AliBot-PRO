@@ -8,7 +8,6 @@ const nextConfig = {
       { protocol: 'https', hostname: 'ae01.alicdn.com' },
     ],
   },
-  output: 'standalone', // needed for Docker
 };
 
 module.exports = nextConfig;

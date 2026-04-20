@@ -1,6 +1,3 @@
 {
-  "buildCommand": "cd alibot-pro/frontend && npm run build",
-  "outputDirectory": "alibot-pro/frontend/.next",
-  "installCommand": "cd alibot-pro/frontend && npm install",
-  "framework": "nextjs"
+  "comment": "Root vercel.json ignored — Root Directory is set to alibot-pro/frontend in Vercel project settings"
 }
