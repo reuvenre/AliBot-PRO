@@ -1,23 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { User, ShoppingBag, Plug, ShieldCheck, Bell, CreditCard } from 'lucide-react';
+import { User, ShoppingBag, Plug, ShieldCheck, Bell, CreditCard, ListOrdered } from 'lucide-react';
 import { CredentialsForm }    from '@/components/settings/CredentialsForm';
 import { ProfileForm }        from '@/components/settings/ProfileForm';
 import { IntegrationsForm }   from '@/components/settings/IntegrationsForm';
 import { SecurityForm }       from '@/components/settings/SecurityForm';
 import { NotificationsForm }  from '@/components/settings/NotificationsForm';
 import { SubscriptionForm }   from '@/components/settings/SubscriptionForm';
+import { SchedulingForm }     from '@/components/settings/SchedulingForm';
 
-type Tab = 'profile' | 'marketplaces' | 'integrations' | 'security' | 'notifications' | 'subscription';
+type Tab = 'profile' | 'marketplaces' | 'integrations' | 'scheduling' | 'security' | 'notifications' | 'subscription';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
-  { id: 'profile',       label: 'פרופיל',        icon: User,        desc: 'פרטי חשבון והעדפות' },
-  { id: 'marketplaces',  label: 'שווקים',         icon: ShoppingBag, desc: 'AliExpress ו-OpenAI' },
-  { id: 'integrations',  label: 'אינטגרציות',     icon: Plug,        desc: 'Telegram וערוצים' },
-  { id: 'security',      label: 'אבטחה',          icon: ShieldCheck, desc: 'שינוי סיסמה' },
-  { id: 'notifications', label: 'התראות',         icon: Bell,        desc: 'העדפות עדכונים' },
-  { id: 'subscription',  label: 'מנוי',           icon: CreditCard,  desc: 'תוכנית וקרדיטים' },
+  { id: 'profile',       label: 'פרופיל',        icon: User,          desc: 'פרטי חשבון והעדפות' },
+  { id: 'marketplaces',  label: 'שווקים',         icon: ShoppingBag,   desc: 'AliExpress ו-OpenAI' },
+  { id: 'integrations',  label: 'אינטגרציות',     icon: Plug,          desc: 'Telegram וערוצים' },
+  { id: 'scheduling',    label: 'תזמון אוטומטי',  icon: ListOrdered,   desc: 'הגדרות תור שליחה אוטומטי' },
+  { id: 'security',      label: 'אבטחה',          icon: ShieldCheck,   desc: 'שינוי סיסמה' },
+  { id: 'notifications', label: 'התראות',         icon: Bell,          desc: 'העדפות עדכונים' },
+  { id: 'subscription',  label: 'מנוי',           icon: CreditCard,    desc: 'תוכנית וקרדיטים' },
 ];
 
 export default function SettingsPage() {
@@ -40,11 +42,19 @@ export default function SettingsPage() {
               onClick={() => setTab(id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-right
                 ${tab === id
-                  ? 'bg-blue-600/15 text-blue-400 border border-blue-500/25'
+                  ? id === 'scheduling'
+                    ? 'bg-amber-500/12 text-amber-400 border border-amber-500/25'
+                    : 'bg-blue-600/15 text-blue-400 border border-blue-500/25'
                   : 'text-white/45 hover:text-white/80 hover:bg-white/5 border border-transparent'
                 }`}
             >
-              <Icon size={15} className={tab === id ? 'text-blue-400' : 'text-white/30'} />
+              <Icon
+                size={15}
+                className={tab === id
+                  ? id === 'scheduling' ? 'text-amber-400' : 'text-blue-400'
+                  : 'text-white/30'
+                }
+              />
               {label}
             </button>
           ))}
@@ -60,6 +70,7 @@ export default function SettingsPage() {
           {tab === 'profile'       && <ProfileForm />}
           {tab === 'marketplaces'  && <CredentialsForm />}
           {tab === 'integrations'  && <IntegrationsForm />}
+          {tab === 'scheduling'    && <SchedulingForm />}
           {tab === 'security'      && <SecurityForm />}
           {tab === 'notifications' && <NotificationsForm />}
           {tab === 'subscription'  && <SubscriptionForm />}

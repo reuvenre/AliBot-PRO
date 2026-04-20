@@ -220,6 +220,10 @@ export const postsApi = {
 
   schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string; product_image?: string; affiliate_url?: string }) =>
     http.post<Post>('/posts/schedule', data).then(extract),
+
+  // ── Queue ──
+  listQueue: () => http.get<Post[]>('/posts/queue').then(extract),
+  dequeue: (id: string) => http.delete(`/posts/queue/${id}`).then(extract),
 };
 
 // ─── Earnings API ────────────────────────────────────────────────────────────
@@ -301,6 +305,12 @@ export const catalogApi = {
 
   affiliateLink: (id: string) =>
     http.post<{ url: string }>(`/catalog/${id}/affiliate-link`).then(extract),
+
+  queue: (id: string) =>
+    http.post<Post>(`/catalog/${id}/queue`).then(extract),
+
+  queueBatch: (ids: string[]) =>
+    http.post<{ id: string; success: boolean; error?: string }[]>('/catalog/queue-batch', { ids }).then(extract),
 };
 
 export default http;

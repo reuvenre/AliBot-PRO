@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query, Req, UseGuards, HttpCode,
+  Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards, HttpCode,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -69,5 +69,18 @@ export class PostsController {
   @HttpCode(200)
   retry(@Req() req: Request, @Param('id') id: string) {
     return this.svc.retry(this.uid(req), id);
+  }
+
+  // ── Queue ──────────────────────────────────────────────────────────────────
+
+  @Get('queue')
+  listQueue(@Req() req: Request) {
+    return this.svc.listQueue(this.uid(req));
+  }
+
+  @Delete('queue/:id')
+  @HttpCode(200)
+  dequeue(@Req() req: Request, @Param('id') id: string) {
+    return this.svc.dequeue(this.uid(req), id);
   }
 }

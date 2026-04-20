@@ -24,6 +24,12 @@ export interface CredentialSet {
   openai_api_key: string;         // masked
   openai_model: string;
   currency_pair: 'USD_ILS' | 'USD_EUR' | 'USD_GBP';
+  // Scheduling queue
+  schedule_enabled: boolean;
+  schedule_start_hour: number;
+  schedule_end_hour: number;
+  schedule_interval_minutes: number;
+  schedule_last_sent_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +43,11 @@ export interface CredentialSetInput {
   openai_api_key: string;
   openai_model?: string;
   currency_pair?: string;
+  // Scheduling
+  schedule_enabled?: boolean;
+  schedule_start_hour?: number;
+  schedule_end_hour?: number;
+  schedule_interval_minutes?: number;
 }
 
 // ─── Campaigns ───────────────────────────────────────────────────────────────
@@ -146,7 +157,7 @@ export interface CatalogStats {
 
 // ─── Posts ───────────────────────────────────────────────────────────────────
 
-export type PostStatus = 'pending' | 'sent' | 'failed' | 'scheduled';
+export type PostStatus = 'pending' | 'sent' | 'failed' | 'scheduled' | 'queued';
 
 export interface Post {
   id: string;
@@ -165,6 +176,8 @@ export interface Post {
   error_message?: string;
   sent_at?: string;
   scheduled_at?: string;
+  queue_order?: number;
+  catalog_product_id?: string;
   created_at: string;
 }
 

@@ -40,6 +40,27 @@ export class CredentialSet {
   @Column({ default: 'USD_ILS' })
   currency_pair: string;
 
+  /* ── Scheduling Queue Settings ─────────────────────────────────────────── */
+
+  @Column({ default: false })
+  schedule_enabled: boolean;
+
+  /** Hour of day (0-23) when auto-queue starts sending */
+  @Column({ default: 9 })
+  schedule_start_hour: number;
+
+  /** Hour of day (0-23) after which auto-queue stops sending */
+  @Column({ default: 22 })
+  schedule_end_hour: number;
+
+  /** Minimum minutes between each queued post send */
+  @Column({ default: 60 })
+  schedule_interval_minutes: number;
+
+  /** Timestamp of last queue post sent (used to enforce interval) */
+  @Column({ nullable: true })
+  schedule_last_sent_at: Date;
+
   @CreateDateColumn()
   created_at: Date;
 

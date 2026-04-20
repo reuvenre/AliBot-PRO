@@ -6,7 +6,7 @@ import {
   Search, Plus, RefreshCw, Trash2, Link2, RotateCw,
   FileText, Pencil, XCircle, CheckCircle2, ShoppingBag,
   Star, X, Upload, Globe, Tag, Loader2, AlertCircle,
-  CheckCheck, Package,
+  CheckCheck, Package, ListOrdered,
 } from 'lucide-react';
 import { catalogApi } from '@/lib/api-client';
 import type { CatalogProduct, CatalogStats } from '@/types';
@@ -243,6 +243,8 @@ function ProductRow({
   const [loadingSync, setLoadingSync] = useState(false);
   const [loadingLink, setLoadingLink] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(false);
+  const [loadingQueue, setLoadingQueue] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [copied, setCopied] = useState(false);
 
   async function handleDelete() {
@@ -294,6 +296,20 @@ function ProductRow({
       currency: product.currency,
     }));
     router.push('/quick-post?from_catalog=1');
+  }
+
+  async function handleQueue() {
+    setLoadingQueue(true);
+    try {
+      await catalogApi.queue(product.id);
+      setQueued(true);
+      setTimeout(() => setQueued(false), 3000);
+      onRefresh();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'שגיאה בהוספה לתור');
+    } finally {
+      setLoadingQueue(false);
+    }
   }
 
   async function handleApprove() {
@@ -403,6 +419,7 @@ function ProductRow({
           <ActionBtn icon={copied ? CheckCheck : Link2} label={copied ? 'הועתק!' : 'העתק קישור שותפים'} onClick={handleCopyLink} color="blue" loading={loadingLink} />
           <ActionBtn icon={RotateCw} label="סנכרן נתונים" onClick={handleSync} color="blue" loading={loadingSync} />
           <ActionBtn icon={FileText} label="צור פוסט" onClick={handleCreatePost} color="purple" />
+          <ActionBtn icon={queued ? CheckCheck : ListOrdered} label={queued ? 'נוסף לתור!' : 'הוסף לתור'} onClick={handleQueue} color="blue" loading={loadingQueue} />
           <ActionBtn icon={Pencil} label="ערוך מוצר" onClick={() => router.push(`/products/${product.id}/edit`)} color="blue" />
           <ActionBtn icon={XCircle} label="דחה מוצר" onClick={handleReject} color="red" loading={loadingStatus && product.status !== 'rejected'} />
           <ActionBtn icon={CheckCircle2} label="אשר מוצר" onClick={handleApprove} color="green" loading={loadingStatus && product.status !== 'approved'} />

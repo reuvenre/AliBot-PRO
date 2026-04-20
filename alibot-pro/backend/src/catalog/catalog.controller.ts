@@ -104,4 +104,20 @@ export class CatalogController {
   affiliateLink(@Req() req: Request, @Param('id') id: string) {
     return this.svc.affiliateLink(this.uid(req), id);
   }
+
+  // ── Queue product ─────────────────────────────────────────────────────────
+
+  @Post(':id/queue')
+  @HttpCode(201)
+  queueProduct(@Req() req: Request, @Param('id') id: string) {
+    return this.svc.queueProduct(this.uid(req), id);
+  }
+
+  // ── Queue batch ───────────────────────────────────────────────────────────
+
+  @Post('queue-batch')
+  @HttpCode(200)
+  queueBatch(@Req() req: Request, @Body('ids') ids: string[]) {
+    return this.svc.queueBatch(this.uid(req), ids);
+  }
 }

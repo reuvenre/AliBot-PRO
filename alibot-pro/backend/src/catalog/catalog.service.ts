@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CatalogProduct, CatalogStatus } from './catalog-product.entity';
 import { ProductsService } from '../products/products.service';
+import { PostsService } from '../posts/posts.service';
 
 @Injectable()
 export class CatalogService {
@@ -12,6 +13,7 @@ export class CatalogService {
     @InjectRepository(CatalogProduct)
     private readonly repo: Repository<CatalogProduct>,
     private readonly productsService: ProductsService,
+    private readonly postsService: PostsService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -226,5 +228,67 @@ export class CatalogService {
       { user_id: userId, product_id: productId },
       { has_post: true },
     );
+  }
+
+  // ── Queue product ─────────────────────────────────────────────────────────
+
+  /** Generates post text via OpenAI and adds the product to the send queue */
+  async queueProduct(userId: string, id: string) {
+    const product = await this.findOne(userId, id);
+
+    // Ensure affiliate link exists
+    let affiliateUrl = product.affiliate_url;
+    if (!affiliateUrl) {
+      try {
+        const result = await this.productsService.affiliateLink(userId, product.product_id);
+        if (result.url) {
+          product.affiliate_url = result.url;
+          await this.repo.save(product);
+          affiliateUrl = result.url;
+        }
+      } catch {}
+      if (!affiliateUrl) {
+        affiliateUrl = product.product_url || `https://www.aliexpress.com/item/${product.product_id}.html`;
+      }
+    }
+
+    const post = await this.postsService.createQueuedPost(
+      userId,
+      {
+        product_id: product.product_id,
+        title: product.title,
+        image_url: product.image_url,
+        affiliate_url: affiliateUrl,
+        sale_price: product.sale_price,
+        original_price: product.original_price,
+        currency: product.currency,
+        discount_percent: product.discount_percent,
+        orders_count: product.orders_count,
+        rating: product.rating,
+      },
+      product.id,
+    );
+
+    // Mark catalog product as having a post
+    product.has_post = true;
+    await this.repo.save(product);
+
+    return post;
+  }
+
+  /** Queues multiple products at once */
+  async queueBatch(userId: string, ids: string[]) {
+    const results: { id: string; success: boolean; error?: string }[] = [];
+
+    for (const id of ids) {
+      try {
+        await this.queueProduct(userId, id);
+        results.push({ id, success: true });
+      } catch (err) {
+        results.push({ id, success: false, error: err.message });
+      }
+    }
+
+    return results;
   }
 }

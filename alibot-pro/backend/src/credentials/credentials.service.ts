@@ -32,6 +32,12 @@ export class CredentialsService {
     if (dto.openai_model?.trim())            cred.openai_model = dto.openai_model.trim();
     if (dto.currency_pair?.trim())           cred.currency_pair = dto.currency_pair.trim();
 
+    // Scheduling queue settings
+    if (dto.schedule_enabled !== undefined)  cred.schedule_enabled = dto.schedule_enabled;
+    if (dto.schedule_start_hour !== undefined)     cred.schedule_start_hour = dto.schedule_start_hour;
+    if (dto.schedule_end_hour !== undefined)       cred.schedule_end_hour = dto.schedule_end_hour;
+    if (dto.schedule_interval_minutes !== undefined) cred.schedule_interval_minutes = dto.schedule_interval_minutes;
+
     // Secret fields — only update when a non-empty value is provided
     if (dto.aliexpress_app_secret?.trim()) {
       cred.aliexpress_app_secret_enc = encrypt(dto.aliexpress_app_secret.trim());
@@ -89,7 +95,22 @@ export class CredentialsService {
       openai_api_key: decrypt(cred.openai_api_key_enc),
       openai_model: cred.openai_model,
       currency_pair: cred.currency_pair,
+      schedule_enabled: cred.schedule_enabled,
+      schedule_start_hour: cred.schedule_start_hour,
+      schedule_end_hour: cred.schedule_end_hour,
+      schedule_interval_minutes: cred.schedule_interval_minutes,
+      schedule_last_sent_at: cred.schedule_last_sent_at,
     };
+  }
+
+  /** Returns all credential sets with scheduling enabled (for queue cron) */
+  async getAllSchedulingEnabled(): Promise<CredentialSet[]> {
+    return this.repo.find({ where: { schedule_enabled: true } });
+  }
+
+  /** Records the timestamp of the last sent queued post */
+  async updateLastSent(userId: string, sentAt: Date): Promise<void> {
+    await this.repo.update({ user_id: userId }, { schedule_last_sent_at: sentAt });
   }
 
   private toPublic(cred: CredentialSet) {
@@ -104,6 +125,11 @@ export class CredentialsService {
       openai_api_key: cred.openai_api_key_enc ? mask(decrypt(cred.openai_api_key_enc)) : '',
       openai_model: cred.openai_model || 'gpt-4o-mini',
       currency_pair: cred.currency_pair || 'USD_ILS',
+      schedule_enabled: cred.schedule_enabled ?? false,
+      schedule_start_hour: cred.schedule_start_hour ?? 9,
+      schedule_end_hour: cred.schedule_end_hour ?? 22,
+      schedule_interval_minutes: cred.schedule_interval_minutes ?? 60,
+      schedule_last_sent_at: cred.schedule_last_sent_at ?? null,
       created_at: cred.created_at,
       updated_at: cred.updated_at,
     };

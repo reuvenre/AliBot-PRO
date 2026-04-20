@@ -153,6 +153,103 @@ export class PostsService {
     return post;
   }
 
+  // ── Queue post (add to auto-send queue) ──────────────────────────────────
+
+  async createQueuedPost(
+    userId: string,
+    product: {
+      product_id: string;
+      title: string;
+      image_url: string;
+      affiliate_url: string;
+      sale_price: number;
+      original_price: number;
+      currency: string;
+      discount_percent: number;
+      orders_count: number;
+      rating: number;
+    },
+    catalogProductId?: string,
+  ): Promise<Post> {
+    const creds = await this.credentials.getRaw(userId);
+    const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
+
+    const priceAlreadyConverted = product.currency && product.currency !== 'USD';
+    const priceIls = priceAlreadyConverted
+      ? product.sale_price
+      : +(product.sale_price * rate).toFixed(2);
+
+    const text = await this.generateText(
+      product as any,
+      'he',
+      rate,
+      creds,
+      undefined,
+      priceAlreadyConverted ? product.sale_price : undefined,
+    );
+
+    // Assign next queue_order for this user
+    const maxOrderResult = await this.repo
+      .createQueryBuilder('p')
+      .select('MAX(p.queue_order)', 'maxOrder')
+      .where('p.user_id = :userId AND p.status = :status', { userId, status: 'queued' })
+      .getRawOne();
+    const nextOrder = (maxOrderResult?.maxOrder ?? -1) + 1;
+
+    const post = this.repo.create({
+      user_id: userId,
+      product_id: product.product_id,
+      product_title: product.title,
+      product_image: product.image_url,
+      affiliate_url: product.affiliate_url,
+      original_price_usd: product.original_price,
+      sale_price_usd: product.sale_price,
+      price_ils: priceIls,
+      generated_text: text,
+      status: 'queued',
+      queue_order: nextOrder,
+      catalog_product_id: catalogProductId,
+    });
+
+    return this.repo.save(post);
+  }
+
+  /** Finds and sends the next queued post for a user. Returns true if a post was sent. */
+  async processNextQueuedPost(userId: string): Promise<boolean> {
+    const next = await this.repo
+      .createQueryBuilder('p')
+      .where('p.user_id = :userId AND p.status = :status', { userId, status: 'queued' })
+      .orderBy('p.queue_order', 'ASC')
+      .addOrderBy('p.created_at', 'ASC')
+      .getOne();
+
+    if (!next) return false;
+
+    const creds = await this.credentials.getRaw(userId);
+    next.status = 'pending';
+    await this.repo.save(next);
+    await this.sendToTelegram(next, creds);
+    return true;
+  }
+
+  /** Removes a post from the queue */
+  async dequeue(userId: string, postId: string): Promise<Post> {
+    const post = await this.repo.findOne({ where: { id: postId, user_id: userId, status: 'queued' } });
+    if (!post) throw new NotFoundException('Post not found in queue');
+    await this.repo.remove(post);
+    return post;
+  }
+
+  /** Lists all queued posts for a user in order */
+  async listQueue(userId: string): Promise<Post[]> {
+    return this.repo
+      .createQueryBuilder('p')
+      .where('p.user_id = :userId AND p.status = :status', { userId, status: 'queued' })
+      .orderBy('p.queue_order', 'ASC')
+      .addOrderBy('p.created_at', 'ASC')
+      .getMany();
+  }
+
   // ── Due scheduled posts (called by cron) ──────────────────────────────────
 
   async findDueScheduledPosts(): Promise<Post[]> {

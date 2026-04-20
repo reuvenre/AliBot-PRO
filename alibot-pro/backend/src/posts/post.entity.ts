@@ -5,7 +5,7 @@ import {
 import { Campaign } from '../campaigns/campaign.entity';
 import { User } from '../users/user.entity';
 
-export type PostStatus = 'pending' | 'sent' | 'failed' | 'scheduled';
+export type PostStatus = 'pending' | 'sent' | 'failed' | 'scheduled' | 'queued';
 
 @Entity('posts')
 export class Post {
@@ -64,6 +64,12 @@ export class Post {
 
   @Column({ nullable: true })
   scheduled_at: Date;
+
+  @Column({ nullable: true })
+  queue_order: number;
+
+  @Column({ nullable: true })
+  catalog_product_id: string;
 
   @CreateDateColumn()
   created_at: Date;
