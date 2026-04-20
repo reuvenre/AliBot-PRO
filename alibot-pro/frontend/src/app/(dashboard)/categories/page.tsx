@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Tag, Plus, Trash2, Edit3, ToggleLeft, ToggleRight,
-  Search, FolderOpen,
+  Search, FolderOpen, X,
 } from 'lucide-react';
 
 interface Category {
@@ -21,19 +21,43 @@ const DEMO: Category[] = [
   { id: '3', name: 'בית וגינה',             keywords: ['furniture', 'garden tools', 'kitchen'],                                active: false, createdAt: 'אפר׳ 10, 2026', productsCount: 0  },
 ];
 
+/* ── Shared keyword editor ── */
+function KeywordEditor({ keywords, onChange }: { keywords: string[]; onChange: (kws: string[]) => void }) {
+  const [kw, setKw] = useState('');
+  const addKw = () => {
+    const trimmed = kw.trim();
+    if (trimmed && !keywords.includes(trimmed)) { onChange([...keywords, trimmed]); setKw(''); }
+  };
+  return (
+    <div>
+      <div className="flex gap-2">
+        <input value={kw} onChange={(e) => setKw(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addKw(); } }}
+          placeholder="הוסף מילת מפתח..."
+          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+        <button type="button" onClick={addKw}
+          className="px-4 py-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-xl text-sm hover:bg-blue-600/30 transition-all">
+          הוסף
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {keywords.map((k) => (
+          <span key={k} className="flex items-center gap-1 px-2.5 py-1 bg-white/8 border border-white/10 rounded-full text-xs text-white/70">
+            {k}
+            <button type="button" onClick={() => onChange(keywords.filter((x) => x !== k))}
+              className="text-white/30 hover:text-red-400 transition-colors leading-none">×</button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Add Modal ── */
 interface AddModalProps { onClose: () => void; onAdd: (cat: Category) => void }
 function AddModal({ onClose, onAdd }: AddModalProps) {
   const [name, setName] = useState('');
-  const [kw, setKw] = useState('');
   const [keywords, setKeywords] = useState<string[]>([]);
-
-  const addKw = () => {
-    const trimmed = kw.trim();
-    if (trimmed && !keywords.includes(trimmed)) {
-      setKeywords((k) => [...k, trimmed]);
-      setKw('');
-    }
-  };
 
   const handleSubmit = () => {
     if (!name.trim()) return;
@@ -42,37 +66,23 @@ function AddModal({ onClose, onAdd }: AddModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4">
-        <h2 className="text-lg font-bold text-white mb-5">הוסף קטגוריה חדשה</h2>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-white">הוסף קטגוריה חדשה</h2>
+          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors"><X size={18} /></button>
+        </div>
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">שם קטגוריה</label>
             <input value={name} onChange={(e) => setName(e.target.value)}
+              autoFocus
               placeholder="לדוגמה: Electronics & Gadgets"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
           </div>
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">מילות מפתח</label>
-            <div className="flex gap-2">
-              <input value={kw} onChange={(e) => setKw(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addKw()}
-                placeholder="הוסף מילת מפתח..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
-              <button onClick={addKw}
-                className="px-4 py-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-xl text-sm hover:bg-blue-600/30 transition-all">
-                הוסף
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {keywords.map((k) => (
-                <span key={k} className="flex items-center gap-1 px-2.5 py-1 bg-white/8 border border-white/10 rounded-full text-xs text-white/70">
-                  {k}
-                  <button onClick={() => setKeywords((ks) => ks.filter((x) => x !== k))}
-                    className="text-white/30 hover:text-red-400 transition-colors">×</button>
-                </span>
-              ))}
-            </div>
+            <KeywordEditor keywords={keywords} onChange={setKeywords} />
           </div>
         </div>
         <div className="flex gap-3 mt-6">
@@ -90,11 +100,58 @@ function AddModal({ onClose, onAdd }: AddModalProps) {
   );
 }
 
+/* ── Edit Modal ── */
+interface EditModalProps { cat: Category; onClose: () => void; onSave: (updated: Category) => void }
+function EditModal({ cat, onClose, onSave }: EditModalProps) {
+  const [name, setName] = useState(cat.name);
+  const [keywords, setKeywords] = useState<string[]>(cat.keywords);
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    onSave({ ...cat, name: name.trim(), keywords });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-white">ערוך קטגוריה</h2>
+          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors"><X size={18} /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">שם קטגוריה</label>
+            <input value={name} onChange={(e) => setName(e.target.value)}
+              autoFocus
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">מילות מפתח</label>
+            <KeywordEditor keywords={keywords} onChange={setKeywords} />
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={handleSubmit}
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all">
+            שמור שינויים
+          </button>
+          <button onClick={onClose}
+            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all">
+            ביטול
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>(DEMO);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [editCat, setEditCat] = useState<Category | null>(null);
 
   const toggleActive = (id: string) =>
     setCategories((cs) => cs.map((c) => c.id === id ? { ...c, active: !c.active } : c));
@@ -103,6 +160,9 @@ export default function CategoriesPage() {
     if (!confirm('למחוק קטגוריה זו?')) return;
     setCategories((cs) => cs.filter((c) => c.id !== id));
   };
+
+  const saveEdit = (updated: Category) =>
+    setCategories((cs) => cs.map((c) => c.id === updated.id ? updated : c));
 
   const filtered = categories
     .filter((c) => filter === 'all' || (filter === 'active' ? c.active : !c.active))
@@ -119,6 +179,13 @@ export default function CategoriesPage() {
         <AddModal
           onClose={() => setShowAdd(false)}
           onAdd={(cat) => setCategories((cs) => [cat, ...cs])}
+        />
+      )}
+      {editCat && (
+        <EditModal
+          cat={editCat}
+          onClose={() => setEditCat(null)}
+          onSave={saveEdit}
         />
       )}
 
@@ -225,7 +292,7 @@ export default function CategoriesPage() {
                 </td>
                 <td className="px-4 py-3.5">
                   <div className="flex items-center gap-1">
-                    <button className="p-1.5 text-white/25 hover:text-white/60 hover:bg-white/5 rounded-lg transition-all">
+                    <button onClick={() => setEditCat(cat)} className="p-1.5 text-white/25 hover:text-white/60 hover:bg-white/5 rounded-lg transition-all">
                       <Edit3 size={13} />
                     </button>
                     <button onClick={() => deleteCategory(cat.id)}

@@ -5,33 +5,36 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useTheme } from '@/lib/hooks/useTheme';
 import {
-  LayoutDashboard,
-  Megaphone,
-  Zap,
-  FileText,
-  Layout,
-  Users,
-  BarChart3,
-  Settings,
-  LogOut,
-  Bot,
-  Tag,
-  ShoppingCart,
-  Sun,
-  Moon,
+  LayoutDashboard, Megaphone, Zap, FileText, Layout,
+  Users, BarChart3, Settings, LogOut, Bot, Tag,
+  ShoppingCart, Sun, Moon, Sparkles,
 } from 'lucide-react';
 
-const NAV = [
-  { href: '/dashboard',  label: 'דשבורד',      icon: LayoutDashboard },
-  { href: '/campaigns',  label: 'קמפיינים',     icon: Megaphone },
-  { href: '/quick-post', label: 'פוסט מהיר',    icon: Zap },
-  { href: '/posts',      label: 'פוסטים',       icon: FileText },
-  { href: '/templates',  label: 'תבניות',       icon: Layout },
-  { href: '/categories', label: 'קטגוריות',     icon: Tag },
-  { href: '/groups',     label: 'ערוצים',        icon: Users },
-  { href: '/orders',     label: 'הזמנות',        icon: ShoppingCart },
-  { href: '/reports',    label: 'דוחות',         icon: BarChart3 },
-  { href: '/settings',   label: 'הגדרות',       icon: Settings },
+const NAV_SECTIONS = [
+  {
+    title: 'פרסום',
+    items: [
+      { href: '/dashboard',  label: 'דשבורד',    icon: LayoutDashboard },
+      { href: '/campaigns',  label: 'קמפיינים',   icon: Megaphone },
+      { href: '/quick-post', label: 'פוסט מהיר',  icon: Zap },
+      { href: '/posts',      label: 'פוסטים',     icon: FileText },
+    ],
+  },
+  {
+    title: 'ניהול',
+    items: [
+      { href: '/templates',  label: 'תבניות',     icon: Layout },
+      { href: '/categories', label: 'קטגוריות',   icon: Tag },
+      { href: '/groups',     label: 'ערוצים',     icon: Users },
+    ],
+  },
+  {
+    title: 'נתונים',
+    items: [
+      { href: '/orders',  label: 'הזמנות', icon: ShoppingCart },
+      { href: '/reports', label: 'דוחות',  icon: BarChart3 },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -39,66 +42,126 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
+  const isActive = (href: string) =>
+    pathname === href || (href !== '/dashboard' && pathname.startsWith(href + '/'));
+
+  const initials = user?.email?.[0]?.toUpperCase() ?? '?';
+  const username = user?.email?.split('@')[0] ?? '';
+
   return (
-    <aside className="fixed right-0 top-0 h-full w-60 bg-[#0d0f1a] border-l border-white/5 flex flex-col z-40">
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-6 border-b border-white/5">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shrink-0">
-          <Bot size={18} className="text-white" style={{ color: 'white' }} />
+    <aside className="sidebar-root fixed right-0 top-0 h-full w-[220px] bg-[#0a0b14] border-l border-white/[0.06] flex flex-col z-40 select-none">
+
+      {/* ── Logo ─────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 px-4 pt-5 pb-4 border-b border-white/[0.06]">
+        {/* Icon badge */}
+        <div className="relative shrink-0">
+          <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-lg shadow-blue-600/25">
+            <Bot size={15} className="text-white" />
+          </div>
+          <span className="absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#0a0b14]" />
         </div>
+
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white">AliBot Pro</p>
-          <p className="text-[10px] text-white/30">v2.0</p>
+          <p className="text-[13px] font-semibold text-white tracking-tight leading-none">AliBot Pro</p>
+          <p className="text-[10px] text-white/30 mt-0.5 leading-none">Affiliate Automation</p>
         </div>
-        {/* Theme toggle */}
+
         <button
           onClick={toggleTheme}
-          title={theme === 'dark' ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/8 transition-all shrink-0"
+          title={theme === 'dark' ? 'מצב בהיר' : 'מצב כהה'}
+          className="w-6 h-6 rounded-md flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.08] transition-all shrink-0"
         >
-          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
         </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href + '/'));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
-                ${active
-                  ? 'bg-blue-600/20 text-blue-400 font-medium'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
-                }`}
-            >
-              <Icon size={16} className={active ? 'text-blue-400' : ''} style={active ? { color: 'rgb(96 165 250)' } : {}} />
-              <span>{label}</span>
-              {active && (
-                <span className="mr-auto w-1 h-4 rounded-full bg-blue-500" />
-              )}
-            </Link>
-          );
-        })}
+      {/* ── Navigation ───────────────────────────────────────────────────── */}
+      <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-5">
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.title}>
+            {/* Section label */}
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20 px-2.5 mb-1.5">
+              {section.title}
+            </p>
+
+            <div className="space-y-px">
+              {section.items.map(({ href, label, icon: Icon }) => {
+                const active = isActive(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-[13px] font-medium transition-all duration-150
+                      ${active
+                        ? 'bg-blue-500/[0.14] text-blue-400'
+                        : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'
+                      }`}
+                  >
+                    {/* Active indicator */}
+                    {active && (
+                      <span className="absolute inset-y-1.5 right-0 w-[3px] rounded-full bg-blue-500" />
+                    )}
+
+                    <Icon
+                      size={14}
+                      className={`shrink-0 transition-colors duration-150
+                        ${active ? 'text-blue-400' : 'text-white/28 group-hover:text-white/55'}`}
+                    />
+                    <span className="truncate">{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      {/* User */}
-      <div className="px-3 py-4 border-t border-white/5">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-[11px] font-bold shrink-0" style={{ color: 'white' }}>
-            {user?.email?.[0]?.toUpperCase()}
+      {/* ── Settings ─────────────────────────────────────────────────────── */}
+      <div className="px-3 pb-2 border-t border-white/[0.06] pt-2.5">
+        <Link
+          href="/settings"
+          className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-[13px] font-medium transition-all duration-150
+            ${isActive('/settings')
+              ? 'bg-blue-500/[0.14] text-blue-400'
+              : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'
+            }`}
+        >
+          {isActive('/settings') && (
+            <span className="absolute inset-y-1.5 right-0 w-[3px] rounded-full bg-blue-500" />
+          )}
+          <Settings
+            size={14}
+            className={`shrink-0 transition-colors duration-150
+              ${isActive('/settings') ? 'text-blue-400' : 'text-white/28 group-hover:text-white/55'}`}
+          />
+          <span>הגדרות</span>
+        </Link>
+      </div>
+
+      {/* ── User ─────────────────────────────────────────────────────────── */}
+      <div className="px-3 py-3 border-t border-white/[0.06]">
+        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-[10px] hover:bg-white/[0.04] transition-colors cursor-default group">
+          {/* Avatar */}
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-[11px] font-semibold text-white shrink-0">
+            {initials}
           </div>
+
+          {/* Info */}
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-white/70 truncate">{user?.email}</p>
+            <p className="text-[11px] font-medium text-white/65 truncate leading-tight">{username}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              <Sparkles size={8} className="text-blue-400 shrink-0" />
+              <p className="text-[9px] text-blue-400/70 leading-none">Pro</p>
+            </div>
           </div>
+
+          {/* Logout */}
           <button
             onClick={logout}
-            className="p-1.5 rounded-md text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+            className="p-1 rounded-md text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
             title="התנתק"
           >
-            <LogOut size={14} />
+            <LogOut size={13} />
           </button>
         </div>
       </div>

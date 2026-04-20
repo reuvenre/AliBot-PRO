@@ -12,15 +12,35 @@ const CURRENCIES = [
   { value: 'USD_USD', label: '$ דולר (USD)', flag: '🇺🇸' },
 ];
 
+const PROFILE_KEY = 'alibot-profile';
+
 export function ProfileForm() {
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currency, setCurrency] = useState('USD_ILS');
+  const [language, setLanguage] = useState('he');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
 
   useEffect(() => {
+    // Load saved profile from localStorage
+    try {
+      const stored = localStorage.getItem(PROFILE_KEY);
+      if (stored) {
+        const p = JSON.parse(stored);
+        if (p.firstName) setFirstName(p.firstName);
+        if (p.lastName)  setLastName(p.lastName);
+        if (p.phone)     setPhone(p.phone);
+        if (p.language)  setLanguage(p.language);
+      }
+    } catch {}
+
     credentialsApi.get()
-      .then((c) => setCurrency(c.currency_pair || 'USD_ILS'))
+      .then((c) => {
+        setCurrency(c.currency_pair || 'USD_ILS');
+      })
       .catch(() => {});
   }, []);
 
@@ -28,6 +48,9 @@ export function ProfileForm() {
     e.preventDefault();
     setSaving(true);
     try {
+      // Persist profile fields locally (no dedicated profile API endpoint yet)
+      localStorage.setItem(PROFILE_KEY, JSON.stringify({ firstName, lastName, phone, language }));
+      // Save currency preference to credentials
       await credentialsApi.upsert({ currency_pair: currency } as any);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -46,6 +69,8 @@ export function ProfileForm() {
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">שם פרטי</label>
             <input
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               placeholder="שם פרטי"
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
             />
@@ -53,6 +78,8 @@ export function ProfileForm() {
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">שם משפחה</label>
             <input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               placeholder="שם משפחה"
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
             />
@@ -70,6 +97,8 @@ export function ProfileForm() {
             <label className="block text-xs font-medium text-white/50 mb-1.5">טלפון</label>
             <input
               type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               placeholder="+972501234567"
               dir="ltr"
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
@@ -95,7 +124,11 @@ export function ProfileForm() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">שפה</label>
-            <select className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
+            >
               <option value="he">עברית</option>
               <option value="en">English</option>
               <option value="ar">العربية</option>
@@ -126,7 +159,7 @@ export function ProfileForm() {
 
           <button
             type="button"
-            onClick={handleSave as any}
+            onClick={(e) => handleSave(e as any)}
             disabled={saving}
             className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
           >

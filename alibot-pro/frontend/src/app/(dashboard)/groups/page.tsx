@@ -367,6 +367,7 @@ export default function GroupsPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
+  const [platformFilter, setPlatformFilter] = useState<string>('הכל');
 
   useEffect(() => {
     channelsApi.list()
@@ -435,8 +436,9 @@ export default function GroupsPage() {
         <div className="flex gap-2 mb-5 flex-wrap">
           {['הכל', 'Telegram', 'WhatsApp', 'Facebook', 'Instagram'].map((p) => (
             <button key={p}
+              onClick={() => setPlatformFilter(p)}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all
-                ${p === 'הכל'
+                ${platformFilter === p
                   ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
                   : 'bg-white/3 text-white/40 border-white/8 hover:border-white/20 hover:text-white/60'}`}>
               {p}
@@ -464,7 +466,9 @@ export default function GroupsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {channels.map((channel) => (
+          {channels
+            .filter((c) => platformFilter === 'הכל' || PLATFORM_LABEL[c.platform]?.toLowerCase() === platformFilter.toLowerCase())
+            .map((channel) => (
             <ChannelCard
               key={channel.id}
               channel={channel}

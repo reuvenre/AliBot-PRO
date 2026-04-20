@@ -311,19 +311,24 @@ export class PostsService {
       const res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
 
       const items = res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
-      return items.map((p: any) => ({
-        product_id: String(p.product_id),
-        title: p.product_title,
-        original_price: parseFloat(p.original_price),
-        sale_price: parseFloat(p.sale_price),
-        discount_percent: parseInt(p.discount),
-        image_url: p.product_main_image_url,
-        product_url: p.product_detail_url,
-        category: p.first_level_category_name,
-        orders_count: parseInt(p.lastest_volume) || 0,
-        rating: parseFloat(p.evaluate_rate) || 0,
-        currency: 'USD',
-      }));
+      return items.map((p: any) => {
+        const rawEval = String(p.evaluate_rate || '').replace('%', '').trim();
+        const evalPct = parseFloat(rawEval) || 0;
+        const rating  = evalPct > 5 ? +(evalPct / 20).toFixed(1) : +evalPct.toFixed(1);
+        return {
+          product_id: String(p.product_id),
+          title: p.product_title,
+          original_price: parseFloat(p.original_price),
+          sale_price: parseFloat(p.sale_price),
+          discount_percent: parseInt(p.discount),
+          image_url: p.product_main_image_url,
+          product_url: p.product_detail_url,
+          category: p.first_level_category_name,
+          orders_count: parseInt(String(p.lastest_volume || '0').replace(/,/g, ''), 10) || 0,
+          rating,
+          currency: 'USD',
+        };
+      });
     } catch {
       return this.mockProducts(params.keyword || 'product', params.limit || 5);
     }
@@ -357,19 +362,22 @@ export class PostsService {
     const priceLocal = priceLocalOverride !== undefined
       ? priceLocalOverride.toFixed(0)
       : (product.sale_price * rate).toFixed(0);
-    const currency = product.currency || 'USD';
-    const symbol = ({ ILS: '₪', EUR: '€', GBP: '£', USD: '$' }[currency] || currency);
+    const originalLocal = priceLocalOverride !== undefined
+      ? (product.original_price * rate).toFixed(0)
+      : (product.original_price * rate).toFixed(0);
+    const currencyPair = creds?.currency_pair || 'USD_ILS';
+    const symbol = currencyPair.includes('ILS') ? '₪' : currencyPair.includes('EUR') ? '€' : currencyPair.includes('GBP') ? '£' : '$';
     const discount = product.discount_percent || Math.round((1 - product.sale_price / product.original_price) * 100);
 
     if (!creds?.openai_api_key) {
-      return this.defaultText(product, priceLocal, discount, language, symbol);
+      return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
     }
 
     const systemPrompt = template
       ? this.templateSystemPrompt(language, template)
       : this.defaultSystemPrompt(language);
 
-    const userPrompt = this.buildUserPrompt(language, product, symbol, priceLocal, discount);
+    const userPrompt = this.buildUserPrompt(language, product, symbol, priceLocal, originalLocal, discount);
 
     try {
       const res = await axios.post(
@@ -380,8 +388,8 @@ export class PostsService {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          max_tokens: 300,
-          temperature: 0.7,
+          max_tokens: 400,
+          temperature: 0.85,
         },
         {
           headers: { Authorization: `Bearer ${creds.openai_api_key}` },
@@ -391,77 +399,148 @@ export class PostsService {
       return res.data.choices[0].message.content.trim();
     } catch (err) {
       console.error('[OpenAI] generation failed:', err?.response?.data || err.message);
-      return this.defaultText(product, priceLocal, discount, language, symbol);
+      return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
     }
   }
 
   private defaultSystemPrompt(language: string): string {
     if (language === 'he') {
-      return `You are a professional Telegram affiliate marketing copywriter.
-CRITICAL REQUIREMENT: You MUST write ONLY in Hebrew (עברית). Do not write a single word in English or any other language.
-Use emojis. Maximum 150 words. Write a short, engaging post.
-אתה חייב לכתוב בעברית בלבד - חל איסור מוחלט על שימוש באנגלית.`;
+      return `אתה קופירייטר מקצועי ומומחה שיווק שותפים לערוצי Telegram בעברית.
+תפקידך: לכתוב פוסטים שמוכרים — לא רק מציגים מוצר.
+
+חוקים קריטיים:
+• כתוב בעברית בלבד, ללא שום מילה באנגלית (שמות מוצרים מותר להשאיר כפי שהם)
+• אל תכלול קישור — הוא יצורף אוטומטית בסוף
+• מבנה הפוסט: פתיחה מושכת → תיאור ערך המוצר → מחיר ממוחק + מחיר נוכחי → פרטי ביצועים → קריאה לפעולה
+• השתמש ב-HTML tags בלבד לעיצוב: <b>...</b> לכותרות/מחירים חשובים, <i>...</i> לניואנסים
+• אורך: 80–130 מילים — מספיק כדי לשכנע, קצר כדי לא לאבד תשומת לב
+• סגנון: נרגש אבל אמין, לא spam — כמו חבר שממליץ על דיל אמיתי
+• כלול FOMO עדין: מלאי מוגבל / מחיר לא יישאר ככה / בלעדי לחברי הערוץ
+• הדגש את ה-ROI: "שלמת פחות, קיבלת יותר"`;
     }
     if (language === 'ar') {
-      return `You are a professional Telegram affiliate marketing copywriter.
-CRITICAL REQUIREMENT: You MUST write ONLY in Arabic (عربي). Do not write a single word in English.
-Use emojis. Maximum 150 words.`;
+      return `أنت كاتب إعلانات محترف ومتخصص في التسويق بالعمولة لقنوات Telegram باللغة العربية.
+مهمتك: كتابة منشورات تبيع — ليس مجرد عرض منتج.
+
+قواعد حرجة:
+• اكتب باللغة العربية فقط، بدون أي كلمة إنجليزية (أسماء المنتجات يمكن إبقاؤها)
+• لا تضمّن رابطاً — سيُضاف تلقائياً في النهاية
+• هيكل المنشور: فتح جذاب → قيمة المنتج → السعر الأصلي مشطوباً + السعر الحالي → الأداء → دعوة للعمل
+• استخدم HTML tags فقط للتنسيق: <b>...</b> للعناوين والأسعار المهمة
+• الطول: 80–130 كلمة
+• الأسلوب: متحمس لكن موثوق، مثل صديق يوصي بصفقة حقيقية`;
     }
-    return `You are a professional Telegram affiliate marketing copywriter.
-Write a short, engaging product post in English only. Use emojis. Max 150 words.`;
+    return `You are a professional Telegram affiliate marketing copywriter specializing in high-conversion posts.
+Your job: write posts that SELL — not just describe a product.
+
+Critical rules:
+• Write in English only (product names can stay as-is)
+• Do NOT include a link — it will be appended automatically
+• Post structure: Attention-grabbing hook → product value → crossed-out original price + current price → social proof → strong CTA
+• Use HTML tags only for formatting: <b>...</b> for key prices/headlines, <i>...</i> for subtle emphasis
+• Length: 80–130 words — enough to convince, short enough to hold attention
+• Style: excited but credible — like a friend recommending a real deal
+• Include subtle FOMO: limited stock / price won't stay this low / exclusive for channel members`;
   }
 
   private templateSystemPrompt(language: string, template: string): string {
+    const base = this.defaultSystemPrompt(language);
     if (language === 'he') {
-      return `You are a Telegram affiliate marketing copywriter.
-CRITICAL REQUIREMENT: You MUST write ONLY in Hebrew (עברית). Do not write a single word in English.
-Follow these instructions: ${template}
-אתה חייב לכתוב בעברית בלבד.`;
+      return `${base}
+
+בנוסף, השתמש בתבנית הבאה כבסיס לפוסט (אדפט אותה למוצר הספציפי):
+${template}`;
     }
     if (language === 'ar') {
-      return `You are a Telegram affiliate marketing copywriter.
-CRITICAL REQUIREMENT: You MUST write ONLY in Arabic. Do not write a single word in English.
-Follow these instructions: ${template}`;
+      return `${base}
+
+بالإضافة إلى ذلك، استخدم القالب التالي كأساس للمنشور (اعدّله للمنتج المحدد):
+${template}`;
     }
-    return `You are a Telegram channel copywriter. Use this template: ${template}`;
+    return `${base}
+
+Additionally, use the following template as a base for the post (adapt it to the specific product):
+${template}`;
   }
 
-  private buildUserPrompt(language: string, product: any, symbol: string, priceLocal: string, discount: number): string {
+  private buildUserPrompt(language: string, product: any, symbol: string, priceLocal: string, originalLocal: string, discount: number): string {
+    const ordersFormatted = (product.orders_count || 0) >= 1000
+      ? `${((product.orders_count || 0) / 1000).toFixed(1)}K+`
+      : `${product.orders_count || 0}`;
+    const stars = Math.round(product.rating || 0);
+    const starStr = '⭐'.repeat(Math.min(stars, 5));
+
     if (language === 'he') {
-      return `Write a Telegram post for this product (RESPOND IN HEBREW ONLY - עברית בלבד):
-Product: ${product.title}
-Sale price: ${symbol}${priceLocal}
-Discount: ${discount}%
-Orders: ${product.orders_count?.toLocaleString()}
-Rating: ${product.rating}/5
-Do NOT include the link. Do NOT write in English.`;
+      return `צור פוסט שיווקי מקצועי לערוץ Telegram עבור המוצר הבא. כתוב בעברית בלבד.
+
+📦 פרטי המוצר:
+שם: ${product.title}
+מחיר מקורי: ${symbol}${originalLocal}
+מחיר מבצע: ${symbol}${priceLocal}
+הנחה: ${discount}%
+הזמנות: ${ordersFormatted} לקוחות קנו
+דירוג: ${product.rating?.toFixed(1) || 'N/A'}/5 ${starStr}
+קטגוריה: ${product.category || 'כללי'}
+
+הנחיות:
+- התחל עם hook מנצח (שורה אחת שמושכת תשומת לב מיידית)
+- הצג את הערך האמיתי של המוצר, לא רק את המחיר
+- השתמש ב-<b>${symbol}${priceLocal}</b> למחיר המבצע
+- ציין "במקום ${symbol}${originalLocal}" להדגשת החיסכון
+- הוסף FOMO עדין (מלאי / זמן מוגבל)
+- סיים עם קריאה לפעולה חזקה
+- אל תכלול קישור`;
     }
     if (language === 'ar') {
-      return `Write a Telegram post for this product (RESPOND IN ARABIC ONLY):
-Product: ${product.title}
-Sale price: ${symbol}${priceLocal}
-Discount: ${discount}%
-Orders: ${product.orders_count?.toLocaleString()}
-Rating: ${product.rating}/5
-Do NOT include the link.`;
+      return `أنشئ منشوراً تسويقياً احترافياً لقناة Telegram للمنتج التالي. اكتب باللغة العربية فقط.
+
+📦 تفاصيل المنتج:
+الاسم: ${product.title}
+السعر الأصلي: ${symbol}${originalLocal}
+سعر العرض: ${symbol}${priceLocal}
+الخصم: ${discount}%
+الطلبات: ${ordersFormatted} عميل اشترى
+التقييم: ${product.rating?.toFixed(1) || 'N/A'}/5 ${starStr}
+الفئة: ${product.category || 'عام'}
+
+تعليمات:
+- ابدأ بسطر جذاب يلفت الانتباه فوراً
+- أبرز قيمة المنتج، ليس فقط السعر
+- استخدم <b>${symbol}${priceLocal}</b> لسعر العرض
+- اذكر "بدلاً من ${symbol}${originalLocal}" لإبراز التوفير
+- أضف FOMO خفيف (مخزون / وقت محدود)
+- اختم بدعوة عمل قوية
+- لا تضمّن رابطاً`;
     }
-    return `Write a Telegram post for this product:
-Title: ${product.title}
+    return `Create a professional Telegram marketing post for the product below. Write in English only.
+
+📦 Product details:
+Name: ${product.title}
+Original price: ${symbol}${originalLocal}
 Sale price: ${symbol}${priceLocal}
 Discount: ${discount}%
-Orders: ${product.orders_count?.toLocaleString()}
-Rating: ${product.rating}/5
-DO NOT include the affiliate link (it will be appended).`;
+Orders: ${ordersFormatted} customers bought this
+Rating: ${product.rating?.toFixed(1) || 'N/A'}/5 ${starStr}
+Category: ${product.category || 'General'}
+
+Instructions:
+- Start with a powerful hook (one line that grabs attention immediately)
+- Highlight the product's real value, not just the price
+- Use <b>${symbol}${priceLocal}</b> for the sale price
+- Mention "instead of ${symbol}${originalLocal}" to emphasize savings
+- Add subtle FOMO (limited stock / time-sensitive price)
+- End with a strong call to action
+- Do NOT include a link`;
   }
 
-  private defaultText(product: any, priceLocal: string, discount: number, language: string, symbol = '₪'): string {
+  private defaultText(product: any, priceLocal: string, originalLocal: string, discount: number, language: string, symbol = '₪'): string {
     if (language === 'he') {
-      return `🔥 מוצר מדהים!\n\n${product.title}\n\n💰 מחיר: ${symbol}${priceLocal}\n🏷️ הנחה: ${discount}%\n⭐ דירוג: ${product.rating}/5\n\n👆 לחץ על הקישור לרכישה!`;
+      return `🔥 <b>דיל לוהט — אל תפספסו!</b>\n\n${product.title}\n\n💸 <b>רק ${symbol}${priceLocal}</b> במקום ~~${symbol}${originalLocal}~~ (חיסכון של ${discount}%!)\n\n⭐ דירוג: ${product.rating?.toFixed(1) || 'N/A'}/5 | 🛒 ${(product.orders_count || 0).toLocaleString()} לקוחות שמחים\n\n⚡ המחיר הזה לא יישאר ככה — הזדרזו!\n👇 לחצו על הקישור לרכישה`;
     }
     if (language === 'ar') {
-      return `🔥 عرض رائع!\n\n${product.title}\n\n💰 السعر: ${symbol}${priceLocal}\n🏷️ الخصم: ${discount}%\n⭐ التقييم: ${product.rating}/5`;
+      return `🔥 <b>عرض حصري — لا تفوّتوه!</b>\n\n${product.title}\n\n💸 <b>فقط ${symbol}${priceLocal}</b> بدلاً من ~~${symbol}${originalLocal}~~ (توفير ${discount}%!)\n\n⭐ التقييم: ${product.rating?.toFixed(1) || 'N/A'}/5 | 🛒 ${(product.orders_count || 0).toLocaleString()} عميل راضٍ\n\n⚡ هذا السعر لن يبقى — تصرفوا الآن!\n👇 اضغطوا على الرابط للشراء`;
     }
-    return `🔥 Amazing deal!\n\n${product.title}\n\n💰 Price: ${symbol}${priceLocal}\n🏷️ Discount: ${discount}%\n⭐ Rating: ${product.rating}/5`;
+    return `🔥 <b>Hot Deal — Don't Miss Out!</b>\n\n${product.title}\n\n💸 <b>Only ${symbol}${priceLocal}</b> instead of ${symbol}${originalLocal} (save ${discount}%!)\n\n⭐ Rating: ${product.rating?.toFixed(1) || 'N/A'}/5 | 🛒 ${(product.orders_count || 0).toLocaleString()} happy customers\n\n⚡ This price won't last — act now!\n👇 Tap the link to buy`;
   }
 
   // ── Mock data for dev ─────────────────────────────────────────────────────

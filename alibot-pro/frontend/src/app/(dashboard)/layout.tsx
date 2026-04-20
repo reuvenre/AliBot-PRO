@@ -18,8 +18,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#080a13] flex items-center justify-center">
-        <Loader2 size={24} className="animate-spin text-blue-400" />
+      <div className="min-h-screen bg-[#09090c] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={22} className="animate-spin text-blue-500" />
+          <p className="text-xs text-white/25">טוען...</p>
+        </div>
       </div>
     );
   }
@@ -27,10 +30,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-[#080a13]">
+    <div className="min-h-screen bg-[#09090c]">
       <Sidebar />
-      <main className="mr-60 min-h-screen">
-        <div className="max-w-5xl mx-auto px-6 py-8">
+      {/* Main — 220px sidebar on the right (RTL layout) */}
+      <main className="mr-[220px] min-h-screen">
+        <div className="max-w-[1100px] mx-auto px-7 py-8">
           {children}
         </div>
       </main>

@@ -314,6 +314,16 @@ export class ProductsService {
       const finalSale = targetSale > 0 ? targetSale : +(usdSale * rate).toFixed(2);
       const finalOrig = targetOrig > 0 ? targetOrig : +(usdOrig * rate).toFixed(2);
 
+      // evaluate_rate is a 0-100 positive-review percentage (e.g. "96.7" or "96.7%").
+      // Convert to a 0-5 star rating so it matches what AliExpress shows on product pages.
+      const rawEval = String(p.evaluate_rate || '').replace('%', '').trim();
+      const evalPct = parseFloat(rawEval) || 0;
+      const rating  = evalPct > 5 ? +(evalPct / 20).toFixed(1) : +evalPct.toFixed(1);
+
+      // lastest_volume is the recent sales count exposed by the Affiliate API.
+      // Parse as an integer; AliExpress product pages may show a higher cumulative total.
+      const ordersCount = parseInt(String(p.lastest_volume || '0').replace(/,/g, ''), 10) || 0;
+
       return {
         product_id: String(p.product_id),
         title: p.product_title,
@@ -323,8 +333,8 @@ export class ProductsService {
         image_url: p.product_main_image_url,
         product_url: p.product_detail_url,
         category: p.first_level_category_name,
-        orders_count: parseInt(p.lastest_volume) || 0,
-        rating: parseFloat(p.evaluate_rate) || 0,
+        orders_count: ordersCount,
+        rating,
         currency: resolvedCurrency,
         sale_price_usd: +usdSale.toFixed(2),
       };

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Save, Loader2, AlertCircle } from 'lucide-react';
 
 interface NotifToggle {
   id: string;
@@ -10,6 +10,8 @@ interface NotifToggle {
   desc: string;
   enabled: boolean;
 }
+
+const NOTIF_KEY = 'alibot-notifications';
 
 const DEFAULTS: NotifToggle[] = [
   { id: 'daily_summary',     group: 'דוחות',         label: 'סיכום ביצועים יומי',        desc: 'קבל מייל יומי עם ההזמנות, הכנסות ועמלות שלך',                  enabled: true },
@@ -38,16 +40,40 @@ export function NotificationsForm() {
   const [toggles, setToggles] = useState<NotifToggle[]>(DEFAULTS);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  // Load persisted notification preferences on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(NOTIF_KEY);
+      if (stored) {
+        const savedPrefs: Record<string, boolean> = JSON.parse(stored);
+        setToggles((ts) => ts.map((t) => ({
+          ...t,
+          enabled: savedPrefs[t.id] !== undefined ? savedPrefs[t.id] : t.enabled,
+        })));
+      }
+    } catch {}
+  }, []);
 
   const toggle = (id: string) =>
     setToggles((ts) => ts.map((t) => (t.id === id ? { ...t, enabled: !t.enabled } : t)));
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setError(null);
+    try {
+      // Persist to localStorage (notification delivery API not yet implemented on backend)
+      const prefs: Record<string, boolean> = {};
+      toggles.forEach((t) => { prefs[t.id] = t.enabled; });
+      localStorage.setItem(NOTIF_KEY, JSON.stringify(prefs));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError('שגיאה בשמירת ההגדרות. נסה שוב.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const groups = [...new Set(toggles.map((t) => t.group))];
@@ -74,6 +100,13 @@ export function NotificationsForm() {
       <p className="text-xs text-white/25">
         אימות, איפוס סיסמה ומיילי onboarding נשלחים תמיד ולא ניתן להשבית אותם.
       </p>
+
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400">
+          <AlertCircle size={14} className="shrink-0" />
+          {error}
+        </div>
+      )}
 
       <button
         onClick={handleSave}
