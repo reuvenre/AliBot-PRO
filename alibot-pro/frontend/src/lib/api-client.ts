@@ -18,6 +18,9 @@ import type {
   UpdateChannelInput,
   PaginatedResponse,
   ApiError,
+  CatalogProduct,
+  CatalogStats,
+  CatalogStatus,
 } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -266,6 +269,38 @@ export const templatesApi = {
 
 export const ratesApi = {
   get: () => http.get<{ USD_ILS: number; USD_EUR: number; updated_at: string }>('/rates').then(extract),
+};
+
+// ─── Catalog API ─────────────────────────────────────────────────────────────
+
+export const catalogApi = {
+  list: (params?: {
+    page?: number; limit?: number; status?: string; has_post?: boolean; search?: string;
+  }) => http.get<PaginatedResponse<CatalogProduct>>('/catalog', { params }).then(extract),
+
+  stats: () => http.get<CatalogStats>('/catalog/stats').then(extract),
+
+  importProduct: (data: { url?: string; product_id?: string; category?: string }) =>
+    http.post<CatalogProduct>('/catalog/import', data).then(extract),
+
+  get: (id: string) => http.get<CatalogProduct>(`/catalog/${id}`).then(extract),
+
+  update: (id: string, data: Partial<CatalogProduct>) =>
+    http.put<CatalogProduct>(`/catalog/${id}`, data).then(extract),
+
+  remove: (id: string) => http.delete(`/catalog/${id}`).then(extract),
+
+  approve: (id: string) =>
+    http.patch<CatalogProduct>(`/catalog/${id}/approve`).then(extract),
+
+  reject: (id: string) =>
+    http.patch<CatalogProduct>(`/catalog/${id}/reject`).then(extract),
+
+  sync: (id: string) =>
+    http.post<CatalogProduct>(`/catalog/${id}/sync`).then(extract),
+
+  affiliateLink: (id: string) =>
+    http.post<{ url: string }>(`/catalog/${id}/affiliate-link`).then(extract),
 };
 
 export default http;

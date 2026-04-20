@@ -8,5 +8,6 @@ import { RatesModule } from '../rates/rates.module';
   imports: [CredentialsModule, RatesModule],
   providers: [ProductsService],
   controllers: [ProductsController],
+  exports: [ProductsService],
 })
 export class ProductsModule {}

@@ -13,6 +13,7 @@ import { RatesModule } from './rates/rates.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { ChannelsModule } from './channels/channels.module';
 import { TemplatesModule } from './templates/templates.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -46,6 +47,7 @@ import { HealthController } from './health.controller';
     SchedulerModule,
     ChannelsModule,
     TemplatesModule,
+    CatalogModule,
   ],
   controllers: [HealthController],
 })

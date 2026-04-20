@@ -102,6 +102,48 @@ export interface AliProduct {
   currency: string;
 }
 
+// ─── Catalog ─────────────────────────────────────────────────────────────────
+
+export type CatalogStatus = 'pending' | 'approved' | 'rejected';
+
+export interface CatalogProduct {
+  id: string;
+  user_id: string;
+  product_id: string;
+  title: string;
+  description?: string;
+  original_price: number;
+  sale_price: number;
+  currency: string;
+  discount_percent: number;
+  image_url: string;
+  product_url: string;
+  affiliate_url?: string;
+  category: string;
+  keyword?: string;
+  orders_count: number;
+  rating: number;
+  coupon_code?: string;
+  commission_rate: number;
+  evaluation_rate: number;
+  status: CatalogStatus;
+  supplier: string;
+  has_post: boolean;
+  synced_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CatalogStats {
+  total: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+  with_post: number;
+  categories: number;
+  suppliers: number;
+}
+
 // ─── Posts ───────────────────────────────────────────────────────────────────
 
 export type PostStatus = 'pending' | 'sent' | 'failed' | 'scheduled';

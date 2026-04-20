@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Search, Loader2, Zap, ChevronDown, TrendingUp,
   Percent, Globe, Languages, Tag, ArrowRight,
@@ -54,6 +55,8 @@ const LIMIT = 30;
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function QuickPostPage() {
+  const searchParams = useSearchParams();
+
   // ── View state: 'products' | 'review'
   const [view, setView] = useState<'products' | 'review'>('products');
 
@@ -97,6 +100,32 @@ export default function QuickPostPage() {
   // ── Load categories once
   useEffect(() => {
     productsApi.categories().then(setCategories).catch(() => {});
+  }, []);
+
+  // ── Pre-load catalog product (from /products page "צור פוסט")
+  useEffect(() => {
+    if (searchParams.get('from_catalog') !== '1') return;
+    try {
+      const raw = sessionStorage.getItem('quick_post_catalog_product');
+      if (!raw) return;
+      sessionStorage.removeItem('quick_post_catalog_product');
+      const product: AliProduct = JSON.parse(raw);
+      setSelected(product);
+      setPreview(null);
+      setAffiliateUrl(product.affiliate_url || '');
+      setView('review');
+      // Fetch fresh affiliate link in background if not present
+      if (!product.affiliate_url) {
+        setAffiliateLoading(true);
+        productsApi.affiliateLink(product.product_id)
+          .then((res) => setAffiliateUrl(res.url))
+          .catch(() => setAffiliateUrl(product.product_url || ''))
+          .finally(() => setAffiliateLoading(false));
+      }
+    } catch {
+      // ignore parse errors
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Load featured products
