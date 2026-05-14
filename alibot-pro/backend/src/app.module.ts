@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
-import { redisStore } from 'cache-manager-ioredis-yet';
+import KeyvRedis from '@keyv/redis';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CredentialsModule } from './credentials/credentials.module';
@@ -28,19 +28,12 @@ import { HealthController } from './health.controller';
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
-      useFactory: async (config: ConfigService) => {
-        const url = config.get<string>('REDIS_URL') || 'redis://localhost:6379';
-        const parsed = new URL(url);
-        return {
-          store: await redisStore({
-            host: parsed.hostname,
-            port: parseInt(parsed.port) || 6379,
-            password: parsed.password || undefined,
-            db: parseInt(parsed.pathname.slice(1)) || 0,
-          }),
-          ttl: 0,
-        };
-      },
+      useFactory: (config: ConfigService) => ({
+        stores: [
+          new KeyvRedis(config.get<string>('REDIS_URL') || 'redis://localhost:6379'),
+        ],
+        ttl: 0,
+      }),
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),
