@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
+import { MailService } from '../mail/mail.service';
 import { User } from '../users/user.entity';
 
 const REFRESH_COOKIE = 'refresh_token';
@@ -18,6 +19,7 @@ export class AuthService {
     private users: UsersService,
     private jwt: JwtService,
     private config: ConfigService,
+    private mail: MailService,
   ) {}
 
   // ── Token helpers ──────────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ export class AuthService {
     return { message: 'Logged out' };
   }
 
-  async forgotPassword(email: string): Promise<{ reset_url?: string; message: string }> {
+  async forgotPassword(email: string): Promise<{ message: string }> {
     const user = await this.users.findByEmail(email);
     // Always respond the same way to prevent email enumeration
     if (!user) return { message: 'If that email exists, a reset link has been sent.' };
@@ -89,20 +91,15 @@ export class AuthService {
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
-    // Log to console (visible in server terminal)
-    this.logger.log(`[PASSWORD RESET] ${email} → ${resetUrl}`);
+    await this.mail.sendPasswordReset(email, resetUrl);
 
-    // Return link directly so it works without email configuration
-    return {
-      message: 'Reset link generated. If email is not configured, use the link below.',
-      reset_url: resetUrl,
-    };
+    return { message: 'If that email exists, a reset link has been sent.' };
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const user = await this.users.findByResetToken(token);
     if (!user) throw new BadRequestException('Invalid or expired reset token');
-    if (newPassword.length < 6) throw new BadRequestException('Password must be at least 6 characters');
+    if (newPassword.length < 8) throw new BadRequestException('Password must be at least 8 characters');
     await this.users.updatePassword(user.id, newPassword);
   }
 
@@ -113,7 +110,7 @@ export class AuthService {
       const valid = await this.users.validatePassword(user, currentPassword);
       if (!valid) throw new BadRequestException('סיסמה נוכחית שגויה');
     }
-    if (newPassword.length < 6) throw new BadRequestException('הסיסמה החדשה חייבת להכיל לפחות 6 תווים');
+    if (newPassword.length < 8) throw new BadRequestException('הסיסמה החדשה חייבת להכיל לפחות 8 תווים');
     await this.users.updatePassword(user.id, newPassword);
   }
 

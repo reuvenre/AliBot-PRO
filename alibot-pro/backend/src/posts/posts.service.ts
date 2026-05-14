@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan } from 'typeorm';
 import axios from 'axios';
 import { Post } from './post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
-import { CredentialsService } from '../credentials/credentials.service';
+import { CredentialsService, DecryptedCredentials } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 import { normalizeTelegramChatId } from '../common/crypto';
@@ -314,6 +314,16 @@ export class PostsService {
     }
   }
 
+  // ── Stuck posts cleanup (called by cron every 15 min) ────────────────────
+
+  async resetStuckPendingPosts(): Promise<void> {
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
+    await this.repo.update(
+      { status: 'pending', created_at: LessThan(cutoff) },
+      { status: 'failed', error_message: 'Timed out — server may have restarted during send' },
+    );
+  }
+
   // ── Retry ─────────────────────────────────────────────────────────────────
 
   async retry(userId: string, postId: string) {
@@ -329,7 +339,7 @@ export class PostsService {
 
   // ── Telegram sender ───────────────────────────────────────────────────────
 
-  private async sendToTelegram(post: Post, creds: any, channelOverride?: string) {
+  private async sendToTelegram(post: Post, creds: DecryptedCredentials, channelOverride?: string) {
     try {
       const token = creds?.telegram_bot_token;
       const rawChannel = channelOverride || creds?.telegram_channel_id;
@@ -367,7 +377,7 @@ export class PostsService {
 
   // ── AliExpress helpers ────────────────────────────────────────────────────
 
-  private async searchProduct(productId: string, creds: any): Promise<any> {
+  private async searchProduct(productId: string, creds: DecryptedCredentials): Promise<any> {
     // Try to find a matching product via search, fall back to mock data
     try {
       const results = await this.searchProducts({ keyword: productId, limit: 1 }, creds);
@@ -385,7 +395,7 @@ export class PostsService {
     max_price?: number;
     min_discount?: number;
     limit?: number;
-  }, creds: any): Promise<any[]> {
+  }, creds: DecryptedCredentials): Promise<any[]> {
     if (!creds?.aliexpress_app_key) {
       return this.mockProducts(params.keyword || 'product', params.limit || 5);
     }
@@ -431,7 +441,7 @@ export class PostsService {
     }
   }
 
-  private async getAffiliateLink(productId: string, creds: any): Promise<string> {
+  private async getAffiliateLink(productId: string, creds: DecryptedCredentials): Promise<string> {
     if (!creds?.aliexpress_app_key) {
       return `https://www.aliexpress.com/item/${productId}.html`;
     }
@@ -454,7 +464,7 @@ export class PostsService {
 
   // ── OpenAI text generation ────────────────────────────────────────────────
 
-  private async generateText(product: any, language: string, rate: number, creds: any, template?: string, priceLocalOverride?: number): Promise<string> {
+  private async generateText(product: any, language: string, rate: number, creds: DecryptedCredentials, template?: string, priceLocalOverride?: number): Promise<string> {
     // Use direct local price if already converted, otherwise multiply by rate
     const priceLocal = priceLocalOverride !== undefined
       ? priceLocalOverride.toFixed(0)
@@ -477,8 +487,7 @@ export class PostsService {
     const userPrompt = this.buildUserPrompt(language, product, symbol, priceLocal, originalLocal, discount);
 
     try {
-      const res = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
+      return await this.callOpenAI(
         {
           model: creds.openai_model || 'gpt-4o-mini',
           messages: [
@@ -488,15 +497,33 @@ export class PostsService {
           max_tokens: 400,
           temperature: 0.85,
         },
-        {
-          headers: { Authorization: `Bearer ${creds.openai_api_key}` },
-          timeout: 20000,
-        },
+        creds.openai_api_key,
       );
-      return res.data.choices[0].message.content.trim();
     } catch (err) {
       console.error('[OpenAI] generation failed:', err?.response?.data || err.message);
       return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
+    }
+  }
+
+  private async callOpenAI(payload: object, apiKey: string, retries = 3): Promise<string> {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const res = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          payload,
+          {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            timeout: 20_000,
+          },
+        );
+        return res.data.choices[0].message.content.trim();
+      } catch (err) {
+        if (err?.response?.status === 429 && attempt < retries - 1) {
+          await new Promise((r) => setTimeout(r, 2 ** attempt * 1000)); // 1s, 2s
+          continue;
+        }
+        throw err;
+      }
     }
   }
 

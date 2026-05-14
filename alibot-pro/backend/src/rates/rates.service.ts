@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import axios from 'axios';
 
 export interface RateCache {
@@ -8,22 +10,29 @@ export interface RateCache {
   updated_at: string;
 }
 
+const RATES_CACHE_KEY = 'exchange_rates';
+const RATES_TTL_SEC = 60 * 60; // 1 hour
+
+const FALLBACK: RateCache = {
+  USD_ILS: 3.7,
+  USD_EUR: 0.92,
+  USD_GBP: 0.79,
+  updated_at: new Date().toISOString(),
+};
+
 @Injectable()
 export class RatesService {
-  private cache: RateCache = {
-    USD_ILS: 3.7,
-    USD_EUR: 0.92,
-    USD_GBP: 0.79,
-    updated_at: new Date().toISOString(),
-  };
-  private lastFetch = 0;
-  private readonly TTL = 60 * 60 * 1000; // 1 hour
+  constructor(
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {}
 
   async getRates(): Promise<RateCache> {
-    if (Date.now() - this.lastFetch > this.TTL) {
-      await this.refresh();
-    }
-    return this.cache;
+    const cached = await this.cacheManager.get<RateCache>(RATES_CACHE_KEY);
+    if (cached) return cached;
+
+    const fresh = await this.fetchRates();
+    await this.cacheManager.set(RATES_CACHE_KEY, fresh, RATES_TTL_SEC * 1000);
+    return fresh;
   }
 
   async getRate(pair: string): Promise<number> {
@@ -34,22 +43,21 @@ export class RatesService {
     return 1;
   }
 
-  private async refresh() {
+  private async fetchRates(): Promise<RateCache> {
     try {
       const res = await axios.get(
         'https://api.exchangerate-api.com/v4/latest/USD',
         { timeout: 8000 },
       );
       const r = res.data.rates;
-      this.cache = {
-        USD_ILS: r.ILS || 3.7,
-        USD_EUR: r.EUR || 0.92,
-        USD_GBP: r.GBP || 0.79,
+      return {
+        USD_ILS: r.ILS || FALLBACK.USD_ILS,
+        USD_EUR: r.EUR || FALLBACK.USD_EUR,
+        USD_GBP: r.GBP || FALLBACK.USD_GBP,
         updated_at: new Date().toISOString(),
       };
-      this.lastFetch = Date.now();
     } catch {
-      // Keep using cached values
+      return FALLBACK;
     }
   }
 }
