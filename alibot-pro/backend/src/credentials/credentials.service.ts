@@ -6,6 +6,17 @@ import { CredentialSetDto } from './dto/credential-set.dto';
 import { encrypt, decrypt, mask } from '../common/crypto';
 import axios from 'axios';
 
+export interface DecryptedCredentials {
+  aliexpress_app_key?: string;
+  aliexpress_app_secret?: string;
+  aliexpress_tracking_id?: string;
+  telegram_bot_token?: string;
+  telegram_channel_id?: string;
+  openai_api_key?: string;
+  openai_model?: string;
+  currency_pair?: string;
+}
+
 @Injectable()
 export class CredentialsService {
   constructor(
@@ -77,7 +88,7 @@ export class CredentialsService {
   }
 
   // Return decrypted credentials for internal use
-  async getRaw(userId: string) {
+  async getRaw(userId: string): Promise<DecryptedCredentials | null> {
     const cred = await this.repo.findOne({ where: { user_id: userId } });
     if (!cred) return null;
     return {

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CronTime } from 'cron';
 import { Campaign } from './campaign.entity';
 import { CampaignDto } from './dto/campaign.dto';
 
@@ -93,9 +94,6 @@ export class CampaignsService {
 
   private nextRun(cron: string): Date {
     try {
-      // Parse cron and compute next fire time using simple Date math
-      // Falls back to null if cron is invalid
-      const { CronTime } = require('cron');
       const ct = new CronTime(cron);
       const next = ct.sendAt();
       return next.toJSDate ? next.toJSDate() : (next as any).toDate?.() ?? null;

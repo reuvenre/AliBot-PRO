@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import axios from 'axios';
-import { CredentialsService } from '../credentials/credentials.service';
+import { CredentialsService, DecryptedCredentials } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 
@@ -22,9 +24,7 @@ const HOT_FIELDS =
   'product_detail_url,evaluate_rate,first_level_category_name,lastest_volume,' +
   'promotion_type,hot_product_commission_rate';
 
-// Simple in-memory category cache (24 h TTL per user)
-const categoryCache = new Map<string, { data: any[]; ts: number }>();
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+const CATEGORIES_TTL_SEC = 24 * 60 * 60; // 24 hours
 
 const DEFAULT_FEATURED_KEYWORDS = ['electronics', 'fashion', 'home gadgets', 'phone accessories'];
 
@@ -41,6 +41,7 @@ export class ProductsService {
   constructor(
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -204,10 +205,9 @@ export class ProductsService {
   // ── Categories ────────────────────────────────────────────────────────────
 
   async getCategories(userId: string) {
-    const cached = categoryCache.get(userId);
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
-      return cached.data;
-    }
+    const cacheKey = `categories:${userId}`;
+    const cached = await this.cacheManager.get<any[]>(cacheKey);
+    if (cached) return cached;
 
     const creds = await this.credentials.getRaw(userId);
     if (!creds?.aliexpress_app_key) {
@@ -233,7 +233,7 @@ export class ProductsService {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      categoryCache.set(userId, { data: categories, ts: Date.now() });
+      await this.cacheManager.set(cacheKey, categories, CATEGORIES_TTL_SEC * 1000);
       return categories;
     } catch {
       return this.mockCategories();
