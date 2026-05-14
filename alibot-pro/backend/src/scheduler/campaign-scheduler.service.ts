@@ -76,7 +76,7 @@ export class CampaignSchedulerService {
   }
 
   /** Runs every 15 minutes — marks posts stuck in 'pending' for >30 min as failed */
-  @Cron(CronExpression.EVERY_15_MINUTES)
+  @Cron('0 */15 * * * *')
   async cleanupStuckPosts() {
     try {
       await this.posts.resetStuckPendingPosts();

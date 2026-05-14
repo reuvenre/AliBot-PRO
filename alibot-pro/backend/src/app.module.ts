@@ -28,10 +28,19 @@ import { HealthController } from './health.controller';
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
-      useFactory: async (config: ConfigService) => ({
-        store: await redisStore({ url: config.get<string>('REDIS_URL') }),
-        ttl: 0, // TTL is set per-call
-      }),
+      useFactory: async (config: ConfigService) => {
+        const url = config.get<string>('REDIS_URL') || 'redis://localhost:6379';
+        const parsed = new URL(url);
+        return {
+          store: await redisStore({
+            host: parsed.hostname,
+            port: parseInt(parsed.port) || 6379,
+            password: parsed.password || undefined,
+            db: parseInt(parsed.pathname.slice(1)) || 0,
+          }),
+          ttl: 0,
+        };
+      },
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),

@@ -15,6 +15,11 @@ export interface DecryptedCredentials {
   openai_api_key?: string;
   openai_model?: string;
   currency_pair?: string;
+  schedule_enabled?: boolean;
+  schedule_start_hour?: number;
+  schedule_end_hour?: number;
+  schedule_interval_minutes?: number;
+  schedule_last_sent_at?: Date;
 }
 
 @Injectable()
