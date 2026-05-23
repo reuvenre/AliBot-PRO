@@ -92,7 +92,7 @@ export function SubscriptionForm() {
         </div>
         <span className={`text-sm font-medium transition-colors ${billing === 'annual' ? 'text-white' : 'text-white/40'}`}>שנתי</span>
         {billing === 'annual' && (
-          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-2 py-0.5 font-medium">
+          <span className="text-2xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-2 py-0.5 font-medium">
             חסון ₪298
           </span>
         )}
@@ -108,11 +108,11 @@ export function SubscriptionForm() {
               className={`relative flex flex-col rounded-2xl border p-5 transition-all
                 ${plan.current
                   ? 'bg-blue-600/10 border-blue-500/50 ring-1 ring-blue-500/30'
-                  : 'bg-[#0d0f1a] border-white/8 hover:border-white/20'}`}
+                  : 'bg-surface-secondary border-edge hover:border-white/20'}`}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="bg-blue-600 text-white text-[10px] font-bold rounded-full px-3 py-1 whitespace-nowrap">
+                  <span className="bg-blue-600 text-white text-2xs font-bold rounded-full px-3 py-1 whitespace-nowrap">
                     הבחירה הפופולרית
                   </span>
                 </div>
@@ -125,7 +125,7 @@ export function SubscriptionForm() {
                   <span className="text-3xl font-extrabold text-white">₪{price}</span>
                   <span className="text-xs text-white/40">חודש</span>
                 </div>
-                <p className="text-[10px] text-white/30 mt-0.5">מתחדש מדי חודש</p>
+                <p className="text-2xs text-white/30 mt-0.5">מתחדש מדי חודש</p>
               </div>
 
               {/* Credits + groups */}
@@ -155,8 +155,8 @@ export function SubscriptionForm() {
               )}
 
               {/* Features */}
-              <div className="border-t border-white/5 pt-3 mt-auto">
-                <p className="text-[10px] font-semibold text-white/40 mb-2">{plan.includesLabel}</p>
+              <div className="border-t border-edge pt-3 mt-auto">
+                <p className="text-2xs font-semibold text-white/40 mb-2">{plan.includesLabel}</p>
                 <ul className="space-y-1.5">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-xs text-white/60">

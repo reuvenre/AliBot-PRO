@@ -25,7 +25,7 @@ function Handler() {
 
 export default function GoogleSuccessPage() {
   return (
-    <div className="min-h-screen bg-[#080b14] flex items-center justify-center">
+    <div className="min-h-screen bg-surface-primary flex items-center justify-center">
       <Loader2 size={28} className="animate-spin text-blue-400" />
       <Suspense><Handler /></Suspense>
     </div>

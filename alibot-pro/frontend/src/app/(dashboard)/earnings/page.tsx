@@ -42,7 +42,7 @@ export default function EarningsPage() {
 
         <div className="flex items-center gap-3">
           {/* Period selector */}
-          <div className="flex bg-[#0d0f1a] border border-white/5 rounded-xl p-1 gap-1">
+          <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1">
             {PERIODS.map((p) => (
               <button
                 key={p.value}
@@ -102,7 +102,7 @@ export default function EarningsPage() {
 
           {/* By campaign */}
           {summary.by_campaign.length > 0 && (
-            <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+            <div className="bg-surface-secondary border border-edge rounded-xl p-5">
               <h3 className="text-sm font-semibold text-white mb-4">לפי קמפיין</h3>
               <div className="space-y-2">
                 {summary.by_campaign.map((c) => (
@@ -126,7 +126,7 @@ export default function EarningsPage() {
           )}
         </div>
       ) : (
-        <div className="bg-[#0d0f1a] border border-dashed border-white/10 rounded-2xl p-16 text-center">
+        <div className="bg-surface-secondary border border-dashed border-edge-hover rounded-2xl p-16 text-center">
           <DollarSign size={36} className="text-white/15 mx-auto mb-4" />
           <p className="text-sm text-white/30">אין נתוני הכנסות עדיין</p>
         </div>

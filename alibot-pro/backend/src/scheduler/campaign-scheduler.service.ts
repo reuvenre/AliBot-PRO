@@ -23,7 +23,7 @@ export class CampaignSchedulerService {
       for (const post of due) {
         await this.posts.sendScheduled(post);
       }
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Scheduled posts tick failed: ${err.message}`);
     }
   }
@@ -69,7 +69,7 @@ export class CampaignSchedulerService {
           await this.credentials.updateLastSent(cred.user_id, now);
           this.logger.log(`Queue: sent post for user ${cred.user_id}`);
         }
-      } catch (err) {
+      } catch (err: any) {
         this.logger.error(`Queue tick failed for user ${cred.user_id}: ${err.message}`);
       }
     }
@@ -80,7 +80,7 @@ export class CampaignSchedulerService {
   async cleanupStuckPosts() {
     try {
       await this.posts.resetStuckPendingPosts();
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Stuck posts cleanup failed: ${err.message}`);
     }
   }

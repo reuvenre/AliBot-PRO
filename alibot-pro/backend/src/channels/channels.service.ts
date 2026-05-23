@@ -81,7 +81,7 @@ export class ChannelsService {
       }
 
       return { ok: res.data?.ok === true };
-    } catch (err) {
+    } catch (err: any) {
       return { ok: false, error: err?.response?.data?.description || err.message };
     }
   }

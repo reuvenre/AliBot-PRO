@@ -368,7 +368,7 @@ export class PostsService {
       post.telegram_message_id = res.data?.result?.message_id;
       post.status = 'sent';
       post.sent_at = new Date();
-    } catch (err) {
+    } catch (err: any) {
       post.status = 'failed';
       post.error_message = err?.response?.data?.description || err.message;
     }
@@ -499,7 +499,7 @@ export class PostsService {
         },
         creds.openai_api_key,
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('[OpenAI] generation failed:', err?.response?.data || err.message);
       return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
     }
@@ -517,7 +517,7 @@ export class PostsService {
           },
         );
         return res.data.choices[0].message.content.trim();
-      } catch (err) {
+      } catch (err: any) {
         if (err?.response?.status === 429 && attempt < retries - 1) {
           await new Promise((r) => setTimeout(r, 2 ** attempt * 1000)); // 1s, 2s
           continue;

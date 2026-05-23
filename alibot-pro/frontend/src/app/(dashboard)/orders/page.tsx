@@ -85,7 +85,7 @@ export default function OrdersPage() {
         ].map(({ label, value, icon: Icon, accent }) => {
           const map: Record<string, string> = { blue: 'text-blue-400 bg-blue-500/10', green: 'text-emerald-400 bg-emerald-500/10', violet: 'text-violet-400 bg-violet-500/10', amber: 'text-amber-400 bg-amber-500/10' };
           return (
-            <div key={label} className="bg-[#0d0f1a] border border-white/5 rounded-xl p-4">
+            <div key={label} className="bg-surface-secondary border border-edge rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs text-white/40">{label}</p>
                 <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${map[accent]}`}>
@@ -106,7 +106,7 @@ export default function OrdersPage() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-[#0d0f1a] border border-white/5 rounded-xl px-3 py-1.5 text-white/70 text-xs outline-none focus:border-blue-500/50 transition-colors"
+            className="bg-surface-secondary border border-edge rounded-xl px-3 py-1.5 text-white/70 text-xs outline-none focus:border-blue-500/50 transition-colors"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -115,7 +115,7 @@ export default function OrdersPage() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="bg-[#0d0f1a] border border-white/5 rounded-xl px-3 py-1.5 text-white/70 text-xs outline-none focus:border-blue-500/50 transition-colors"
+            className="bg-surface-secondary border border-edge rounded-xl px-3 py-1.5 text-white/70 text-xs outline-none focus:border-blue-500/50 transition-colors"
           />
         </div>
         {(dateFrom || dateTo) && (
@@ -129,7 +129,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex bg-[#0d0f1a] border border-white/5 rounded-xl p-1 gap-1 mb-5 w-fit">
+      <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1 mb-5 w-fit">
         {[{ v: 'all' as const, l: 'הכל' }, { v: 'completed' as const, l: 'הושלם' }, { v: 'pending' as const, l: 'ממתין' }, { v: 'cancelled' as const, l: 'בוטל' }].map(({ v, l }) => (
           <button key={v} onClick={() => setFilter(v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
@@ -140,16 +140,16 @@ export default function OrdersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-[#0d0f1a] border border-white/5 rounded-xl overflow-hidden">
+      <div className="bg-surface-secondary border border-edge rounded-xl overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-white/5">
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">סטטוס</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">מוצר</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider hidden md:table-cell">סכום</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider hidden md:table-cell">עמלה</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider hidden lg:table-cell">מזהה הזמנה</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider hidden lg:table-cell">תאריך</th>
+            <tr className="border-b border-edge">
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider">סטטוס</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider">מוצר</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider hidden md:table-cell">סכום</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider hidden md:table-cell">עמלה</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider hidden lg:table-cell">מזהה הזמנה</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider hidden lg:table-cell">תאריך</th>
             </tr>
           </thead>
           <tbody>
@@ -166,16 +166,16 @@ export default function OrdersPage() {
               const cc = COMM_CFG[order.commissionStatus];
               const StatusIcon = sc.icon;
               return (
-                <tr key={order.id} className="border-b border-white/5 last:border-0 hover:bg-white/2 transition-colors">
+                <tr key={order.id} className="border-b border-edge last:border-0 hover:bg-white/2 transition-colors">
                   <td className="px-4 py-3.5">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${sc.cls}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${sc.cls}`}>
                       <StatusIcon size={10} />
                       {sc.label}
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="w-8 h-8 rounded-lg bg-white/5 border border-edge flex items-center justify-center shrink-0 overflow-hidden">
                         <Package size={14} className="text-white/20" />
                       </div>
                       <p className="text-sm text-white/80 truncate max-w-[200px]">{order.product.title}</p>
@@ -185,7 +185,7 @@ export default function OrdersPage() {
                     <span className="text-sm font-semibold text-white">${order.amount.toFixed(2)}</span>
                   </td>
                   <td className="px-4 py-3.5 hidden md:table-cell">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${cc.cls}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cc.cls}`}>
                       ${order.commission.toFixed(2)} · {cc.label}
                     </span>
                   </td>
@@ -203,7 +203,7 @@ export default function OrdersPage() {
 
         {/* Pagination hint */}
         {filtered.length > 0 && (
-          <div className="px-4 py-3 border-t border-white/5 flex items-center justify-between">
+          <div className="px-4 py-3 border-t border-edge flex items-center justify-between">
             <p className="text-xs text-white/30">{filtered.length} הזמנות</p>
             <p className="text-xs text-white/20">עמוד 1 מתוך 1</p>
           </div>

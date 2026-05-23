@@ -23,3 +23,7 @@ Thumbs.db
 # Docker volumes (local)
 postgres_data/
 redis_data/
+
+# user settings
+.claude/settings.local.json
+*.tsbuildinfo

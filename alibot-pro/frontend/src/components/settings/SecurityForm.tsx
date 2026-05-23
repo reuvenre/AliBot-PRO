@@ -49,7 +49,7 @@ export function SecurityForm() {
           value={form[field]}
           onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
           placeholder={placeholder}
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+          className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
           dir="ltr"
         />
         <button
@@ -65,7 +65,7 @@ export function SecurityForm() {
 
   return (
     <div className="space-y-6">
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
           <ShieldCheck size={16} className="text-blue-400" />
           שינוי סיסמה

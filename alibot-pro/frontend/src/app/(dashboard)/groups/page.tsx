@@ -36,14 +36,14 @@ function ChannelFormFields({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="למשל: ערוץ הדילים שלי"
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+          className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
         />
       </div>
 
       {!isEdit && (
         <div>
           <label className="block text-xs text-white/50 mb-1.5">פלטפורמה</label>
-          <select className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors">
+          <select className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors">
             <option value="telegram">📨 Telegram</option>
           </select>
         </div>
@@ -57,7 +57,7 @@ function ChannelFormFields({
             value={botToken}
             onChange={(e) => setBotToken(e.target.value)}
             placeholder={isEdit ? 'השאר ריק לשמור על הנוכחי' : 'מ-@BotFather'}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+            className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
             dir="ltr"
           />
           <button
@@ -68,7 +68,7 @@ function ChannelFormFields({
             {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
           </button>
         </div>
-        {isEdit && <p className="text-[10px] text-white/25 mt-1">ממולא רק בעת עדכון הטוקן</p>}
+        {isEdit && <p className="text-2xs text-white/25 mt-1">ממולא רק בעת עדכון הטוקן</p>}
       </div>
 
       <div>
@@ -77,7 +77,7 @@ function ChannelFormFields({
           value={channelId}
           onChange={(e) => setChannelId(e.target.value)}
           placeholder="@mychannel, -100123456789, או 1002382502297"
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+          className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
           dir="ltr"
         />
       </div>
@@ -88,7 +88,7 @@ function ChannelFormFields({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="למשל: ערוץ אלקטרוניקה"
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+          className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
         />
       </div>
     </>
@@ -130,7 +130,7 @@ function AddChannelModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: C
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl w-full max-w-md p-6">
+      <div className="bg-surface-secondary border border-edge-hover rounded-2xl w-full max-w-md p-6">
         <h2 className="text-base font-semibold text-white mb-5">הוסף ערוץ חדש</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <ChannelFormFields
@@ -201,7 +201,7 @@ function EditChannelModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl w-full max-w-md p-6">
+      <div className="bg-surface-secondary border border-edge-hover rounded-2xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-white">עריכת ערוץ</h2>
           <span className="text-xs text-white/30 bg-white/5 px-2.5 py-1 rounded-lg">
@@ -282,7 +282,7 @@ function ChannelCard({
   };
 
   return (
-    <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+    <div className="bg-surface-secondary border border-edge rounded-xl p-5">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-xl shrink-0">
@@ -420,7 +420,7 @@ export default function GroupsPage() {
             { label: 'פלטפורמות',    value: 1, icon: '🌐' },
             { label: 'פרסום אוטו',   value: activeChannels, icon: '🤖' },
           ].map(({ label, value, icon }) => (
-            <div key={label} className="bg-[#0d0f1a] border border-white/5 rounded-xl p-4 flex items-center gap-3">
+            <div key={label} className="bg-surface-secondary border border-edge rounded-xl p-4 flex items-center gap-3">
               <span className="text-xl">{icon}</span>
               <div>
                 <p className="text-xl font-bold text-white">{value}</p>
@@ -440,7 +440,7 @@ export default function GroupsPage() {
               className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all
                 ${platformFilter === p
                   ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
-                  : 'bg-white/3 text-white/40 border-white/8 hover:border-white/20 hover:text-white/60'}`}>
+                  : 'bg-white/3 text-white/40 border-edge hover:border-white/20 hover:text-white/60'}`}>
               {p}
             </button>
           ))}
@@ -452,7 +452,7 @@ export default function GroupsPage() {
           <Loader2 size={24} className="animate-spin text-blue-400" />
         </div>
       ) : channels.length === 0 ? (
-        <div className="bg-[#0d0f1a] border border-dashed border-white/10 rounded-2xl p-16 text-center">
+        <div className="bg-surface-secondary border border-dashed border-edge-hover rounded-2xl p-16 text-center">
           <Users size={36} className="text-white/15 mx-auto mb-4" />
           <p className="text-sm font-medium text-white/40 mb-1">אין ערוצים עדיין</p>
           <p className="text-xs text-white/20 mb-6">הוסף ערוצי Telegram לפרסום פוסטים</p>

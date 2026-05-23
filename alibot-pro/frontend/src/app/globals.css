@@ -71,6 +71,103 @@ input:-webkit-autofill {
   -webkit-text-fill-color: var(--text);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   SEMANTIC COMPONENT CLASSES
+   Use these instead of repeating Tailwind utility combinations.
+   All colours reference CSS vars → both themes handled automatically.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.card-tertiary {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Inputs ────────────────────────────────────────────────────────────────── */
+.input {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+.input:focus {
+  outline: none;
+  border-color: rgba(59,130,246,0.6);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+}
+.input::placeholder { color: var(--text-muted); }
+.input-error {
+  border-color: rgba(239,68,68,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.10) !important;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  transition: background-color 0.15s, opacity 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background-color: #3b82f6; color: #fff; }
+.btn-primary:hover:not(:disabled) { background-color: #2563eb; }
+.btn-ghost {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-ghost:hover:not(:disabled) { background-color: rgba(255,255,255,0.04); border-color: var(--border-hover); }
+.btn-danger { background-color: rgba(239,68,68,0.10); color: #f87171; border: 1px solid rgba(239,68,68,0.20); }
+.btn-danger:hover:not(:disabled) { background-color: rgba(239,68,68,0.18); }
+.btn-sm { font-size: 12px; padding: 5px 10px; border-radius: 6px; }
+.btn-xs { font-size: 11px; padding: 3px 8px; border-radius: 5px; }
+
+/* ── Badges / Status pills ────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+}
+.badge-success  { background-color: rgba(16,185,129,0.10); color: #34d399; border-color: rgba(16,185,129,0.20); }
+.badge-warning  { background-color: rgba(245,158,11,0.10); color: #fbbf24; border-color: rgba(245,158,11,0.20); }
+.badge-danger   { background-color: rgba(239,68,68,0.10);  color: #f87171; border-color: rgba(239,68,68,0.20); }
+.badge-info     { background-color: rgba(6,182,212,0.10);  color: #22d3ee; border-color: rgba(6,182,212,0.20); }
+.badge-violet   { background-color: rgba(139,92,246,0.10); color: #a78bfa; border-color: rgba(139,92,246,0.20); }
+.badge-neutral  { background-color: rgba(255,255,255,0.06); color: var(--text-muted); border-color: var(--border); }
+
+/* ── Section headings ─────────────────────────────────────────────────────── */
+.section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.section-label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ── Divider ──────────────────────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
 /* ── Recharts ──────────────────────────────────────────────────────────────── */
 .recharts-cartesian-axis-tick text { font-size: 10px; }
 .recharts-tooltip-wrapper { outline: none !important; }
@@ -91,20 +188,10 @@ input:-webkit-autofill {
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LIGHT THEME OVERRIDES
+   Most surface colours are handled automatically by the CSS vars + semantic
+   Tailwind tokens (bg-surface-*, border-edge, etc.).
+   Only overrides for things that cannot use CSS vars remain here.
    ═══════════════════════════════════════════════════════════════════════════ */
-
-/* Main backgrounds */
-[data-theme="light"] .bg-\[\#080a13\]   { background-color: #f2f3f8 !important; }
-[data-theme="light"] .bg-\[\#09090c\]   { background-color: #f2f3f8 !important; }
-[data-theme="light"] .bg-\[\#0a0b14\]   { background-color: #f5f6fa !important; }
-[data-theme="light"] .bg-\[\#0d0f1a\]   { background-color: #ffffff !important; }
-[data-theme="light"] .bg-\[\#0e1016\]   { background-color: #ffffff !important; }
-[data-theme="light"] .bg-\[\#111320\]   { background-color: #eaecf4 !important; }
-[data-theme="light"] .bg-\[\#13151f\]   { background-color: #eaecf4 !important; }
-[data-theme="light"] .bg-\[\#0a0c18\]   { background-color: #f4f6fc !important; }
-[data-theme="light"] .bg-\[\#12141f\]   { background-color: #f0f2f9 !important; }
-[data-theme="light"] .bg-\[\#17212b\]   { background-color: #f8fafb !important; }
-[data-theme="light"] .bg-\[\#0d0f1a\]   { background-color: #ffffff !important; }
 
 /* Text colors */
 [data-theme="light"] .text-white        { color: #0f1117 !important; }
@@ -124,15 +211,9 @@ input:-webkit-autofill {
 [data-theme="light"] .text-white\/15    { color: rgba(15,17,23,0.22) !important; }
 [data-theme="light"] .text-white\/10    { color: rgba(15,17,23,0.18) !important; }
 
-/* Borders */
-[data-theme="light"] .border-white\/5   { border-color: rgba(0,0,0,0.07) !important; }
-[data-theme="light"] .border-white\/6   { border-color: rgba(0,0,0,0.08) !important; }
-[data-theme="light"] .border-white\/8   { border-color: rgba(0,0,0,0.09) !important; }
-[data-theme="light"] .border-white\/10  { border-color: rgba(0,0,0,0.11) !important; }
-[data-theme="light"] .border-white\/15  { border-color: rgba(0,0,0,0.13) !important; }
+/* Borders (remaining opacity variants still in use) */
 [data-theme="light"] .border-white\/20  { border-color: rgba(0,0,0,0.16) !important; }
 [data-theme="light"] .border-white\/30  { border-color: rgba(0,0,0,0.20) !important; }
-[data-theme="light"] .border-\[rgba\(255\,255\,255\,0\.06\)\] { border-color: rgba(0,0,0,0.07) !important; }
 
 /* Translucent white → translucent dark */
 [data-theme="light"] .bg-white\/3       { background-color: rgba(0,0,0,0.03) !important; }
@@ -153,12 +234,11 @@ input:-webkit-autofill {
 [data-theme="light"] .hover\:text-white\/80:hover  { color: rgba(15,17,23,0.80) !important; }
 [data-theme="light"] .hover\:text-white\/90:hover  { color: rgba(15,17,23,0.90) !important; }
 
-/* Sidebar new classes */
+/* Sidebar active state */
 [data-theme="light"] .bg-blue-500\/\[0\.14\]               { background-color: rgba(59,130,246,0.10) !important; }
 [data-theme="light"] .hover\:bg-white\/\[0\.05\]:hover     { background-color: rgba(0,0,0,0.04) !important; }
 [data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover     { background-color: rgba(0,0,0,0.03) !important; }
 [data-theme="light"] .bg-white\/\[0\.04\]                  { background-color: rgba(0,0,0,0.03) !important; }
-[data-theme="light"] .border-white\/\[0\.06\]              { border-color: rgba(0,0,0,0.07) !important; }
 
 /* Blue button text stays white */
 [data-theme="light"] button.bg-blue-600,
@@ -194,15 +274,7 @@ input:-webkit-autofill {
 /* Sidebar active */
 [data-theme="light"] .bg-blue-600\/20 { background-color: rgba(37,99,235,0.10) !important; }
 
-/* Dark hex colors not covered elsewhere — catch-all for light mode */
-[data-theme="light"] .bg-\[\#1a1d2e\] { background-color: #eaecf4 !important; }
-[data-theme="light"] .bg-\[\#1a1c2a\] { background-color: #eaecf4 !important; }
-[data-theme="light"] .bg-\[\#16182a\] { background-color: #eaecf4 !important; }
-[data-theme="light"] .bg-\[\#1e2035\] { background-color: #f0f2f9 !important; }
-[data-theme="light"] .bg-\[\#17192b\] { background-color: #eaecf4 !important; }
-
 /* Discover / product cards */
-[data-theme="light"] .bg-\[\#13151f\] { background-color: #f8f9fc !important; }
 [data-theme="light"] .bg-orange-500\/\[0\.15\] { background-color: rgba(249,115,22,0.10) !important; }
 [data-theme="light"] .border-orange-500\/25 { border-color: rgba(249,115,22,0.20) !important; }
 [data-theme="light"] .text-orange-400 { color: rgba(234,88,12,0.90) !important; }

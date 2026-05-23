@@ -98,7 +98,7 @@ export default function ForgotPasswordPage() {
                         {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                       </button>
                     </div>
-                    <p className="text-[11px] text-gray-400">הקישור תקף לשעה אחת. הוא גם מודפס בלוג השרת.</p>
+                    <p className="text-xs text-gray-400">הקישור תקף לשעה אחת. הוא גם מודפס בלוג השרת.</p>
                   </div>
                 )}
               </div>

@@ -28,9 +28,9 @@ function Field({
 }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div>
-      <label className="block text-[12px] font-medium text-white/45 mb-1.5">{label}</label>
+      <label className="block text-xs font-medium text-white/45 mb-1.5">{label}</label>
       {children}
-      {hint && <p className="text-[10px] text-white/25 mt-1">{hint}</p>}
+      {hint && <p className="text-2xs text-white/25 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -45,7 +45,7 @@ function Input({
   dir?: string;
   rows?: number;
 }) {
-  const cls = 'w-full bg-[#13151f] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all resize-none';
+  const cls = 'w-full bg-surface-tertiary border border-edge rounded-xl px-3.5 py-2.5 text-body text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all resize-none';
   if (rows) {
     return (
       <textarea
@@ -204,7 +204,7 @@ export default function EditProductPage() {
         <div className="text-center">
           <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
           <p className="text-white/50">{error}</p>
-          <button onClick={() => router.push('/products')} className="mt-4 text-blue-400 text-[13px] hover:underline">
+          <button onClick={() => router.push('/products')} className="mt-4 text-blue-400 text-body hover:underline">
             חזור למוצרים
           </button>
         </div>
@@ -226,14 +226,14 @@ export default function EditProductPage() {
             <ArrowRight size={15} />
           </button>
           <div>
-            <h1 className="text-[20px] font-bold text-white tracking-tight">ערוך מוצר</h1>
-            <p className="text-[12px] text-white/35 mt-0.5">עדכן פרטי מוצר</p>
+            <h1 className="text-xl font-bold text-white tracking-tight">ערוך מוצר</h1>
+            <p className="text-xs text-white/35 mt-0.5">עדכן פרטי מוצר</p>
           </div>
         </div>
 
         {/* Status Badge */}
         {product && (
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[12px] font-medium ${STATUS_COLORS[product.status]}`}>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${STATUS_COLORS[product.status]}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current" />
             {STATUS_LABELS[product.status]}
           </span>
@@ -246,8 +246,8 @@ export default function EditProductPage() {
         <div className="space-y-4">
 
           {/* Basic Info */}
-          <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl p-5">
-            <h2 className="text-[13px] font-semibold text-white/70 mb-4 flex items-center gap-2">
+          <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+            <h2 className="text-body font-semibold text-white/70 mb-4 flex items-center gap-2">
               <Package size={13} className="text-white/30" />
               מידע בסיסי
             </h2>
@@ -270,14 +270,14 @@ export default function EditProductPage() {
                   placeholder="תיאור המוצר..."
                   rows={4}
                 />
-                <p className="text-[10px] text-white/20 text-left mt-1">{description.length}/1000</p>
+                <p className="text-2xs text-white/20 text-left mt-1">{description.length}/1000</p>
               </Field>
             </div>
           </div>
 
           {/* Pricing */}
-          <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl p-5">
-            <h2 className="text-[13px] font-semibold text-white/70 mb-4">$ תמחור ומסחר</h2>
+          <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+            <h2 className="text-body font-semibold text-white/70 mb-4">$ תמחור ומסחר</h2>
             <div className="grid grid-cols-3 gap-3">
               <Field label="מחיר *">
                 <Input value={salePrice} onChange={setSalePrice} type="number" dir="ltr" placeholder="0.00" />
@@ -297,17 +297,17 @@ export default function EditProductPage() {
           </div>
 
           {/* Supplier */}
-          <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl p-5">
-            <h2 className="text-[13px] font-semibold text-white/70 mb-4">🔗 פרטי ספק</h2>
+          <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+            <h2 className="text-body font-semibold text-white/70 mb-4">🔗 פרטי ספק</h2>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="ספק">
-                  <div className="flex items-center h-[42px] px-3.5 bg-[#13151f] border border-white/[0.08] rounded-xl text-[13px] text-white/40">
+                  <div className="flex items-center h-[42px] px-3.5 bg-surface-tertiary border border-edge rounded-xl text-body text-white/40">
                     {product?.supplier || 'AliExpress'}
                   </div>
                 </Field>
                 <Field label="מזהה מוצר">
-                  <div className="flex items-center h-[42px] px-3.5 bg-[#13151f] border border-white/[0.08] rounded-xl text-[13px] text-white/40 font-mono" dir="ltr">
+                  <div className="flex items-center h-[42px] px-3.5 bg-surface-tertiary border border-edge rounded-xl text-body text-white/40 font-mono" dir="ltr">
                     {product?.product_id}
                   </div>
                 </Field>
@@ -323,23 +323,23 @@ export default function EditProductPage() {
 
           {/* Performance */}
           {product && (
-            <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl p-5">
-              <h2 className="text-[13px] font-semibold text-white/70 mb-4">📈 נתוני ביצועים</h2>
+            <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+              <h2 className="text-body font-semibold text-white/70 mb-4">📈 נתוני ביצועים</h2>
               <div className="grid grid-cols-3 gap-3">
-                <div className="bg-[#13151f] rounded-xl px-4 py-3 text-center">
-                  <p className="text-[10px] text-white/30 mb-1">מכירות</p>
-                  <p className="text-[18px] font-bold text-white">{product.orders_count.toLocaleString()}</p>
+                <div className="bg-surface-tertiary rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xs text-white/30 mb-1">מכירות</p>
+                  <p className="text-lg font-bold text-white">{product.orders_count.toLocaleString()}</p>
                 </div>
-                <div className="bg-[#13151f] rounded-xl px-4 py-3 text-center">
-                  <p className="text-[10px] text-white/30 mb-1">דירוג</p>
-                  <p className="text-[18px] font-bold text-white flex items-center justify-center gap-1">
+                <div className="bg-surface-tertiary rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xs text-white/30 mb-1">דירוג</p>
+                  <p className="text-lg font-bold text-white flex items-center justify-center gap-1">
                     <Star size={13} className="text-amber-400 fill-amber-400" />
                     {product.rating.toFixed(1)}
                   </p>
                 </div>
-                <div className="bg-[#13151f] rounded-xl px-4 py-3 text-center">
-                  <p className="text-[10px] text-white/30 mb-1">עמלה</p>
-                  <p className="text-[18px] font-bold text-emerald-400">
+                <div className="bg-surface-tertiary rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xs text-white/30 mb-1">עמלה</p>
+                  <p className="text-lg font-bold text-emerald-400">
                     {product.commission_rate > 0 ? `${product.commission_rate}%` : '—'}
                   </p>
                 </div>
@@ -351,7 +351,7 @@ export default function EditProductPage() {
           {error && (
             <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3.5 py-3">
               <AlertCircle size={13} className="text-red-400 shrink-0" />
-              <p className="text-[13px] text-red-400">{error}</p>
+              <p className="text-body text-red-400">{error}</p>
             </div>
           )}
         </div>
@@ -360,7 +360,7 @@ export default function EditProductPage() {
         <div className="space-y-4">
 
           {/* Product preview */}
-          <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl overflow-hidden">
+          <div className="bg-surface-secondary border border-edge rounded-xl overflow-hidden">
             {product?.image_url ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
@@ -369,18 +369,18 @@ export default function EditProductPage() {
                 className="w-full aspect-square object-cover"
               />
             ) : (
-              <div className="w-full aspect-square bg-[#13151f] flex items-center justify-center">
+              <div className="w-full aspect-square bg-surface-tertiary flex items-center justify-center">
                 <Package size={40} className="text-white/10" />
               </div>
             )}
             <div className="p-4">
-              <p className="text-[12px] text-white/60 line-clamp-2 mb-2">{product?.title}</p>
+              <p className="text-xs text-white/60 line-clamp-2 mb-2">{product?.title}</p>
               <div className="flex items-baseline gap-2">
-                <span className="text-[16px] font-bold text-white">
+                <span className="text-base font-bold text-white">
                   {s}{product?.sale_price.toFixed(2)}
                 </span>
                 {product && product.original_price > product.sale_price && (
-                  <span className="text-[11px] text-white/25 line-through">
+                  <span className="text-xs text-white/25 line-through">
                     {s}{product.original_price.toFixed(2)}
                   </span>
                 )}
@@ -394,21 +394,21 @@ export default function EditProductPage() {
                       className={i < Math.round(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-white/15'}
                     />
                   ))}
-                  <span className="text-[10px] text-white/35 mr-1">{product.rating.toFixed(1)}</span>
+                  <span className="text-2xs text-white/35 mr-1">{product.rating.toFixed(1)}</span>
                   <ShoppingBag size={9} className="text-white/25 mr-0.5" />
-                  <span className="text-[10px] text-white/25">{product.orders_count.toLocaleString()}</span>
+                  <span className="text-2xs text-white/25">{product.orders_count.toLocaleString()}</span>
                 </div>
               ) : null}
             </div>
           </div>
 
           {/* Quick actions */}
-          <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl p-4 space-y-2">
-            <p className="text-[11px] font-semibold text-white/30 uppercase tracking-wider mb-3">פעולות מהירות</p>
+          <div className="bg-surface-secondary border border-edge rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold text-white/30 uppercase tracking-wider mb-3">פעולות מהירות</p>
 
             <button
               onClick={handleCreatePost}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/20 text-violet-400 text-[13px] font-medium transition-all"
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/20 text-violet-400 text-body font-medium transition-all"
             >
               <FileText size={13} />
               צור פוסט מהמוצר
@@ -417,7 +417,7 @@ export default function EditProductPage() {
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/15 text-blue-400 text-[13px] font-medium transition-all disabled:opacity-50"
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/15 text-blue-400 text-body font-medium transition-all disabled:opacity-50"
             >
               {syncing ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
               סנכרן נתונים מ-AliExpress
@@ -426,7 +426,7 @@ export default function EditProductPage() {
             {product?.status !== 'approved' && (
               <button
                 onClick={handleApprove}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/15 text-emerald-400 text-[13px] font-medium transition-all"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/15 text-emerald-400 text-body font-medium transition-all"
               >
                 <CheckCircle2 size={13} />
                 אשר מוצר
@@ -436,7 +436,7 @@ export default function EditProductPage() {
             {product?.status !== 'rejected' && (
               <button
                 onClick={handleReject}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-red-600/10 hover:bg-red-600/20 border border-red-500/15 text-red-400 text-[13px] font-medium transition-all"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-red-600/10 hover:bg-red-600/20 border border-red-500/15 text-red-400 text-body font-medium transition-all"
               >
                 <XCircle size={13} />
                 דחה מוצר
@@ -447,10 +447,10 @@ export default function EditProductPage() {
       </div>
 
       {/* ── Bottom Action Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mt-6 pt-5 border-t border-white/[0.06]">
+      <div className="flex items-center justify-between mt-6 pt-5 border-t border-edge">
         <button
           onClick={handleDelete}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/15 border border-red-500/15 text-red-400 text-[13px] font-medium transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/15 border border-red-500/15 text-red-400 text-body font-medium transition-all"
         >
           <Trash2 size={13} />
           הסר מוצר
@@ -459,14 +459,14 @@ export default function EditProductPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => router.push('/products')}
-            className="px-4 py-2.5 text-[13px] text-white/40 hover:text-white/70 transition-colors"
+            className="px-4 py-2.5 text-body text-white/40 hover:text-white/70 transition-colors"
           >
             ביטול
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold transition-all shadow-sm shadow-blue-600/20"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-body font-semibold transition-all shadow-sm shadow-blue-600/20"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saved ? '✓ נשמר!' : 'עדכן מוצר'}

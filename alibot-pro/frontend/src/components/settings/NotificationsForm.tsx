@@ -81,7 +81,7 @@ export function NotificationsForm() {
   return (
     <div className="space-y-6">
       {groups.map((group) => (
-        <section key={group} className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <section key={group} className="bg-surface-secondary border border-edge rounded-xl p-5">
           <h3 className="text-sm font-semibold text-white mb-4">{group}</h3>
           <div className="space-y-4">
             {toggles.filter((t) => t.group === group).map((t) => (

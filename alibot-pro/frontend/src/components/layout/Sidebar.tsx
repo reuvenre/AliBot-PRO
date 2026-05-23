@@ -50,21 +50,20 @@ export function Sidebar() {
   const username = user?.email?.split('@')[0] ?? '';
 
   return (
-    <aside className="sidebar-root fixed right-0 top-0 h-full w-[220px] bg-[#0a0b14] border-l border-white/[0.06] flex flex-col z-40 select-none">
+    <aside className="sidebar-root fixed right-0 top-0 h-full w-[220px] bg-surface-sidebar border-l border-edge flex flex-col z-40 select-none">
 
       {/* ── Logo ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 pt-5 pb-4 border-b border-white/[0.06]">
-        {/* Icon badge */}
+      <div className="flex items-center gap-3 px-4 pt-5 pb-4 border-b border-edge">
         <div className="relative shrink-0">
           <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-lg shadow-blue-600/25">
             <Bot size={15} className="text-white" />
           </div>
-          <span className="absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#0a0b14]" />
+          <span className="absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-surface-sidebar" />
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-white tracking-tight leading-none">AliBot Pro</p>
-          <p className="text-[10px] text-white/30 mt-0.5 leading-none">Affiliate Automation</p>
+          <p className="text-body font-semibold text-white tracking-tight leading-none">AliBot Pro</p>
+          <p className="text-2xs text-white/30 mt-0.5 leading-none">Affiliate Automation</p>
         </div>
 
         <button
@@ -80,8 +79,7 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-5">
         {NAV_SECTIONS.map((section) => (
           <div key={section.title}>
-            {/* Section label */}
-            <p className="text-[10px] font-bold uppercase tracking-[0.10em] text-white/55 px-2.5 mb-1.5">
+            <p className="section-label px-2.5 mb-1.5">
               {section.title}
             </p>
 
@@ -92,21 +90,19 @@ export function Sidebar() {
                   <Link
                     key={href}
                     href={href}
-                    className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-[13px] font-medium transition-all duration-150
+                    className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-body font-medium transition-all duration-150
                       ${active
                         ? 'bg-blue-500/[0.14] text-blue-400'
                         : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'
                       }`}
                   >
-                    {/* Active indicator */}
                     {active && (
                       <span className="absolute inset-y-1.5 right-0 w-[3px] rounded-full bg-blue-500" />
                     )}
-
                     <Icon
                       size={14}
                       className={`shrink-0 transition-colors duration-150
-                        ${active ? 'text-blue-400' : 'text-white/28 group-hover:text-white/55'}`}
+                        ${active ? 'text-blue-400' : 'text-white/30 group-hover:text-white/55'}`}
                     />
                     <span className="truncate">{label}</span>
                   </Link>
@@ -118,10 +114,10 @@ export function Sidebar() {
       </nav>
 
       {/* ── Settings ─────────────────────────────────────────────────────── */}
-      <div className="px-3 pb-2 border-t border-white/[0.06] pt-2.5">
+      <div className="px-3 pb-2 border-t border-edge pt-2.5">
         <Link
           href="/settings"
-          className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-[13px] font-medium transition-all duration-150
+          className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-body font-medium transition-all duration-150
             ${isActive('/settings')
               ? 'bg-blue-500/[0.14] text-blue-400'
               : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'
@@ -133,30 +129,27 @@ export function Sidebar() {
           <Settings
             size={14}
             className={`shrink-0 transition-colors duration-150
-              ${isActive('/settings') ? 'text-blue-400' : 'text-white/28 group-hover:text-white/55'}`}
+              ${isActive('/settings') ? 'text-blue-400' : 'text-white/30 group-hover:text-white/55'}`}
           />
           <span>הגדרות</span>
         </Link>
       </div>
 
       {/* ── User ─────────────────────────────────────────────────────────── */}
-      <div className="px-3 py-3 border-t border-white/[0.06]">
+      <div className="px-3 py-3 border-t border-edge">
         <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-[10px] hover:bg-white/[0.04] transition-colors cursor-default group">
-          {/* Avatar */}
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-[11px] font-semibold text-white shrink-0">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-xs font-semibold text-white shrink-0">
             {initials}
           </div>
 
-          {/* Info */}
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-medium text-white/65 truncate leading-tight">{username}</p>
+            <p className="text-xs font-medium text-white/65 truncate leading-tight">{username}</p>
             <div className="flex items-center gap-1 mt-0.5">
               <Sparkles size={8} className="text-blue-400 shrink-0" />
-              <p className="text-[9px] text-blue-400/70 leading-none">Pro</p>
+              <p className="text-2xs text-blue-400/70 leading-none">Pro</p>
             </div>
           </div>
 
-          {/* Logout */}
           <button
             onClick={logout}
             className="p-1 rounded-md text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"

@@ -72,15 +72,15 @@ export function ProductEditPanel({
   };
 
   return (
-    <div className="bg-[#0d0f1a] border border-white/8 rounded-xl overflow-hidden">
+    <div className="bg-surface-secondary border border-edge rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/5">
+      <div className="px-4 py-3 border-b border-edge">
         <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">עריכת מוצר</p>
       </div>
 
       <div className="p-4 space-y-4">
         {/* Meta row */}
-        <div className="flex items-center gap-3 text-[11px] text-white/30">
+        <div className="flex items-center gap-3 text-xs text-white/30">
           <span className="flex items-center gap-1">
             <Star size={10} className="text-amber-400 fill-amber-400" />
             {product.rating.toFixed(1)}
@@ -99,7 +99,7 @@ export function ProductEditPanel({
 
         {/* Editable title */}
         <div>
-          <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider">
+          <label className="block text-2xs font-medium text-white/40 mb-1.5 uppercase tracking-wider">
             שם המוצר
           </label>
           {isTranslating && (
@@ -113,7 +113,7 @@ export function ProductEditPanel({
             onChange={(e) => setTitle(e.target.value)}
             disabled={isTranslating}
             rows={3}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors resize-none leading-relaxed"
+            className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors resize-none leading-relaxed"
             dir="auto"
           />
         </div>
@@ -121,7 +121,7 @@ export function ProductEditPanel({
         {/* Prices */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+            <label className="block text-2xs font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
               <DollarSign size={9} /> מחיר מבצע ({sym})
             </label>
             <input
@@ -129,12 +129,12 @@ export function ProductEditPanel({
               min={0}
               value={salePrice}
               onChange={(e) => setSalePrice(Math.max(0, +e.target.value))}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
               dir="ltr"
             />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+            <label className="block text-2xs font-medium text-white/40 mb-1.5 uppercase tracking-wider flex items-center gap-1">
               <DollarSign size={9} /> מחיר מקורי ({sym})
             </label>
             <input
@@ -142,7 +142,7 @@ export function ProductEditPanel({
               min={0}
               value={origPrice}
               onChange={(e) => setOrigPrice(Math.max(0, +e.target.value))}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
               dir="ltr"
             />
           </div>
@@ -161,7 +161,7 @@ export function ProductEditPanel({
 
         {/* Active template indicator */}
         {activeTemplate && activeTemplate.id !== 'builtin_default' && (
-          <div className="flex items-center gap-2 text-[11px] bg-white/3 border border-white/8 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 text-xs bg-white/3 border border-edge rounded-lg px-3 py-2">
             <span>{activeTemplate.icon}</span>
             <span className="text-white/40">תבנית:</span>
             <span className="text-white/70 font-medium">{activeTemplate.name}</span>

@@ -61,7 +61,7 @@ export function ProfileForm() {
 
   return (
     <div className="space-y-6">
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
           <span className="text-lg">👤</span> פרטי חשבון
         </h3>
@@ -72,7 +72,7 @@ export function ProfileForm() {
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               placeholder="שם פרטי"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
             />
           </div>
           <div>
@@ -81,7 +81,7 @@ export function ProfileForm() {
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               placeholder="שם משפחה"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
             />
           </div>
           <div className="col-span-2">
@@ -90,7 +90,7 @@ export function ProfileForm() {
               type="email"
               value={user?.email || ''}
               readOnly
-              className="w-full bg-white/3 border border-white/5 rounded-lg px-3 py-2.5 text-sm text-white/40 outline-none cursor-not-allowed"
+              className="w-full bg-white/3 border border-edge rounded-lg px-3 py-2.5 text-sm text-white/40 outline-none cursor-not-allowed"
             />
           </div>
           <div className="col-span-2">
@@ -101,7 +101,7 @@ export function ProfileForm() {
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+972501234567"
               dir="ltr"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
             />
           </div>
           <div className="col-span-2 pt-1">
@@ -117,7 +117,7 @@ export function ProfileForm() {
         </form>
       </section>
 
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
           <span className="text-lg">🌍</span> העדפות
         </h3>
@@ -127,7 +127,7 @@ export function ProfileForm() {
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
             >
               <option value="he">עברית</option>
               <option value="en">English</option>
@@ -146,7 +146,7 @@ export function ProfileForm() {
                   className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all
                     ${currency === value
                       ? 'border-blue-500/60 bg-blue-500/10 text-white'
-                      : 'border-white/8 bg-white/3 text-white/50 hover:border-white/20 hover:text-white/80'
+                      : 'border-edge bg-white/3 text-white/50 hover:border-white/20 hover:text-white/80'
                     }`}
                 >
                   <span className="text-base">{flag}</span>
@@ -154,7 +154,7 @@ export function ProfileForm() {
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-white/25 mt-2">המחירים יומרו מדולר למטבע שנבחר לפי שער חליפין בזמן אמת</p>
+            <p className="text-2xs text-white/25 mt-2">המחירים יומרו מדולר למטבע שנבחר לפי שער חליפין בזמן אמת</p>
           </div>
 
           <button

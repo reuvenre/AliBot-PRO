@@ -104,7 +104,21 @@ export class CatalogService {
 
   async importProduct(
     userId: string,
-    dto: { url?: string; productId?: string; category?: string },
+    dto: {
+      url?: string;
+      productId?: string;
+      category?: string;
+      prefetched?: {
+        title?: string;
+        imageUrl?: string;
+        salePrice?: number;
+        originalPrice?: number;
+        currency?: string;
+        discountPercent?: number;
+        ordersCount?: number;
+        rating?: number;
+      };
+    },
   ) {
     // Extract product_id
     let productId = dto.productId?.trim();
@@ -127,22 +141,28 @@ export class CatalogService {
     });
     if (existing) throw new ConflictException('המוצר כבר קיים בקטלוג');
 
-    // Fetch from AliExpress
-    const aliProduct = await this.productsService.refreshPrice(userId, productId);
+    // If the caller supplied pre-fetched product data (e.g. from discover page),
+    // use it directly — no need for an unreliable AliExpress keyword re-fetch.
+    const pf = dto.prefetched;
+    let aliProduct: Awaited<ReturnType<typeof this.productsService.refreshPrice>> | null = null;
+    if (!pf?.title) {
+      // Only hit AliExpress when we don't already have the data
+      aliProduct = await this.productsService.refreshPrice(userId, productId);
+    }
 
     const product = this.repo.create({
       user_id: userId,
       product_id: productId,
-      title: aliProduct?.title || `מוצר ${productId}`,
-      original_price: aliProduct?.original_price || 0,
-      sale_price: aliProduct?.sale_price || 0,
-      currency: aliProduct?.currency || 'ILS',
-      discount_percent: aliProduct?.discount_percent || 0,
-      image_url: aliProduct?.image_url || '',
-      product_url: aliProduct?.product_url || `https://www.aliexpress.com/item/${productId}.html`,
-      category: dto.category || aliProduct?.category || '',
-      orders_count: aliProduct?.orders_count || 0,
-      rating: aliProduct?.rating || 0,
+      title:            pf?.title            ?? aliProduct?.title            ?? `מוצר ${productId}`,
+      original_price:   pf?.originalPrice    ?? aliProduct?.original_price   ?? 0,
+      sale_price:       pf?.salePrice        ?? aliProduct?.sale_price       ?? 0,
+      currency:         pf?.currency         ?? aliProduct?.currency         ?? 'ILS',
+      discount_percent: pf?.discountPercent  ?? aliProduct?.discount_percent ?? 0,
+      image_url:        pf?.imageUrl         ?? aliProduct?.image_url        ?? '',
+      product_url:      aliProduct?.product_url ?? `https://www.aliexpress.com/item/${productId}.html`,
+      category:         dto.category         || aliProduct?.category         || '',
+      orders_count:     pf?.ordersCount      ?? aliProduct?.orders_count     ?? 0,
+      rating:           pf?.rating           ?? aliProduct?.rating           ?? 0,
       status: 'approved',
       supplier: 'AliExpress',
       synced_at: new Date(),
@@ -284,7 +304,7 @@ export class CatalogService {
       try {
         await this.queueProduct(userId, id);
         results.push({ id, success: true });
-      } catch (err) {
+      } catch (err: any) {
         results.push({ id, success: false, error: err.message });
       }
     }

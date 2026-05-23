@@ -44,8 +44,22 @@ export class CatalogController {
     @Body('url') url?: string,
     @Body('product_id') productId?: string,
     @Body('category') category?: string,
+    @Body('title') title?: string,
+    @Body('image_url') imageUrl?: string,
+    @Body('sale_price') salePrice?: number,
+    @Body('original_price') originalPrice?: number,
+    @Body('currency') currency?: string,
+    @Body('discount_percent') discountPercent?: number,
+    @Body('orders_count') ordersCount?: number,
+    @Body('rating') rating?: number,
   ) {
-    return this.svc.importProduct(this.uid(req), { url, productId, category });
+    return this.svc.importProduct(this.uid(req), {
+      url, productId, category,
+      prefetched: title ? {
+        title, imageUrl, salePrice, originalPrice, currency,
+        discountPercent, ordersCount, rating,
+      } : undefined,
+    });
   }
 
   // ── Get one ───────────────────────────────────────────────────────────────

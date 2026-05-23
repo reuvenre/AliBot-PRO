@@ -79,7 +79,7 @@ export class AuthService {
     return { message: 'Logged out' };
   }
 
-  async forgotPassword(email: string): Promise<{ message: string }> {
+  async forgotPassword(email: string): Promise<{ message: string; reset_url?: string }> {
     const user = await this.users.findByEmail(email);
     // Always respond the same way to prevent email enumeration
     if (!user) return { message: 'If that email exists, a reset link has been sent.' };
@@ -92,6 +92,11 @@ export class AuthService {
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
     await this.mail.sendPasswordReset(email, resetUrl);
+
+    const smtpHost = this.config.get<string>('SMTP_HOST');
+    if (!smtpHost) {
+      return { message: 'If that email exists, a reset link has been sent.', reset_url: resetUrl };
+    }
 
     return { message: 'If that email exists, a reset link has been sent.' };
   }

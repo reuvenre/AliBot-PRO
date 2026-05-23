@@ -12,7 +12,7 @@ interface EarningsChartProps {
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string }[]; label?: string }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#1a1d2e] border border-white/10 rounded-lg px-3 py-2 text-xs">
+    <div className="bg-surface-tertiary border border-edge-hover rounded-lg px-3 py-2 text-xs">
       <p className="text-white/50 mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.name} className="text-white font-medium">
@@ -31,10 +31,10 @@ export function EarningsChart({ summary }: EarningsChartProps) {
   }));
 
   return (
-    <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+    <div className="bg-surface-secondary border border-edge rounded-xl p-5">
       <div className="flex items-center justify-between mb-5">
         <h3 className="text-sm font-semibold text-white">הכנסות לפי חודש</h3>
-        <div className="flex items-center gap-3 text-[10px] text-white/40">
+        <div className="flex items-center gap-3 text-2xs text-white/40">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm bg-emerald-500 inline-block" />
             מוסדר
@@ -76,21 +76,21 @@ export function EarningsChart({ summary }: EarningsChartProps) {
       </ResponsiveContainer>
 
       {/* Summary row */}
-      <div className="flex items-center gap-6 mt-4 pt-4 border-t border-white/5">
+      <div className="flex items-center gap-6 mt-4 pt-4 border-t border-edge">
         <div>
-          <p className="text-[10px] text-white/30 mb-0.5">מוסדר</p>
+          <p className="text-2xs text-white/30 mb-0.5">מוסדר</p>
           <p className="text-sm font-bold text-emerald-400">
             ₪{summary.total_settled.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
           </p>
         </div>
         <div>
-          <p className="text-[10px] text-white/30 mb-0.5">משוער</p>
+          <p className="text-2xs text-white/30 mb-0.5">משוער</p>
           <p className="text-sm font-bold text-blue-400">
             ₪{summary.total_estimated.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
           </p>
         </div>
         <div>
-          <p className="text-[10px] text-white/30 mb-0.5">בוטל</p>
+          <p className="text-2xs text-white/30 mb-0.5">בוטל</p>
           <p className="text-sm font-bold text-red-400">
             ₪{summary.total_cancelled.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
           </p>

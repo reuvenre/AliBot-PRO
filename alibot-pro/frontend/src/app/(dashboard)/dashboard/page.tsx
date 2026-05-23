@@ -38,7 +38,7 @@ function StatCard({
   };
   const cls = map[accent] || map.blue;
   return (
-    <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+    <div className="card p-5">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-white/40">{label}</p>
         <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${cls}`}>
@@ -137,7 +137,7 @@ export default function DashboardPage() {
 
       {/* Onboarding checklist */}
       {!allDone && steps.length > 0 && (
-        <div className="bg-[#0d0f1a] border border-white/8 rounded-xl p-5 mb-8">
+        <div className="card p-5 mb-8">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Zap size={15} className="text-blue-400" />
@@ -166,11 +166,11 @@ export default function DashboardPage() {
                     ? 'bg-emerald-500/5 border-emerald-500/20 cursor-default'
                     : nextStep?.id === step.id
                       ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15'
-                      : 'bg-white/3 border-white/5 hover:bg-white/5'
+                      : 'bg-white/3 border-edge hover:bg-white/5'
                   }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider
+                  <span className={`text-2xs font-semibold uppercase tracking-wider
                     ${step.done ? 'text-emerald-400' : 'text-white/30'}`}>
                     {i + 1}
                   </span>
@@ -184,7 +184,7 @@ export default function DashboardPage() {
                 <p className={`text-xs font-medium ${step.done ? 'text-white/50' : nextStep?.id === step.id ? 'text-white' : 'text-white/40'}`}>
                   {step.label}
                 </p>
-                <p className="text-[10px] text-white/25 leading-relaxed">{step.desc}</p>
+                <p className="text-2xs text-white/25 leading-relaxed">{step.desc}</p>
               </Link>
             ))}
           </div>
@@ -198,7 +198,7 @@ export default function DashboardPage() {
         <StatCard label="ערוצים"         value={isLoading ? '—' : stats.channels}                         sub="ערוצי טלגרם"                         icon={Users}      accent="cyan" />
         <StatCard label="הכנסות (30 יום)" value={isLoading ? '—' : `₪${totalEarnings.toFixed(0)}`}        sub="מוסדר + משוער"                       icon={DollarSign}  accent="green" />
         <StatCard label="עמלה מוסדרת"    value={isLoading ? '—' : `₪${(earnings?.total_settled ?? 0).toFixed(0)}`} sub="30 ימים אחרונים"            icon={TrendingUp}  accent="amber" />
-        <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-white/40">קרדיטים AI</p>
             <span className="w-7 h-7 rounded-lg flex items-center justify-center text-violet-400 bg-violet-500/10">
@@ -216,9 +216,9 @@ export default function DashboardPage() {
       {/* Main layout: recent posts + mini earnings */}
       <div className="flex gap-5">
         {/* Recent posts */}
-        <div className="flex-1 bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="flex-1 card p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-white">פוסטים אחרונים</h2>
+            <h2 className="section-title">פוסטים אחרונים</h2>
             <Link href="/posts" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
               הכל
             </Link>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
                   <img src={post.product_image} alt="" className="w-9 h-9 rounded-lg object-cover bg-white/5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-white/70 truncate">{post.product_title}</p>
-                    <p className="text-[10px] text-white/30 mt-0.5">
+                    <p className="text-2xs text-white/30 mt-0.5">
                       {post.campaign_name && `${post.campaign_name} · `}
                       {post.sent_at
                         ? new Date(post.sent_at).toLocaleString('he-IL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -262,19 +262,19 @@ export default function DashboardPage() {
 
         {/* Earnings mini panel */}
         <div className="w-64 shrink-0 space-y-3">
-          <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-white mb-4">הכנסות החודש</h2>
+          <div className="card p-5">
+            <h2 className="section-title mb-4">הכנסות החודש</h2>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/40">משוער</span>
                 <span className="text-sm font-semibold text-amber-400">₪{(earnings?.total_estimated ?? 0).toFixed(2)}</span>
               </div>
-              <div className="h-px bg-white/5" />
+              <hr className="divider" />
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/40">מוסדר</span>
                 <span className="text-sm font-semibold text-emerald-400">₪{(earnings?.total_settled ?? 0).toFixed(2)}</span>
               </div>
-              <div className="h-px bg-white/5" />
+              <hr className="divider" />
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/60 font-medium">סה״כ</span>
                 <span className="text-base font-bold text-white">₪{totalEarnings.toFixed(2)}</span>
@@ -286,8 +286,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick actions */}
-          <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-4">
-            <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wider mb-3">פעולות מהירות</p>
+          <div className="card p-4">
+            <p className="section-label mb-3">פעולות מהירות</p>
             <div className="space-y-1.5">
               <Link href="/quick-post" className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/5 text-xs text-white/60 hover:text-white/90 transition-all">
                 <Zap size={12} className="text-blue-400" /> פוסט מהיר

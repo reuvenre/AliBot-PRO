@@ -49,11 +49,11 @@ export default function LoginPage() {
             <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
-            <span className="text-[14px] font-semibold text-gray-900 tracking-tight">AliBot Pro</span>
+            <span className="text-sm font-semibold text-gray-900 tracking-tight">AliBot Pro</span>
           </div>
           <Link
             href="/register"
-            className="flex items-center gap-1 text-[13px] text-gray-500 hover:text-gray-800 transition-colors"
+            className="flex items-center gap-1 text-body text-gray-500 hover:text-gray-800 transition-colors"
           >
             הירשם
             <ArrowLeft size={13} />
@@ -67,13 +67,13 @@ export default function LoginPage() {
             {/* Heading */}
             <div className="mb-7">
               <h1 className="text-[26px] font-bold text-gray-900 leading-tight">ברוכים הבאים</h1>
-              <p className="text-[14px] text-gray-500 mt-1.5">התחבר לחשבון שלך להמשך</p>
+              <p className="text-sm text-gray-500 mt-1.5">התחבר לחשבון שלך להמשך</p>
             </div>
 
             {/* Google OAuth */}
             <a
               href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/auth/google`}
-              className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all text-[13px] text-gray-700 font-medium shadow-sm mb-5"
+              className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all text-body text-gray-700 font-medium shadow-sm mb-5"
             >
               <svg width="17" height="17" viewBox="0 0 48 48" className="shrink-0">
                 <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6.1C12.4 13 17.7 9.5 24 9.5z"/>
@@ -87,14 +87,14 @@ export default function LoginPage() {
             {/* Divider */}
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1 h-px bg-gray-100" />
-              <span className="text-[11px] text-gray-400 font-medium tracking-wider">או</span>
+              <span className="text-xs text-gray-400 font-medium tracking-wider">או</span>
               <div className="flex-1 h-px bg-gray-100" />
             </div>
 
             {/* Email/Password form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-[13px] font-medium text-gray-700 mb-1.5">אימייל</label>
+                <label className="block text-body font-medium text-gray-700 mb-1.5">אימייל</label>
                 <input
                   type="email"
                   required
@@ -102,17 +102,17 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   dir="ltr"
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition-all bg-white"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition-all bg-white"
                   style={{ WebkitTextFillColor: '#111827', color: '#111827' }}
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[13px] font-medium text-gray-700">סיסמה</label>
+                  <label className="block text-body font-medium text-gray-700">סיסמה</label>
                   <Link
                     href="/forgot-password"
-                    className="text-[12px] text-blue-600 hover:text-blue-500 transition-colors"
+                    className="text-xs text-blue-600 hover:text-blue-500 transition-colors"
                   >
                     שכחת סיסמה?
                   </Link>
@@ -124,7 +124,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   dir="ltr"
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition-all bg-white"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition-all bg-white"
                   style={{ WebkitTextFillColor: '#111827', color: '#111827' }}
                 />
               </div>
@@ -132,21 +132,21 @@ export default function LoginPage() {
               {error && (
                 <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3">
                   <AlertCircle size={14} className="text-red-500 shrink-0" />
-                  <p className="text-[13px] text-red-600">{error}</p>
+                  <p className="text-body text-red-600">{error}</p>
                 </div>
               )}
 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-55 disabled:cursor-not-allowed text-white text-[14px] font-semibold transition-all duration-150 flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20"
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-55 disabled:cursor-not-allowed text-white text-sm font-semibold transition-all duration-150 flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20"
               >
                 {isLoading && <Loader2 size={15} className="animate-spin" />}
                 {isLoading ? 'מתחבר...' : 'כניסה'}
               </button>
             </form>
 
-            <p className="text-center text-[12px] text-gray-400 mt-6">
+            <p className="text-center text-xs text-gray-400 mt-6">
               אין לך חשבון?{' '}
               <Link href="/register" className="text-blue-600 font-semibold hover:text-blue-500 transition-colors">
                 הירשם בחינם
@@ -174,9 +174,9 @@ export default function LoginPage() {
         {/* Content */}
         <div className="relative z-10 flex-1 flex flex-col justify-center px-14">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 w-fit mb-8">
+          <div className="inline-flex items-center gap-2 bg-white/8 border border-edge-hover rounded-full px-3 py-1.5 w-fit mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[12px] text-white/60 font-medium">פלטפורמת שיווק שותפים #1</span>
+            <span className="text-xs text-white/60 font-medium">פלטפורמת שיווק שותפים #1</span>
           </div>
 
           <h1 className="text-[44px] font-extrabold text-white leading-[1.1] tracking-tight mb-5">
@@ -197,7 +197,7 @@ export default function LoginPage() {
                 <div className="w-4 h-4 rounded-full bg-blue-500/15 border border-blue-500/25 flex items-center justify-center shrink-0">
                   <CheckCheck size={9} className="text-blue-400" />
                 </div>
-                <span className="text-[13px] text-white/55">{f}</span>
+                <span className="text-body text-white/55">{f}</span>
               </div>
             ))}
           </div>
@@ -205,11 +205,11 @@ export default function LoginPage() {
 
         {/* Bottom bar */}
         <div className="relative z-10 px-14 pb-8">
-          <div className="flex items-center gap-3 pt-6 border-t border-white/[0.06]">
+          <div className="flex items-center gap-3 pt-6 border-t border-edge">
             <div className="w-6 h-6 rounded-[7px] bg-white/10 flex items-center justify-center">
               <Bot size={12} className="text-white/60" />
             </div>
-            <p className="text-[11px] text-white/28">AliBot Pro · כל הזכויות שמורות 2026</p>
+            <p className="text-xs text-white/28">AliBot Pro · כל הזכויות שמורות 2026</p>
           </div>
         </div>
       </div>

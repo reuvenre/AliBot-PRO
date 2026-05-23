@@ -34,7 +34,7 @@ function KeywordEditor({ keywords, onChange }: { keywords: string[]; onChange: (
         <input value={kw} onChange={(e) => setKw(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addKw(); } }}
           placeholder="הוסף מילת מפתח..."
-          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+          className="flex-1 bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
         <button type="button" onClick={addKw}
           className="px-4 py-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-xl text-sm hover:bg-blue-600/30 transition-all">
           הוסף
@@ -42,7 +42,7 @@ function KeywordEditor({ keywords, onChange }: { keywords: string[]; onChange: (
       </div>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {keywords.map((k) => (
-          <span key={k} className="flex items-center gap-1 px-2.5 py-1 bg-white/8 border border-white/10 rounded-full text-xs text-white/70">
+          <span key={k} className="flex items-center gap-1 px-2.5 py-1 bg-white/8 border border-edge-hover rounded-full text-xs text-white/70">
             {k}
             <button type="button" onClick={() => onChange(keywords.filter((x) => x !== k))}
               className="text-white/30 hover:text-red-400 transition-colors leading-none">×</button>
@@ -67,7 +67,7 @@ function AddModal({ onClose, onAdd }: AddModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4">
+      <div className="bg-surface-secondary border border-edge-hover rounded-2xl p-6 w-full max-w-md mx-4">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-white">הוסף קטגוריה חדשה</h2>
           <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors"><X size={18} /></button>
@@ -78,7 +78,7 @@ function AddModal({ onClose, onAdd }: AddModalProps) {
             <input value={name} onChange={(e) => setName(e.target.value)}
               autoFocus
               placeholder="לדוגמה: Electronics & Gadgets"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+              className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
           </div>
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">מילות מפתח</label>
@@ -114,7 +114,7 @@ function EditModal({ cat, onClose, onSave }: EditModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4">
+      <div className="bg-surface-secondary border border-edge-hover rounded-2xl p-6 w-full max-w-md mx-4">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-white">ערוך קטגוריה</h2>
           <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors"><X size={18} /></button>
@@ -124,7 +124,7 @@ function EditModal({ cat, onClose, onSave }: EditModalProps) {
             <label className="block text-xs font-medium text-white/50 mb-1.5">שם קטגוריה</label>
             <input value={name} onChange={(e) => setName(e.target.value)}
               autoFocus
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50" />
+              className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50" />
           </div>
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">מילות מפתח</label>
@@ -208,7 +208,7 @@ export default function CategoriesPage() {
           { label: 'קטגוריות פעילות', value: activeCount, icon: ToggleRight },
           { label: 'סה״כ מילות מפתח', value: totalKw,    icon: Search },
         ].map(({ label, value, icon: Icon }) => (
-          <div key={label} className="bg-[#0d0f1a] border border-white/5 rounded-xl p-4 flex items-center gap-3">
+          <div key={label} className="bg-surface-secondary border border-edge rounded-xl p-4 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
               <Icon size={14} className="text-blue-400" />
             </div>
@@ -222,7 +222,7 @@ export default function CategoriesPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <div className="flex bg-[#0d0f1a] border border-white/5 rounded-xl p-1 gap-1">
+        <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1">
           {[{ v: 'all' as const, l: 'הכל' }, { v: 'active' as const, l: 'פעיל' }, { v: 'inactive' as const, l: 'לא פעיל' }].map(({ v, l }) => (
             <button key={v} onClick={() => setFilter(v)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
@@ -235,20 +235,20 @@ export default function CategoriesPage() {
           <Search size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="חפש קטגוריה או מילת מפתח..."
-            className="w-full bg-[#0d0f1a] border border-white/5 rounded-xl px-3 py-2 pr-9 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/30 transition-colors" />
+            className="w-full bg-surface-secondary border border-edge rounded-xl px-3 py-2 pr-9 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/30 transition-colors" />
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-[#0d0f1a] border border-white/5 rounded-xl overflow-hidden">
+      <div className="bg-surface-secondary border border-edge rounded-xl overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-white/5">
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">סטטוס</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">קטגוריה</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider hidden md:table-cell">מילות מפתח</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider hidden lg:table-cell">תאריך</th>
-              <th className="text-right px-4 py-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">פעולות</th>
+            <tr className="border-b border-edge">
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider">סטטוס</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider">קטגוריה</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider hidden md:table-cell">מילות מפתח</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider hidden lg:table-cell">תאריך</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-white/30 uppercase tracking-wider">פעולות</th>
             </tr>
           </thead>
           <tbody>
@@ -264,7 +264,7 @@ export default function CategoriesPage() {
                 </td>
               </tr>
             ) : filtered.map((cat) => (
-              <tr key={cat.id} className="border-b border-white/5 last:border-0 hover:bg-white/2 transition-colors">
+              <tr key={cat.id} className="border-b border-edge last:border-0 hover:bg-white/2 transition-colors">
                 <td className="px-4 py-3.5">
                   <button onClick={() => toggleActive(cat.id)}
                     className={`transition-colors ${cat.active ? 'text-blue-400 hover:text-blue-300' : 'text-white/20 hover:text-white/40'}`}>
@@ -278,10 +278,10 @@ export default function CategoriesPage() {
                 <td className="px-4 py-3.5 hidden md:table-cell">
                   <div className="flex flex-wrap gap-1">
                     {cat.keywords.slice(0, 3).map((k) => (
-                      <span key={k} className="px-2 py-0.5 bg-white/5 border border-white/8 rounded-full text-[10px] text-white/50">{k}</span>
+                      <span key={k} className="px-2 py-0.5 bg-white/5 border border-edge rounded-full text-2xs text-white/50">{k}</span>
                     ))}
                     {cat.keywords.length > 3 && (
-                      <span className="px-2 py-0.5 bg-white/5 border border-white/8 rounded-full text-[10px] text-white/35">
+                      <span className="px-2 py-0.5 bg-white/5 border border-edge rounded-full text-2xs text-white/35">
                         +{cat.keywords.length - 3}
                       </span>
                     )}

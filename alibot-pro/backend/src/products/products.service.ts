@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import axios from 'axios';
@@ -38,6 +38,8 @@ function targetCurrency(currencyPair: string): string {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
@@ -63,6 +65,7 @@ export class ProductsService {
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
 
     if (!creds?.aliexpress_app_key) {
+      this.logger.warn(`search: no AliExpress credentials for user ${userId} — returning mock data`);
       const data = this.mockProducts(params.keyword, limit, currency, rate);
       return { data, total: data.length, page, limit };
     }
@@ -84,7 +87,11 @@ export class ProductsService {
       }, creds.aliexpress_app_secret);
 
       const res = await axios.get(ALI_API, { params: signed, timeout: 12000 });
-      const result = res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result;
+      const respResult = res.data?.aliexpress_affiliate_product_query_response?.resp_result;
+      if (respResult?.resp_code !== 200) {
+        this.logger.error(`AliExpress search API error: code=${respResult?.resp_code} msg=${respResult?.resp_msg}`);
+      }
+      const result = respResult?.result;
       const items = result?.products?.product || [];
       const total = result?.total_record_count || items.length;
 
@@ -95,7 +102,8 @@ export class ProductsService {
         : data;
 
       return { data: filtered, total, page, limit };
-    } catch {
+    } catch (err: any) {
+      this.logger.error(`AliExpress search failed: ${err?.response?.data ? JSON.stringify(err.response.data) : err?.message}`);
       const data = this.mockProducts(params.keyword, limit, currency, rate);
       return { data, total: data.length, page, limit };
     }
@@ -123,6 +131,7 @@ export class ProductsService {
     const minDiscount = params.sort === 'most_discounted' ? 30 : undefined;
 
     if (!creds?.aliexpress_app_key) {
+      this.logger.warn(`getFeatured: no AliExpress credentials for user ${userId} — returning mock data`);
       const label = params.sort === 'most_discounted' ? 'deal' : 'trending';
       const data = this.mockProducts(label, limit, currency, rate);
       return { data, total: data.length, page, limit };
@@ -143,7 +152,11 @@ export class ProductsService {
       }, creds.aliexpress_app_secret);
 
       const res = await axios.get(ALI_API, { params: signed, timeout: 12000 });
-      const result = res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result;
+      const respResult = res.data?.aliexpress_affiliate_product_query_response?.resp_result;
+      if (respResult?.resp_code !== 200) {
+        this.logger.error(`AliExpress featured API error: code=${respResult?.resp_code} msg=${respResult?.resp_msg}`);
+      }
+      const result = respResult?.result;
       const items = result?.products?.product || [];
       const total = result?.total_record_count || items.length;
 
@@ -151,7 +164,8 @@ export class ProductsService {
       if (minDiscount) data = data.filter((p) => p.discount_percent >= minDiscount);
 
       return { data, total, page, limit };
-    } catch {
+    } catch (err: any) {
+      this.logger.error(`AliExpress featured failed: ${err?.response?.data ? JSON.stringify(err.response.data) : err?.message}`);
       const label = params.sort === 'most_discounted' ? 'deal' : 'trending';
       const data = this.mockProducts(label, limit, currency, rate);
       return { data, total: data.length, page, limit };
@@ -172,6 +186,7 @@ export class ProductsService {
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
 
     if (!creds?.aliexpress_app_key) {
+      this.logger.warn(`getPromotional: no AliExpress credentials for user ${userId} — returning mock data`);
       const data = this.mockProducts('promotion', limit, currency, rate);
       return { data, total: data.length, page, limit };
     }
@@ -190,13 +205,18 @@ export class ProductsService {
       }, creds.aliexpress_app_secret);
 
       const res = await axios.get(ALI_API, { params: signed, timeout: 12000 });
-      const result = res.data?.aliexpress_affiliate_hotproduct_query_response?.resp_result?.result;
+      const respResult = res.data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
+      if (respResult?.resp_code !== 200) {
+        this.logger.error(`AliExpress promotional API error: code=${respResult?.resp_code} msg=${respResult?.resp_msg}`);
+      }
+      const result = respResult?.result;
       const items = result?.products?.product || [];
       const total = result?.total_record_count || items.length;
 
       const data = this.mapProducts(items, rate, currency);
       return { data, total, page, limit };
-    } catch {
+    } catch (err: any) {
+      this.logger.error(`AliExpress promotional failed: ${err?.response?.data ? JSON.stringify(err.response.data) : err?.message}`);
       const data = this.mockProducts('promotion', limit, currency, rate);
       return { data, total: data.length, page, limit };
     }
@@ -235,7 +255,8 @@ export class ProductsService {
 
       await this.cacheManager.set(cacheKey, categories, CATEGORIES_TTL_SEC * 1000);
       return categories;
-    } catch {
+    } catch (err: any) {
+      this.logger.error(`AliExpress categories failed: ${err?.response?.data ? JSON.stringify(err.response.data) : err?.message}`);
       return this.mockCategories();
     }
   }
@@ -255,7 +276,7 @@ export class ProductsService {
         app_key: creds.aliexpress_app_key,
         keywords: productId,
         fields: PRODUCT_FIELDS,
-        page_size: 5,
+        page_size: 20,
         target_currency: currency,
         tracking_id: creds.aliexpress_tracking_id,
       }, creds.aliexpress_app_secret);
@@ -264,7 +285,9 @@ export class ProductsService {
       const items: any[] =
         res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
 
-      const exact = items.find((p: any) => String(p.product_id) === productId) || items[0];
+      // Require an exact product_id match — never fall back to items[0],
+      // as a keyword search for a numeric ID can return completely unrelated products.
+      const exact = items.find((p: any) => String(p.product_id) === productId);
       if (!exact) return null;
 
       return this.mapProducts([exact], rate, currency)[0];

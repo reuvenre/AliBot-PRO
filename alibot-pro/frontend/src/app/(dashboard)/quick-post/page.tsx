@@ -354,7 +354,7 @@ export default function QuickPostPage() {
           {/* Left: product image + affiliate link */}
           <div className="w-72 shrink-0 space-y-3">
             {/* Product image */}
-            <div className="bg-[#0d0f1a] border border-white/8 rounded-xl overflow-hidden">
+            <div className="bg-surface-secondary border border-edge rounded-xl overflow-hidden">
               {selected.image_url && (
                 <div className="aspect-square bg-white/5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -379,8 +379,8 @@ export default function QuickPostPage() {
             </div>
 
             {/* Affiliate link box */}
-            <div className="bg-[#0d0f1a] border border-white/8 rounded-xl p-4 space-y-2">
-              <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+            <div className="bg-surface-secondary border border-edge rounded-xl p-4 space-y-2">
+              <p className="text-2xs font-semibold text-white/40 uppercase tracking-wider flex items-center gap-1.5">
                 <RefreshCw size={9} className={affiliateLoading ? 'animate-spin' : ''} />
                 קישור שותפים
               </p>
@@ -391,8 +391,8 @@ export default function QuickPostPage() {
                 </div>
               ) : affiliateUrl ? (
                 <>
-                  <div className="bg-white/5 border border-white/8 rounded-lg px-3 py-2">
-                    <p className="text-[11px] text-white/50 break-all" dir="ltr">{affiliateUrl}</p>
+                  <div className="bg-white/5 border border-edge rounded-lg px-3 py-2">
+                    <p className="text-xs text-white/50 break-all" dir="ltr">{affiliateUrl}</p>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -431,7 +431,7 @@ export default function QuickPostPage() {
             <div className="flex items-center gap-2">
               <Globe size={13} className="text-white/30" />
               <span className="text-xs text-white/40">שפת פוסט:</span>
-              <div className="flex bg-[#0d0f1a] border border-white/10 rounded-xl p-1 gap-0.5">
+              <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-0.5">
                 {POST_LANGS.map(({ value, label }) => (
                   <button
                     key={value}
@@ -457,7 +457,7 @@ export default function QuickPostPage() {
 
             {/* Preview loading */}
             {isLoadingPreview && !preview && (
-              <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-10 flex justify-center">
+              <div className="bg-surface-secondary border border-edge rounded-xl p-10 flex justify-center">
                 <Loader2 size={20} className="animate-spin text-blue-400" />
               </div>
             )}
@@ -507,7 +507,7 @@ export default function QuickPostPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="חפש מוצר... (עברית או English)"
-              className="w-full bg-[#0d0f1a] border border-white/10 rounded-xl pr-11 pl-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
+              className="w-full bg-surface-secondary border border-edge-hover rounded-xl pr-11 pl-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
             />
             {isTranslating && (
               <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-blue-400">
@@ -542,7 +542,7 @@ export default function QuickPostPage() {
             <select
               value={selectedCategory}
               onChange={(e) => handleCategoryChange(e.target.value)}
-              className="appearance-none bg-[#0d0f1a] border border-white/10 rounded-xl px-4 py-2 pr-8 text-sm text-white/70 outline-none focus:border-blue-500/50 transition-colors cursor-pointer"
+              className="appearance-none bg-surface-secondary border border-edge-hover rounded-xl px-4 py-2 pr-8 text-sm text-white/70 outline-none focus:border-blue-500/50 transition-colors cursor-pointer"
             >
               <option value="">כל הקטגוריות</option>
               {categories.map((c) => (
@@ -552,7 +552,7 @@ export default function QuickPostPage() {
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
           </div>
 
-          <div className="flex bg-[#0d0f1a] border border-white/10 rounded-xl p-1 gap-1">
+          <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1">
             {SORT_OPTIONS.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
@@ -601,7 +601,7 @@ export default function QuickPostPage() {
           <Loader2 size={24} className="animate-spin text-blue-400" />
         </div>
       ) : products.length === 0 ? (
-        <div className="bg-[#0d0f1a] border border-dashed border-white/10 rounded-2xl p-16 flex flex-col items-center text-center">
+        <div className="bg-surface-secondary border border-dashed border-edge-hover rounded-2xl p-16 flex flex-col items-center text-center">
           <Search size={36} className="text-white/15 mb-4" />
           <p className="text-sm text-white/30">לא נמצאו מוצרים</p>
         </div>

@@ -142,15 +142,15 @@ export default function CampaignDetailPage() {
           },
           { label: 'מארק-אפ', value: `${campaign.markup_percent ?? 0}%` },
         ].map(({ label, value }) => (
-          <div key={label} className="bg-[#0d0f1a] border border-white/5 rounded-xl p-4">
-            <p className="text-[10px] text-white/30 mb-1">{label}</p>
+          <div key={label} className="bg-surface-secondary border border-edge rounded-xl p-4">
+            <p className="text-2xs text-white/30 mb-1">{label}</p>
             <p className="text-xs text-white/70 truncate">{value}</p>
           </div>
         ))}
       </div>
 
       {/* Posts */}
-      <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <div className="bg-surface-secondary border border-edge rounded-xl p-5">
         <h2 className="text-sm font-semibold text-white mb-4">פוסטים אחרונים</h2>
 
         {posts.length === 0 && (
@@ -171,7 +171,7 @@ export default function CampaignDetailPage() {
               <img src={post.product_image} alt="" className="w-10 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-white/70 truncate">{post.product_title}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">
+                <p className="text-2xs text-white/30 mt-0.5">
                   {post.sent_at
                     ? new Date(post.sent_at).toLocaleString('he-IL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                     : 'ממתין'}

@@ -121,13 +121,13 @@ export function TemplatePanel({ selectedId, onSelect }: TemplatePanelProps) {
   const allTemplates = [...BUILTIN, ...custom.map((t) => ({ ...t, builtin: false as const }))];
 
   return (
-    <div className="bg-[#0d0f1a] border border-white/5 rounded-xl overflow-hidden">
+    <div className="bg-surface-secondary border border-edge rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-edge flex items-center justify-between">
         <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">תבניות פוסט</p>
         <button
           onClick={openNew}
-          className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+          className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
         >
           <Plus size={12} />
           חדשה
@@ -136,12 +136,12 @@ export function TemplatePanel({ selectedId, onSelect }: TemplatePanelProps) {
 
       {/* New / Edit form */}
       {(isNew || editing) && (
-        <div className="p-3 border-b border-white/5 bg-blue-500/5 space-y-2">
+        <div className="p-3 border-b border-edge bg-blue-500/5 space-y-2">
           <div className="flex gap-2">
             <input
               value={form.icon}
               onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
-              className="w-10 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-center text-white outline-none focus:border-blue-500/50"
+              className="w-10 bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-center text-white outline-none focus:border-blue-500/50"
               maxLength={2}
               placeholder="📝"
             />
@@ -149,7 +149,7 @@ export function TemplatePanel({ selectedId, onSelect }: TemplatePanelProps) {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="שם התבנית"
-              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/50"
+              className="flex-1 bg-white/5 border border-edge-hover rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/50"
               dir="rtl"
             />
           </div>
@@ -158,7 +158,7 @@ export function TemplatePanel({ selectedId, onSelect }: TemplatePanelProps) {
             onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
             placeholder="הוראות לבינה המלאכותית — לדוגמה: 'כתוב פוסט קצר שמדגיש את המחיר. פתח עם שאלה...'"
             rows={4}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none leading-relaxed"
+            className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-xs text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none leading-relaxed"
             dir="rtl"
           />
           <div className="flex gap-2">
@@ -195,7 +195,7 @@ export function TemplatePanel({ selectedId, onSelect }: TemplatePanelProps) {
       </div>
 
       {/* Custom list */}
-      <div className="border-t border-white/5">
+      <div className="border-t border-edge">
         <button
           onClick={() => setShowCustom((v) => !v)}
           className="w-full flex items-center justify-between px-4 py-2 text-[9px] text-white/25 uppercase tracking-wider hover:text-white/40 transition-colors"
@@ -211,7 +211,7 @@ export function TemplatePanel({ selectedId, onSelect }: TemplatePanelProps) {
                 <Loader2 size={14} className="animate-spin text-white/20" />
               </div>
             ) : custom.length === 0 ? (
-              <p className="text-[11px] text-white/20 text-center py-3">
+              <p className="text-xs text-white/20 text-center py-3">
                 אין תבניות עדיין — לחץ "+ חדשה"
               </p>
             ) : (

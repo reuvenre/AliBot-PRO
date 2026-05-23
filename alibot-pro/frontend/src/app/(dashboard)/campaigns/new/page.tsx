@@ -76,7 +76,7 @@ export default function NewCampaignPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Name */}
-        <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="bg-surface-secondary border border-edge rounded-xl p-5">
           <h2 className="text-sm font-semibold text-white mb-4">פרטים בסיסיים</h2>
           <div className="space-y-4">
             <div>
@@ -86,7 +86,7 @@ export default function NewCampaignPage() {
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="מבצעי אוזניות"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
               />
             </div>
 
@@ -101,7 +101,7 @@ export default function NewCampaignPage() {
                     className={`px-4 py-2 rounded-lg text-xs font-medium transition-all
                       ${form.language === lang
                         ? 'bg-blue-600/30 text-blue-400 border border-blue-500/40'
-                        : 'bg-white/5 text-white/40 border border-white/5 hover:bg-white/10'
+                        : 'bg-white/5 text-white/40 border border-edge hover:bg-white/10'
                       }`}
                   >
                     {lang === 'he' ? '🇮🇱 עברית' : lang === 'en' ? '🇺🇸 English' : '🇸🇦 عربي'}
@@ -113,7 +113,7 @@ export default function NewCampaignPage() {
         </div>
 
         {/* Keywords */}
-        <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="bg-surface-secondary border border-edge rounded-xl p-5">
           <h2 className="text-sm font-semibold text-white mb-4">מילות מפתח לחיפוש</h2>
           <div className="flex gap-2 mb-3">
             <input
@@ -121,7 +121,7 @@ export default function NewCampaignPage() {
               onChange={(e) => setKwInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }}
               placeholder="הוסף מילת מפתח..."
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
+              className="flex-1 bg-white/5 border border-edge-hover rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
             />
             <button
               type="button"
@@ -133,7 +133,7 @@ export default function NewCampaignPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {form.keywords.map((kw) => (
-              <span key={kw} className="flex items-center gap-1.5 bg-white/8 border border-white/10 text-white/70 text-xs px-3 py-1.5 rounded-lg">
+              <span key={kw} className="flex items-center gap-1.5 bg-white/8 border border-edge-hover text-white/70 text-xs px-3 py-1.5 rounded-lg">
                 {kw}
                 <button type="button" onClick={() => removeKeyword(kw)} className="text-white/30 hover:text-red-400 transition-colors">
                   <X size={11} />
@@ -147,7 +147,7 @@ export default function NewCampaignPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="bg-surface-secondary border border-edge rounded-xl p-5">
           <h2 className="text-sm font-semibold text-white mb-4">פילטרים (אופציונלי)</h2>
           <div className="grid grid-cols-3 gap-4">
             <div>
@@ -158,7 +158,7 @@ export default function NewCampaignPage() {
                 value={form.min_price ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, min_price: e.target.value ? +e.target.value : undefined }))}
                 placeholder="0"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
               />
             </div>
             <div>
@@ -169,7 +169,7 @@ export default function NewCampaignPage() {
                 value={form.max_price ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, max_price: e.target.value ? +e.target.value : undefined }))}
                 placeholder="ללא הגבלה"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
               />
             </div>
             <div>
@@ -181,14 +181,14 @@ export default function NewCampaignPage() {
                 value={form.min_discount ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, min_discount: e.target.value ? +e.target.value : undefined }))}
                 placeholder="20"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/60 transition-colors"
               />
             </div>
           </div>
         </div>
 
         {/* Schedule */}
-        <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+        <div className="bg-surface-secondary border border-edge rounded-xl p-5">
           <h2 className="text-sm font-semibold text-white mb-4">תזמון ופרסום</h2>
           <div className="space-y-4">
             <div>
@@ -202,7 +202,7 @@ export default function NewCampaignPage() {
                     className={`py-2 px-3 rounded-lg text-xs font-medium transition-all text-center
                       ${form.schedule_cron === p.value
                         ? 'bg-blue-600/30 text-blue-400 border border-blue-500/40'
-                        : 'bg-white/5 text-white/40 border border-white/5 hover:bg-white/10'
+                        : 'bg-white/5 text-white/40 border border-edge hover:bg-white/10'
                       }`}
                   >
                     {p.label}
@@ -220,7 +220,7 @@ export default function NewCampaignPage() {
                   max={20}
                   value={form.posts_per_run}
                   onChange={(e) => setForm((f) => ({ ...f, posts_per_run: +e.target.value }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors"
+                  className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors"
                 />
               </div>
               <div>
@@ -231,9 +231,9 @@ export default function NewCampaignPage() {
                   max={50}
                   value={form.markup_percent ?? 15}
                   onChange={(e) => setForm((f) => ({ ...f, markup_percent: +e.target.value }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors"
+                  className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors"
                 />
-                <p className="text-[10px] text-white/25 mt-1">תוסף על המחיר בשקל</p>
+                <p className="text-2xs text-white/25 mt-1">תוסף על המחיר בשקל</p>
               </div>
             </div>
           </div>

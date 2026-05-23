@@ -101,7 +101,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Period selector */}
-        <div className="flex bg-[#0d0f1a] border border-white/5 rounded-xl p-1 gap-1">
+        <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1">
           {UNIQUE_PERIODS.map((p) => (
             <button
               key={p.value}
@@ -134,22 +134,22 @@ export default function ReportsPage() {
               <div>
                 <p className="text-xs text-white/40 mb-1">ממוצע יומי (חודש נוכחי)</p>
                 <p className="text-xl font-bold text-white">₪{dailyAvg.toFixed(2)}</p>
-                <p className="text-[10px] text-white/30">ממוצע יומי</p>
+                <p className="text-2xs text-white/30">ממוצע יומי</p>
               </div>
               <div>
                 <p className="text-xs text-white/40 mb-1">תחזית חודשית</p>
                 <p className="text-xl font-bold text-white">₪{projectedMonthly.toFixed(2)}</p>
-                <p className="text-[10px] text-white/30">תחזית הכנסות</p>
+                <p className="text-2xs text-white/30">תחזית הכנסות</p>
               </div>
               <div>
                 <p className="text-xs text-white/40 mb-1">סה"כ פוסטים</p>
                 <p className="text-xl font-bold text-white">{postCount}</p>
-                <p className="text-[10px] text-white/30">פוסטים שנשלחו</p>
+                <p className="text-2xs text-white/30">פוסטים שנשלחו</p>
               </div>
               <div>
                 <p className="text-xs text-white/40 mb-1">עמלה לפוסט</p>
                 <p className="text-xl font-bold text-white">₪{commissionPerPost.toFixed(2)}</p>
-                <p className="text-[10px] text-white/30">ממוצע לפוסט</p>
+                <p className="text-2xs text-white/30">ממוצע לפוסט</p>
               </div>
             </div>
           </div>
@@ -188,7 +188,7 @@ export default function ReportsPage() {
 
           {/* By campaign */}
           {summary && summary.by_campaign.length > 0 && (
-            <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+            <div className="bg-surface-secondary border border-edge rounded-xl p-5">
               <h3 className="text-sm font-semibold text-white mb-4">הכנסות לפי קמפיין</h3>
               <div className="space-y-3">
                 {summary.by_campaign.map((c) => {
@@ -215,7 +215,7 @@ export default function ReportsPage() {
 
           {/* By month */}
           {summary && summary.by_month.length > 0 && (
-            <div className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+            <div className="bg-surface-secondary border border-edge rounded-xl p-5">
               <h3 className="text-sm font-semibold text-white mb-4">התפלגות חודשית</h3>
               <div className="space-y-2">
                 {summary.by_month.map((m) => (
@@ -232,7 +232,7 @@ export default function ReportsPage() {
           )}
 
           {totalRevenue === 0 && (
-            <div className="bg-[#0d0f1a] border border-dashed border-white/10 rounded-2xl p-16 text-center">
+            <div className="bg-surface-secondary border border-dashed border-edge-hover rounded-2xl p-16 text-center">
               <BarChart3 size={36} className="text-white/15 mx-auto mb-4" />
               <p className="text-sm text-white/30">אין נתוני הכנסות לתקופה זו</p>
               <p className="text-xs text-white/20 mt-1">הפעל קמפיינים כדי לראות נתונים כאן</p>

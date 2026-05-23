@@ -5,10 +5,10 @@ import { Play, Pause, Trash2, ChevronRight, Clock, FileText } from 'lucide-react
 import type { Campaign } from '@/types';
 
 const STATUS_STYLES: Record<Campaign['status'], string> = {
-  active:  'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-  paused:  'bg-amber-500/15 text-amber-400 border-amber-500/25',
-  draft:   'bg-white/5 text-white/40 border-white/10',
-  error:   'bg-red-500/15 text-red-400 border-red-500/25',
+  active: 'badge badge-success',
+  paused: 'badge badge-warning',
+  draft:  'badge badge-neutral',
+  error:  'badge badge-danger',
 };
 
 const STATUS_LABEL: Record<Campaign['status'], string> = {
@@ -52,12 +52,12 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
   return (
     <div
       onClick={() => onClick(campaign.id)}
-      className="group bg-[#0d0f1a] border border-white/5 hover:border-white/10 rounded-xl p-5 cursor-pointer transition-all hover:bg-[#111320]"
+      className="group bg-surface-secondary border border-edge hover:border-edge-hover rounded-xl p-5 cursor-pointer transition-all hover:bg-surface-tertiary"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[campaign.status]}`}>
+            <span className={STATUS_STYLES[campaign.status]}>
               {STATUS_LABEL[campaign.status]}
             </span>
           </div>
@@ -69,12 +69,12 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
       {/* Keywords */}
       <div className="flex flex-wrap gap-1 mb-4">
         {campaign.keywords.slice(0, 3).map((kw) => (
-          <span key={kw} className="text-[10px] bg-white/5 text-white/40 px-2 py-0.5 rounded-md">
+          <span key={kw} className="text-2xs bg-white/5 text-white/40 px-2 py-0.5 rounded-md">
             {kw}
           </span>
         ))}
         {campaign.keywords.length > 3 && (
-          <span className="text-[10px] text-white/25">+{campaign.keywords.length - 3}</span>
+          <span className="text-2xs text-white/30">+{campaign.keywords.length - 3}</span>
         )}
       </div>
 
@@ -93,11 +93,11 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 border-t border-white/5 pt-3">
+      <div className="flex items-center gap-2 border-t border-edge pt-3">
         <button
           onClick={handleToggle}
           disabled={isToggling || campaign.status === 'draft'}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white disabled:opacity-40 transition-all"
+          className="btn btn-ghost btn-sm"
         >
           {campaign.status === 'active' ? <Pause size={12} /> : <Play size={12} />}
           {campaign.status === 'active' ? 'השהה' : 'הפעל'}
@@ -106,7 +106,7 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
         <button
           onClick={handleRunNow}
           disabled={isRunning || campaign.status !== 'active'}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-40 transition-all"
+          className="btn btn-sm bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-0"
         >
           <Play size={12} />
           {isRunning ? 'שולח...' : 'הרץ עכשיו'}
@@ -114,7 +114,7 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
 
         <button
           onClick={handleDelete}
-          className="mr-auto p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-all"
+          className="btn btn-danger btn-xs mr-auto"
         >
           <Trash2 size={13} />
         </button>

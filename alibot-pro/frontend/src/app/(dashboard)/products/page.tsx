@@ -81,12 +81,12 @@ function ImportModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ direction: 'rtl' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-[#0e1016] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-md bg-surface-secondary border border-edge rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
           <div>
             <h2 className="text-[15px] font-semibold text-white">ייבא מוצרים</h2>
-            <p className="text-[12px] text-white/40 mt-0.5">ייבא מוצרים מ-AliExpress לקטלוג שלך</p>
+            <p className="text-xs text-white/40 mt-0.5">ייבא מוצרים מ-AliExpress לקטלוג שלך</p>
           </div>
           <button
             onClick={onClose}
@@ -97,12 +97,12 @@ function ImportModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/[0.06] px-6 pt-4">
+        <div className="flex border-b border-edge px-6 pt-4">
           {(['single', 'bulk'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`pb-3 px-1 ml-6 text-[13px] font-medium border-b-2 transition-all ${
+              className={`pb-3 px-1 ml-6 text-body font-medium border-b-2 transition-all ${
                 tab === t
                   ? 'border-blue-500 text-blue-400'
                   : 'border-transparent text-white/35 hover:text-white/60'
@@ -118,7 +118,7 @@ function ImportModal({
           {tab === 'single' ? (
             <>
               <div>
-                <label className="block text-[12px] font-medium text-white/50 mb-1.5">
+                <label className="block text-xs font-medium text-white/50 mb-1.5">
                   כתובת URL או מזהה מוצר
                 </label>
                 <input
@@ -128,27 +128,27 @@ function ImportModal({
                   onKeyDown={(e) => e.key === 'Enter' && handleImport()}
                   placeholder="https://aliexpress.com/item/... או מזהה מוצר"
                   dir="ltr"
-                  className="w-full bg-[#13151f] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  className="w-full bg-surface-tertiary border border-edge rounded-xl px-3.5 py-2.5 text-body text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
                 />
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-white/50 mb-1.5">קטגוריה (אופציונלי)</label>
+                <label className="block text-xs font-medium text-white/50 mb-1.5">קטגוריה (אופציונלי)</label>
                 <input
                   type="text"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   placeholder="למשל: Electronics"
-                  className="w-full bg-[#13151f] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  className="w-full bg-surface-tertiary border border-edge rounded-xl px-3.5 py-2.5 text-body text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
                 />
               </div>
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-white/[0.08] rounded-xl">
+            <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-edge rounded-xl">
               <Upload size={28} className="text-white/20 mb-3" />
-              <p className="text-[13px] text-white/40 text-center">
+              <p className="text-body text-white/40 text-center">
                 CSV עם עמודות product_id, category
               </p>
-              <p className="text-[11px] text-white/25 mt-1">בקרוב — תכונה זו בפיתוח</p>
+              <p className="text-xs text-white/25 mt-1">בקרוב — תכונה זו בפיתוח</p>
             </div>
           )}
 
@@ -156,22 +156,22 @@ function ImportModal({
           {error && (
             <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3.5 py-2.5">
               <AlertCircle size={13} className="text-red-400 shrink-0" />
-              <p className="text-[12px] text-red-400">{error}</p>
+              <p className="text-xs text-red-400">{error}</p>
             </div>
           )}
           {success && (
             <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3.5 py-2.5">
               <CheckCheck size={13} className="text-emerald-400 shrink-0" />
-              <p className="text-[12px] text-emerald-400">{success}</p>
+              <p className="text-xs text-emerald-400">{success}</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06]">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-edge">
           <button
             onClick={onClose}
-            className="text-[13px] text-white/40 hover:text-white/70 transition-colors"
+            className="text-body text-white/40 hover:text-white/70 transition-colors"
           >
             ביטול
           </button>
@@ -179,7 +179,7 @@ function ImportModal({
             <button
               onClick={handleImport}
               disabled={loading || !input.trim()}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-body font-semibold rounded-xl transition-all"
             >
               {loading && <Loader2 size={13} className="animate-spin" />}
               <Upload size={13} />
@@ -223,7 +223,7 @@ function ActionBtn({
         : <Icon size={13} />
       }
       {/* Tooltip */}
-      <span className="absolute bottom-full mb-1.5 right-1/2 translate-x-1/2 px-2 py-0.5 bg-[var(--bg-tertiary)] border border-[var(--border)] text-[10px] text-[var(--text-muted)] rounded-md whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
+      <span className="absolute bottom-full mb-1.5 right-1/2 translate-x-1/2 px-2 py-0.5 bg-[var(--bg-tertiary)] border border-[var(--border)] text-2xs text-[var(--text-muted)] rounded-md whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
         {label}
       </span>
     </button>
@@ -328,7 +328,7 @@ function ProductRow({
   const hasDiscount = product.discount_percent > 0 && product.original_price > product.sale_price;
 
   return (
-    <tr className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors group">
+    <tr className="border-b border-edge hover:bg-white/[0.02] transition-colors group">
       {/* Product */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
@@ -351,18 +351,18 @@ function ProductRow({
 
           {/* Info */}
           <div className="min-w-0">
-            <p className="text-[12px] text-white/75 line-clamp-1 leading-tight mb-1">
+            <p className="text-xs text-white/75 line-clamp-1 leading-tight mb-1">
               {product.title}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               {product.supplier && (
-                <span className="text-[10px] text-blue-400/70">{product.supplier}</span>
+                <span className="text-2xs text-blue-400/70">{product.supplier}</span>
               )}
-              <span className="text-[10px] text-white/25">{product.product_id}</span>
+              <span className="text-2xs text-white/25">{product.product_id}</span>
               {product.rating > 0 && (
                 <span className="flex items-center gap-0.5">
                   <Star size={8} className="text-amber-400 fill-amber-400" />
-                  <span className="text-[10px] text-white/45">{product.rating.toFixed(1)}</span>
+                  <span className="text-2xs text-white/45">{product.rating.toFixed(1)}</span>
                 </span>
               )}
               {product.has_post && (
@@ -377,9 +377,9 @@ function ProductRow({
 
       {/* Price */}
       <td className="px-4 py-3 text-right">
-        <p className="text-[13px] font-semibold text-white">{s}{fmt(product.sale_price)}</p>
+        <p className="text-body font-semibold text-white">{s}{fmt(product.sale_price)}</p>
         {hasDiscount && (
-          <p className="text-[10px] text-white/25 line-through">{s}{fmt(product.original_price)}</p>
+          <p className="text-2xs text-white/25 line-through">{s}{fmt(product.original_price)}</p>
         )}
         {hasDiscount && (
           <span className="text-[9px] text-red-400 font-medium">-{product.discount_percent}%</span>
@@ -390,26 +390,26 @@ function ProductRow({
       <td className="px-4 py-3 text-right">
         {product.commission_rate > 0 ? (
           <div>
-            <p className="text-[12px] text-emerald-400 font-medium">{product.commission_rate}%</p>
-            <p className="text-[10px] text-white/30">
+            <p className="text-xs text-emerald-400 font-medium">{product.commission_rate}%</p>
+            <p className="text-2xs text-white/30">
               {s}{(product.sale_price * product.commission_rate / 100).toFixed(2)}
             </p>
           </div>
         ) : (
-          <span className="text-[11px] text-white/20">—</span>
+          <span className="text-xs text-white/20">—</span>
         )}
       </td>
 
       {/* Status */}
       <td className="px-4 py-3">
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLORS[product.status]}`}>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${STATUS_COLORS[product.status]}`}>
           {STATUS_LABELS[product.status]}
         </span>
       </td>
 
       {/* Date */}
       <td className="px-4 py-3 text-right">
-        <p className="text-[11px] text-white/30">{fmtDate(product.created_at)}</p>
+        <p className="text-xs text-white/30">{fmtDate(product.created_at)}</p>
       </td>
 
       {/* Actions */}
@@ -509,12 +509,12 @@ export default function ProductsPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-white tracking-tight">מוצרים</h1>
-          <p className="text-[13px] text-white/35 mt-1">נהל את קטלוג המוצרים שלך</p>
+          <p className="text-body text-white/35 mt-1">נהל את קטלוג המוצרים שלך</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => router.push('/products/discover')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/30 bg-blue-500/[0.08] hover:bg-blue-500/[0.14] text-[12px] text-blue-400 hover:text-blue-300 font-medium transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/30 bg-blue-500/[0.08] hover:bg-blue-500/[0.14] text-xs text-blue-400 hover:text-blue-300 font-medium transition-all"
           >
             <Search size={12} />
             גלה מוצרים
@@ -522,14 +522,14 @@ export default function ProductsPage() {
           <button
             onClick={() => load(page, true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[12px] text-white/55 hover:text-white/80 transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-edge bg-white/[0.03] hover:bg-white/[0.06] text-xs text-white/55 hover:text-white/80 transition-all disabled:opacity-50"
           >
             <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
             רענן
           </button>
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-[13px] font-semibold transition-all shadow-sm shadow-blue-600/20"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-body font-semibold transition-all shadow-sm shadow-blue-600/20"
           >
             <Plus size={13} />
             ייבא מוצרים
@@ -567,21 +567,21 @@ export default function ProductsPage() {
         ].map((card) => (
           <div
             key={card.label}
-            className="bg-[#0e1016] border border-white/[0.06] rounded-xl px-4 py-3.5"
+            className="bg-surface-secondary border border-edge rounded-xl px-4 py-3.5"
           >
             <div className="flex items-center gap-2 mb-2">
               <card.icon size={13} className="text-white/25" />
-              <span className="text-[11px] text-white/35">{card.label}</span>
+              <span className="text-xs text-white/35">{card.label}</span>
             </div>
             <p className="text-[22px] font-bold text-white leading-none">{card.value}</p>
-            {card.sub && <p className="text-[11px] text-white/30 mt-1">{card.sub}</p>}
+            {card.sub && <p className="text-xs text-white/30 mt-1">{card.sub}</p>}
           </div>
         ))}
       </div>
 
       {/* ── Filters ─────────────────────────────────────────────────────── */}
-      <div className="bg-[#0e1016] border border-white/[0.06] rounded-xl mb-4">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.05]">
+      <div className="bg-surface-secondary border border-edge rounded-xl mb-4">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
           {/* Search */}
           <div className="relative w-72">
             <Search size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25" />
@@ -590,13 +590,13 @@ export default function ProductsPage() {
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="חפש מוצרים לפי כותרת או מזהה מוצר..."
-              className="w-full bg-[#13151f] border border-white/[0.07] rounded-xl pr-8 pl-3.5 py-2 text-[12px] text-white/70 placeholder-white/20 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/15 transition-all"
+              className="w-full bg-surface-tertiary border border-edge rounded-xl pr-8 pl-3.5 py-2 text-xs text-white/70 placeholder-white/20 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/15 transition-all"
             />
           </div>
 
           {/* Status Tabs */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-white/30 ml-2">סטטוס:</span>
+            <span className="text-xs text-white/30 ml-2">סטטוס:</span>
             {STATUS_TABS.map((tab) => {
               const colorMap: Record<string, string> = {
                 emerald: 'bg-emerald-500 hover:bg-emerald-600',
@@ -608,7 +608,7 @@ export default function ProductsPage() {
                 <button
                   key={tab.key}
                   onClick={() => setStatusFilter(tab.key)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-medium transition-all ${
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
                     isActive
                       ? tab.color
                         ? `${colorMap[tab.color]} text-white`
@@ -618,7 +618,7 @@ export default function ProductsPage() {
                 >
                   {tab.label}
                   {tab.count !== undefined && (
-                    <span className={`text-[10px] ${isActive ? 'opacity-80' : 'opacity-50'}`}>
+                    <span className={`text-2xs ${isActive ? 'opacity-80' : 'opacity-50'}`}>
                       {tab.count}
                     </span>
                   )}
@@ -627,12 +627,12 @@ export default function ProductsPage() {
             })}
 
             {/* Post filter */}
-            <div className="flex items-center gap-1 mr-2 border-r border-white/[0.06] pr-2">
+            <div className="flex items-center gap-1 mr-2 border-r border-edge pr-2">
               {(['all', 'has', 'none'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setPostFilter(f)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-all ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all ${
                     postFilter === f
                       ? 'bg-[var(--bg-tertiary)] text-[var(--text)] border border-[var(--border)]'
                       : 'text-white/30 hover:text-white/55 border border-transparent'
@@ -653,14 +653,14 @@ export default function ProductsPage() {
           </div>
         ) : products.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-edge flex items-center justify-center mb-4">
               <ShoppingBag size={22} className="text-white/20" />
             </div>
-            <p className="text-[14px] font-medium text-white/50">אין מוצרים בקטלוג</p>
-            <p className="text-[12px] text-white/25 mt-1 mb-4">ניתן לייבא מוצרים מ-AliExpress או לגלות מוצרים</p>
+            <p className="text-sm font-medium text-white/50">אין מוצרים בקטלוג</p>
+            <p className="text-xs text-white/25 mt-1 mb-4">ניתן לייבא מוצרים מ-AliExpress או לגלות מוצרים</p>
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[13px] font-semibold rounded-xl transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-body font-semibold rounded-xl transition-all"
             >
               <Plus size={13} /> ייבא מוצרים
             </button>
@@ -669,7 +669,7 @@ export default function ProductsPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/[0.05]">
+                <tr className="border-b border-edge">
                   {[
                     { label: 'מוצר', className: 'text-right' },
                     { label: 'מחיר', className: 'text-right' },
@@ -680,7 +680,7 @@ export default function ProductsPage() {
                   ].map((col) => (
                     <th
                       key={col.label}
-                      className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-white/25 ${col.className}`}
+                      className={`px-4 py-2.5 text-2xs font-semibold uppercase tracking-wider text-white/25 ${col.className}`}
                     >
                       {col.label}
                     </th>
@@ -698,15 +698,15 @@ export default function ProductsPage() {
 
         {/* ── Pagination ───────────────────────────────────────────────── */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.05]">
-            <p className="text-[11px] text-white/30">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-edge">
+            <p className="text-xs text-white/30">
               מציג {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} מתוך {total}
             </p>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => load(page - 1)}
                 disabled={page === 1}
-                className="px-3 py-1.5 rounded-lg text-[12px] text-white/40 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="px-3 py-1.5 rounded-lg text-xs text-white/40 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
                 הקודם
               </button>
@@ -717,7 +717,7 @@ export default function ProductsPage() {
                   <button
                     key={pageNum}
                     onClick={() => load(pageNum)}
-                    className={`w-7 h-7 rounded-lg text-[12px] font-medium transition-all ${
+                    className={`w-7 h-7 rounded-lg text-xs font-medium transition-all ${
                       pageNum === page
                         ? 'bg-blue-600 text-white'
                         : 'text-white/40 hover:text-white/70 hover:bg-white/[0.05]'
@@ -730,7 +730,7 @@ export default function ProductsPage() {
               <button
                 onClick={() => load(page + 1)}
                 disabled={page === totalPages}
-                className="px-3 py-1.5 rounded-lg text-[12px] text-white/40 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="px-3 py-1.5 rounded-lg text-xs text-white/40 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
                 הבא
               </button>

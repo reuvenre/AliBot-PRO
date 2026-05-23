@@ -66,7 +66,7 @@ export function IntegrationsForm() {
   return (
     <div className="space-y-6">
       {/* Default Telegram Bot */}
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
           <span className="text-lg">📨</span> Telegram Bot ראשי
           {telegramOk !== null && (
@@ -84,7 +84,7 @@ export function IntegrationsForm() {
                 value={botToken}
                 onChange={(e) => setBotToken(e.target.value)}
                 placeholder="השאר ריק לשמור על הנוכחי"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+                className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
                 dir="ltr"
               />
               <button type="button" onClick={() => setShowToken((s) => !s)}
@@ -92,7 +92,7 @@ export function IntegrationsForm() {
                 {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
             </div>
-            <p className="text-[10px] text-white/25 mt-1">מ-@BotFather · ממולא רק בעת עדכון</p>
+            <p className="text-2xs text-white/25 mt-1">מ-@BotFather · ממולא רק בעת עדכון</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">ערוץ ברירת מחדל</label>
@@ -100,7 +100,7 @@ export function IntegrationsForm() {
               value={defaultChannel}
               onChange={(e) => setDefaultChannel(e.target.value)}
               placeholder="@mychannel או -100123456789"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
               dir="ltr"
             />
           </div>
@@ -120,12 +120,12 @@ export function IntegrationsForm() {
       </section>
 
       {/* WhatsApp */}
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <span className="text-lg">💬</span> WhatsApp Business
           </h3>
-          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+          <span className="text-2xs bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
         </div>
         <p className="text-xs text-white/35">שילוב עם WhatsApp Business API לשליחת פוסטים לקבוצות ואנשי קשר.</p>
         <button disabled className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/5 text-white/30 text-xs rounded-xl cursor-not-allowed opacity-50">
@@ -134,12 +134,12 @@ export function IntegrationsForm() {
       </section>
 
       {/* Facebook */}
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <span className="text-lg">📘</span> Facebook Pages
           </h3>
-          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+          <span className="text-2xs bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
         </div>
         <p className="text-xs text-white/35">פרסום לדפי פייסבוק ישירות מהמערכת.</p>
         <button disabled className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/5 text-white/30 text-xs rounded-xl cursor-not-allowed opacity-50">
@@ -148,12 +148,12 @@ export function IntegrationsForm() {
       </section>
 
       {/* Instagram */}
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <span className="text-lg">📸</span> Instagram Business
           </h3>
-          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
+          <span className="text-2xs bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 font-medium">בקרוב</span>
         </div>
         <p className="text-xs text-white/35">פרסום Reels ופוסטים לחשבון Instagram Business שלך.</p>
         <button disabled className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/5 text-white/30 text-xs rounded-xl cursor-not-allowed opacity-50">
@@ -162,7 +162,7 @@ export function IntegrationsForm() {
       </section>
 
       {/* Additional Channels */}
-      <section className="bg-[#0d0f1a] border border-white/5 rounded-xl p-5">
+      <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <span className="text-lg">📋</span> ערוצים נוספים

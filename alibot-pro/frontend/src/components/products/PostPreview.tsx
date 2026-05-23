@@ -57,8 +57,8 @@ export function PostPreview({
   return (
     <div className="space-y-4">
       {/* Telegram preview */}
-      <div className="bg-[#0d0f1a] rounded-xl p-4 border border-white/8">
-        <p className="text-[10px] text-blue-400/60 uppercase tracking-widest mb-3 flex items-center gap-2">
+      <div className="bg-surface-secondary rounded-xl p-4 border border-edge">
+        <p className="text-2xs text-blue-400/60 uppercase tracking-widest mb-3 flex items-center gap-2">
           <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#2aabee]" />
           תצוגה מקדימה — Telegram
         </p>
@@ -79,7 +79,7 @@ export function PostPreview({
           dir="rtl"
         />
 
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5 text-[10px] text-white/30">
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-edge text-2xs text-white/30">
           <span>{sym}{preview.price_ils.toLocaleString('he-IL')}</span>
           <span>·</span>
           <span>{text.length} תווים</span>
@@ -88,7 +88,7 @@ export function PostPreview({
 
       {/* Schedule panel */}
       {showScheduler && (
-        <div className="bg-[#0d0f1a] border border-blue-500/20 rounded-xl p-4 space-y-3">
+        <div className="bg-surface-secondary border border-blue-500/20 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-blue-400 flex items-center gap-2">
               <CalendarClock size={13} />
@@ -103,13 +103,13 @@ export function PostPreview({
           </div>
 
           <div>
-            <label className="block text-[10px] text-white/40 mb-1.5">תאריך ושעה לפרסום</label>
+            <label className="block text-2xs text-white/40 mb-1.5">תאריך ושעה לפרסום</label>
             <input
               type="datetime-local"
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
               min={minDateTime}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
               dir="ltr"
             />
           </div>

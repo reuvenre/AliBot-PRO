@@ -47,7 +47,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex flex-row" style={{ direction: 'ltr' }}>
 
       {/* ── Left: form panel ───────────────────────────────────────────────── */}
-      <div className="w-full lg:w-[45%] flex items-center justify-center bg-[#080b14] px-8 py-12">
+      <div className="w-full lg:w-[45%] flex items-center justify-center bg-surface-primary px-8 py-12">
         <div className="w-full max-w-[340px]" style={{ direction: 'rtl' }}>
 
           {/* Logo */}
@@ -73,7 +73,7 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 style={{ direction: 'ltr' }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/60 transition-all"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/60 transition-all"
               />
             </div>
 
@@ -86,7 +86,7 @@ export default function RegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 style={{ direction: 'ltr' }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/60 transition-all"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/60 transition-all"
               />
             </div>
 
@@ -99,14 +99,14 @@ export default function RegisterPage() {
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="••••••••"
                 style={{ direction: 'ltr' }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/60 transition-all"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-blue-500/60 transition-all"
               />
             </div>
 
             {password.length > 0 && (
               <div className="grid grid-cols-2 gap-y-1.5 gap-x-2 py-1">
                 {requirements.map((req) => (
-                  <div key={req.label} className="flex items-center gap-1.5 text-[11px]">
+                  <div key={req.label} className="flex items-center gap-1.5 text-xs">
                     <CheckCircle2 size={11} className={req.ok ? 'text-emerald-400' : 'text-white/20'} />
                     <span className={req.ok ? 'text-white/60' : 'text-white/25'}>{req.label}</span>
                   </div>
@@ -141,7 +141,7 @@ export default function RegisterPage() {
           {/* Google button */}
           <a
             href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/auth/google`}
-            className="mt-4 w-full flex items-center justify-center gap-3 py-2.5 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 transition-all text-sm text-white/70 hover:text-white"
+            className="mt-4 w-full flex items-center justify-center gap-3 py-2.5 rounded-xl border border-edge-hover bg-white/4 hover:bg-white/8 transition-all text-sm text-white/70 hover:text-white"
           >
             <svg width="18" height="18" viewBox="0 0 48 48">
               <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6.1C12.4 13 17.7 9.5 24 9.5z"/>
@@ -167,7 +167,7 @@ export default function RegisterPage() {
         <div className="absolute bottom-1/3 left-1/4 w-72 h-72 rounded-full" style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)' }} />
 
         <div className="relative z-10 px-12 max-w-lg text-center" style={{ direction: 'rtl' }}>
-          <div className="mb-6 inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-xs text-white/50">
+          <div className="mb-6 inline-flex items-center gap-2 bg-white/5 border border-edge-hover rounded-full px-4 py-1.5 text-xs text-white/50">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
             פלטפורמת שיווק שותפים מקצועית
           </div>
@@ -192,7 +192,7 @@ export default function RegisterPage() {
             ].map(({ icon: Icon, label }) => (
               <div
                 key={label}
-                className="flex items-center gap-2 border border-white/10 rounded-full px-4 py-1.5 text-sm text-white/55"
+                className="flex items-center gap-2 border border-edge-hover rounded-full px-4 py-1.5 text-sm text-white/55"
                 style={{ background: 'rgba(255,255,255,0.04)' }}
               >
                 <Icon size={13} className="text-blue-400" />

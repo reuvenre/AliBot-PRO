@@ -98,15 +98,15 @@ export function SchedulingForm() {
     <div className="space-y-6" style={{ direction: 'rtl' }}>
 
       {/* Master toggle */}
-      <div className="bg-[#0e1016] border border-white/[0.07] rounded-2xl p-5">
+      <div className="bg-surface-secondary border border-edge rounded-2xl p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${enabled ? 'bg-amber-500/15' : 'bg-white/[0.05]'}`}>
               <Zap size={18} className={enabled ? 'text-amber-400' : 'text-white/25'} />
             </div>
             <div>
-              <p className="text-[14px] font-semibold text-white">שליחה אוטומטית</p>
-              <p className="text-[12px] text-white/35 mt-0.5">
+              <p className="text-sm font-semibold text-white">שליחה אוטומטית</p>
+              <p className="text-xs text-white/35 mt-0.5">
                 {enabled ? 'פעיל — הפוסטים יישלחו אוטומטית לפי לוח הזמנים' : 'כבוי — הפוסטים נשמרים בתור אך לא נשלחים'}
               </p>
             </div>
@@ -127,7 +127,7 @@ export function SchedulingForm() {
         {lastSentAt && (
           <div className="mt-4 flex items-center gap-2 px-3 py-2 bg-white/[0.03] rounded-xl">
             <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
-            <p className="text-[11px] text-white/40">
+            <p className="text-xs text-white/40">
               שליחה אחרונה: {new Date(lastSentAt).toLocaleDateString('he-IL', {
                 day: '2-digit', month: '2-digit', year: '2-digit',
                 hour: '2-digit', minute: '2-digit',
@@ -138,26 +138,26 @@ export function SchedulingForm() {
       </div>
 
       {/* Time Window */}
-      <div className={`bg-[#0e1016] border border-white/[0.07] rounded-2xl p-5 space-y-4 transition-opacity ${!enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className={`bg-surface-secondary border border-edge rounded-2xl p-5 space-y-4 transition-opacity ${!enabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="flex items-center gap-2 mb-1">
           <Clock size={15} className="text-amber-400" />
-          <h3 className="text-[13px] font-semibold text-white">חלון שליחה</h3>
+          <h3 className="text-body font-semibold text-white">חלון שליחה</h3>
         </div>
-        <p className="text-[12px] text-white/35 -mt-2">
+        <p className="text-xs text-white/35 -mt-2">
           הגדר את שעות היום שבהן מותר לשלוח פוסטים אוטומטית
         </p>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Start hour */}
           <div>
-            <label className="flex items-center gap-1.5 text-[11px] font-medium text-white/50 mb-2">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-white/50 mb-2">
               <Sun size={11} className="text-amber-300" />
               שעת התחלה
             </label>
             <select
               value={startHour}
               onChange={(e) => setStartHour(Number(e.target.value))}
-              className="w-full bg-[#13151f] border border-white/[0.08] rounded-xl px-3 py-2.5 text-[13px] text-white/80 outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
+              className="w-full bg-surface-tertiary border border-edge rounded-xl px-3 py-2.5 text-body text-white/80 outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
             >
               {HOURS.map((h) => (
                 <option key={h.value} value={h.value}>{h.label}</option>
@@ -167,14 +167,14 @@ export function SchedulingForm() {
 
           {/* End hour */}
           <div>
-            <label className="flex items-center gap-1.5 text-[11px] font-medium text-white/50 mb-2">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-white/50 mb-2">
               <Moon size={11} className="text-blue-300" />
               שעת סיום
             </label>
             <select
               value={endHour}
               onChange={(e) => setEndHour(Number(e.target.value))}
-              className="w-full bg-[#13151f] border border-white/[0.08] rounded-xl px-3 py-2.5 text-[13px] text-white/80 outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
+              className="w-full bg-surface-tertiary border border-edge rounded-xl px-3 py-2.5 text-body text-white/80 outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
             >
               {HOURS.map((h) => (
                 <option key={h.value} value={h.value}>{h.label}</option>
@@ -206,10 +206,10 @@ export function SchedulingForm() {
       </div>
 
       {/* Interval */}
-      <div className={`bg-[#0e1016] border border-white/[0.07] rounded-2xl p-5 space-y-3 transition-opacity ${!enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className={`bg-surface-secondary border border-edge rounded-2xl p-5 space-y-3 transition-opacity ${!enabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="flex items-center gap-2 mb-1">
           <Timer size={15} className="text-amber-400" />
-          <h3 className="text-[13px] font-semibold text-white">מרווח בין פוסטים</h3>
+          <h3 className="text-body font-semibold text-white">מרווח בין פוסטים</h3>
         </div>
 
         <div className="grid grid-cols-4 gap-2">
@@ -217,10 +217,10 @@ export function SchedulingForm() {
             <button
               key={opt.value}
               onClick={() => setInterval(opt.value)}
-              className={`px-3 py-2 rounded-xl text-[12px] font-medium border transition-all text-center
+              className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all text-center
                 ${interval === opt.value
                   ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                  : 'bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/70 hover:bg-white/[0.06]'
+                  : 'bg-white/[0.03] border-edge text-white/40 hover:text-white/70 hover:bg-white/[0.06]'
                 }`}
             >
               {opt.label}
@@ -234,13 +234,13 @@ export function SchedulingForm() {
         <div className="flex items-start gap-3 p-4 bg-amber-500/8 border border-amber-500/15 rounded-2xl">
           <Info size={14} className="text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <p className="text-[13px] font-medium text-amber-400">סיכום לוח שליחה</p>
-            <p className="text-[12px] text-white/45 mt-1 leading-relaxed">
+            <p className="text-body font-medium text-amber-400">סיכום לוח שליחה</p>
+            <p className="text-xs text-white/45 mt-1 leading-relaxed">
               שליחה בין <strong className="text-white/60">{startHour}:00</strong> ל-<strong className="text-white/60">{endHour}:00</strong>
               {' '}— עד <strong className="text-white/60">{postsPerDay}</strong> פוסטים ביום
               {' '}({INTERVALS.find(i => i.value === interval)?.label || `כל ${interval} דקות`})
             </p>
-            <p className="text-[11px] text-white/30 mt-1">
+            <p className="text-xs text-white/30 mt-1">
               הפוסטים ישלחו לפי הסדר שנקבע בתור. המערכת בודקת כל דקה.
             </p>
           </div>
@@ -250,7 +250,7 @@ export function SchedulingForm() {
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-          <p className="text-[12px] text-red-400">{error}</p>
+          <p className="text-xs text-red-400">{error}</p>
         </div>
       )}
 
@@ -259,7 +259,7 @@ export function SchedulingForm() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className={`flex items-center gap-2 px-5 py-2.5 text-[13px] font-semibold rounded-xl transition-all disabled:opacity-50
+          className={`flex items-center gap-2 px-5 py-2.5 text-body font-semibold rounded-xl transition-all disabled:opacity-50
             ${saved
               ? 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-400'
               : 'bg-amber-500 hover:bg-amber-400 text-black'

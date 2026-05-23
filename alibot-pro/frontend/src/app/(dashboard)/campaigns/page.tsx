@@ -49,7 +49,7 @@ export default function CampaignsPage() {
 
       {/* Empty */}
       {!isLoading && !error && campaigns.length === 0 && (
-        <div className="bg-[#0d0f1a] border border-dashed border-white/10 rounded-2xl p-16 flex flex-col items-center text-center">
+        <div className="bg-surface-secondary border border-dashed border-edge-hover rounded-2xl p-16 flex flex-col items-center text-center">
           <Megaphone size={36} className="text-white/15 mb-4" />
           <h3 className="text-base font-semibold text-white/50 mb-2">אין קמפיינים עדיין</h3>
           <p className="text-sm text-white/25 mb-6 max-w-xs">

@@ -79,7 +79,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 }
 
 function Divider() {
-  return <div className="border-t border-white/5 my-5" />;
+  return <div className="border-t border-edge my-5" />;
 }
 
 /* ── Tab panels ─────────────────────────────────────────────────────────── */
@@ -96,20 +96,20 @@ function AITab({ s, set, onSave, saving, saved }: {
           {[{ v: 'regular' as const, label: 'רגיל' }, { v: 'emoji' as const, label: "😊 עם אמוג'י" }].map(({ v, label }) => (
             <button key={v} onClick={() => set({ ...s, style: v })}
               className={`px-4 py-2 rounded-xl text-sm border transition-all
-                ${s.style === v ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-white/10 text-white/50 hover:border-white/25'}`}>
+                ${s.style === v ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-edge-hover text-white/50 hover:border-white/25'}`}>
               {label}
             </button>
           ))}
         </div>
-        <p className="text-[10px] text-white/30 mt-1.5">הסגנון הכללי שיוחל לתוכן שנוצר על ידי AI</p>
+        <p className="text-2xs text-white/30 mt-1.5">הסגנון הכללי שיוחל לתוכן שנוצר על ידי AI</p>
       </div>
       <div>
         <SectionHeader>הוראה מותאמת אישית ל-AI</SectionHeader>
         <p className="text-xs text-white/35 mb-2">הוסף הוראות מותאמות לייצור תוכן AI (אופציונלי)</p>
         <textarea value={s.instructions} onChange={(e) => set({ ...s, instructions: e.target.value })} rows={4}
           placeholder="לדוגמה: כתוב תמיד בעברית, הוסף מחיר בשקלים, השתמש בטון נלהב..."
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none" />
-        <p className="text-[10px] text-white/25 mt-1">{s.instructions.length}/500</p>
+          className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none" />
+        <p className="text-2xs text-white/25 mt-1">{s.instructions.length}/500</p>
       </div>
       <SaveBtn saving={saving} saved={saved} onSave={onSave} />
     </div>
@@ -130,10 +130,10 @@ function TemplatesTab({ s, set, onSave, saving, saved }: {
       {TEMPLATES.map((t) => (
         <button key={t.id} onClick={() => set({ selected: t.id })}
           className={`w-full text-right px-4 py-3.5 rounded-xl border transition-all
-            ${s.selected === t.id ? 'bg-blue-500/10 border-blue-500/35' : 'bg-white/3 border-white/8 hover:border-white/18'}`}>
+            ${s.selected === t.id ? 'bg-blue-500/10 border-blue-500/35' : 'bg-white/3 border-edge hover:border-white/18'}`}>
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-white">{t.label}</p>
-            <span className="text-[10px] bg-white/8 text-white/40 rounded-full px-2 py-0.5">{t.badge}</span>
+            <span className="text-2xs bg-white/8 text-white/40 rounded-full px-2 py-0.5">{t.badge}</span>
           </div>
           <p className="text-xs text-white/40 mt-0.5">{t.desc}</p>
         </button>
@@ -149,7 +149,7 @@ function VariationsTab({ s, set, onSave, saving, saved }: {
 }) {
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between p-4 bg-white/3 border border-white/8 rounded-xl">
+      <div className="flex items-center justify-between p-4 bg-white/3 border border-edge rounded-xl">
         <div>
           <p className="text-sm font-medium text-white">וריאציות מופעלות</p>
           <p className="text-xs text-white/40 mt-0.5">הפק מספר גרסאות שונות לכל פוסט</p>
@@ -163,7 +163,7 @@ function VariationsTab({ s, set, onSave, saving, saved }: {
             {[2, 3, 4, 5].map((n) => (
               <button key={n} onClick={() => set({ ...s, count: n })}
                 className={`w-10 h-10 rounded-xl text-sm border transition-all
-                  ${s.count === n ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-white/10 text-white/50'}`}>
+                  ${s.count === n ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-edge-hover text-white/50'}`}>
                 {n}
               </button>
             ))}
@@ -186,7 +186,7 @@ function TrackingTab({ s, set, onSave, saving, saved }: {
         <p className="text-xs text-white/35 mb-2">הוסף מזהה ייחודי לקישורי השותפים בפוסטים אלו</p>
         <input value={s.trackingId} onChange={(e) => set({ trackingId: e.target.value })}
           placeholder="campaign_tracking_123" dir="ltr"
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+          className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
       </div>
       <SaveBtn saving={saving} saved={saved} onSave={onSave} />
     </div>
@@ -208,7 +208,7 @@ function ScheduleTab({ s, set, onSave, saving, saved }: {
       </div>
 
       {/* Enable smart scheduling */}
-      <div className="flex items-center justify-between py-4 border-b border-white/5">
+      <div className="flex items-center justify-between py-4 border-b border-edge">
         <div>
           <p className="text-sm font-semibold text-white">אפשר תזמון חכם</p>
           <p className="text-xs text-white/40 mt-0.5">תזמן אוטומטית פוסטים על בסיס עדיפות ומשבצות זמן</p>
@@ -231,7 +231,7 @@ function ScheduleTab({ s, set, onSave, saving, saved }: {
                 value={s.startTime}
                 onChange={(e) => set({ ...s, startTime: e.target.value })}
                 dir="ltr"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-9 text-sm text-white outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 pr-9 text-sm text-white outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
               />
             </div>
           </div>
@@ -244,12 +244,12 @@ function ScheduleTab({ s, set, onSave, saving, saved }: {
                 value={s.endTime}
                 onChange={(e) => set({ ...s, endTime: e.target.value })}
                 dir="ltr"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 pr-9 text-sm text-white outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+                className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 pr-9 text-sm text-white outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
               />
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-white/30 mt-2 text-left" dir="rtl">
+        <p className="text-xs text-white/30 mt-2 text-left" dir="rtl">
           פוסטים יתפרסמו רק בתוך חלון הזמן היומי הזה
         </p>
       </div>
@@ -266,9 +266,9 @@ function ScheduleTab({ s, set, onSave, saving, saved }: {
           value={s.intervalMinutes}
           onChange={(e) => set({ ...s, intervalMinutes: Math.max(15, Number(e.target.value)) })}
           dir="ltr"
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
+          className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
         />
-        <p className="text-[11px] text-white/30 mt-2">
+        <p className="text-xs text-white/30 mt-2">
           פרסם פוסטים כל {s.intervalMinutes} דקות בתוך החלון היומי (מינימום: 15 דקות)
         </p>
       </div>
@@ -276,7 +276,7 @@ function ScheduleTab({ s, set, onSave, saving, saved }: {
       <Divider />
 
       {/* How it works */}
-      <div className="bg-white/3 border border-white/8 rounded-xl p-4 mb-6">
+      <div className="bg-white/3 border border-edge rounded-xl p-4 mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Info size={13} className="text-blue-400 shrink-0" />
           <p className="text-sm font-semibold text-white">איך תזמון חכם עובד</p>
@@ -312,7 +312,7 @@ function MediaTab({ s, set, onSave, saving, saved }: {
         { key: 'sendImage' as const,  label: 'שלח תמונה',          desc: 'הוסף תמונת מוצר לכל פוסט' },
         { key: 'imageFirst' as const, label: 'תמונה לפני טקסט',    desc: 'שלח תמונה לפני הטקסט בהודעה' },
       ].map(({ key, label, desc }) => (
-        <div key={key} className="flex items-center justify-between p-4 bg-white/3 border border-white/8 rounded-xl">
+        <div key={key} className="flex items-center justify-between p-4 bg-white/3 border border-edge rounded-xl">
           <div>
             <p className="text-sm font-medium text-white">{label}</p>
             <p className="text-xs text-white/40 mt-0.5">{desc}</p>
@@ -335,14 +335,14 @@ function LanguageTab({ s, set, onSave, saving, saved }: {
         <SectionHeader>שם עסק</SectionHeader>
         <input value={s.bizName} onChange={(e) => set({ ...s, bizName: e.target.value })}
           placeholder="החנות שלי"
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+          className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
       </div>
       <div>
         <SectionHeader>תסביע (Suffix)</SectionHeader>
         <input value={s.suffix} onChange={(e) => set({ ...s, suffix: e.target.value })}
           placeholder="@המותג שלי · linktr.ee/brand"
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
-        <p className="text-[10px] text-white/25 mt-1">יתווסף בסוף כל פוסט</p>
+          className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+        <p className="text-2xs text-white/25 mt-1">יתווסף בסוף כל פוסט</p>
       </div>
       <SaveBtn saving={saving} saved={saved} onSave={onSave} />
     </div>
@@ -355,7 +355,7 @@ function RepublishTab({ s, set, onSave, saving, saved }: {
 }) {
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between p-4 bg-white/3 border border-white/8 rounded-xl">
+      <div className="flex items-center justify-between p-4 bg-white/3 border border-edge rounded-xl">
         <div>
           <p className="text-sm font-medium text-white">פרסום מחדש אוטומטי</p>
           <p className="text-xs text-white/40 mt-0.5">פרסם מחדש פוסטים ישנים לאחר מספר ימים</p>
@@ -369,7 +369,7 @@ function RepublishTab({ s, set, onSave, saving, saved }: {
             {[3, 5, 7, 14, 30].map((d) => (
               <button key={d} onClick={() => set({ ...s, days: d })}
                 className={`px-3 py-1.5 rounded-lg text-sm border transition-all
-                  ${s.days === d ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-white/10 text-white/50'}`}>
+                  ${s.days === d ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-edge-hover text-white/50'}`}>
                 {d} ימים
               </button>
             ))}
@@ -404,7 +404,7 @@ function AutoPilotTab({ s, set, onSave, saving, saved }: {
               {[2, 5, 10, 20].map((n) => (
                 <button key={n} onClick={() => set({ ...s, postsPerDay: n })}
                   className={`px-3 py-1.5 rounded-lg text-sm border transition-all
-                    ${s.postsPerDay === n ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-white/10 text-white/50'}`}>
+                    ${s.postsPerDay === n ? 'bg-blue-500/15 border-blue-500/40 text-blue-400' : 'bg-white/3 border-edge-hover text-white/50'}`}>
                   {n}
                 </button>
               ))}
@@ -488,7 +488,7 @@ export default function PostsSettingsPage() {
         </aside>
 
         {/* Content */}
-        <div className="flex-1 min-w-0 bg-[#0d0f1a] border border-white/5 rounded-xl p-6">
+        <div className="flex-1 min-w-0 bg-surface-secondary border border-edge rounded-xl p-6">
           {/* Tab header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2.5">
