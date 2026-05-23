@@ -76,7 +76,7 @@ export function NotificationsForm() {
     }
   };
 
-  const groups = [...new Set(toggles.map((t) => t.group))];
+  const groups = Array.from(new Set(toggles.map((t) => t.group)));
 
   return (
     <div className="space-y-6">
