@@ -47,10 +47,11 @@ export class AuthService {
     const refresh = this.signRefresh(user.id);
     await this.users.saveRefreshToken(user.id, refresh);
 
+    const isProd = this.config.get('NODE_ENV') === 'production';
     res.cookie(REFRESH_COOKIE, refresh, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: this.config.get('NODE_ENV') === 'production',
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
       maxAge: REFRESH_TTL_SEC * 1000,
       path: '/',
     });

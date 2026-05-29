@@ -314,6 +314,45 @@ export class PostsService {
     }
   }
 
+  // ── Agent post creation (called by OrchestratorAgent) ───────────────────
+
+  async createAgentPost(
+    userId: string,
+    campaignId: string,
+    data: {
+      product_id: string;
+      title: string;
+      image_url: string;
+      sale_price: number;
+      original_price: number;
+      currency: string;
+      generated_text: string;
+      rate: number;
+    },
+    creds: DecryptedCredentials,
+  ): Promise<Post> {
+    const affiliateUrl = await this.getAffiliateLink(data.product_id, creds);
+    const priceIls = +(data.sale_price * data.rate).toFixed(2);
+
+    const post = this.repo.create({
+      user_id: userId,
+      campaign_id: campaignId,
+      product_id: data.product_id,
+      product_title: data.title,
+      product_image: data.image_url,
+      affiliate_url: affiliateUrl,
+      original_price_usd: data.original_price,
+      sale_price_usd: data.sale_price,
+      price_ils: priceIls,
+      generated_text: data.generated_text,
+      status: 'pending',
+    });
+
+    await this.repo.save(post);
+    await this.sendToTelegram(post, creds);
+    return post;
+  }
+
   // ── Stuck posts cleanup (called by cron every 15 min) ────────────────────
 
   async resetStuckPendingPosts(): Promise<void> {

@@ -17,6 +17,7 @@ import { ChannelsModule } from './channels/channels.module';
 import { TemplatesModule } from './templates/templates.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { MailModule } from './mail/mail.module';
+import { AgentsModule } from './agents/agents.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -65,6 +66,7 @@ import { HealthController } from './health.controller';
     TemplatesModule,
     CatalogModule,
     MailModule,
+    AgentsModule,
   ],
   controllers: [HealthController],
 })

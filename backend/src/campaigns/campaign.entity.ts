@@ -63,6 +63,9 @@ export class Campaign {
   @Column({ default: 0 })
   posts_count: number;
 
+  @Column({ default: false })
+  use_agents: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

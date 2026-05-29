@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRD – AffFlow Clone | Claude Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0b0f;
+    --surface: #111318;
+    --surface2: #191c24;
+    --border: #23262f;
+    --accent: #4f6ef7;
+    --accent2: #7c3aed;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --text: #e8eaf0;
+    --muted: #7a7f94;
+    --tag-bg: #1a1e2e;
+    --radius: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Heebo', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    direction: rtl;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg, #0d0f1a 0%, #111526 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 60px 48px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: -60px;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(79,110,247,.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -80px; right: -40px;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(124,58,237,.14) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    letter-spacing: .04em;
+  }
+  .badge.blue { background: rgba(79,110,247,.15); border-color: rgba(79,110,247,.3); color: #7fa3ff; }
+  .badge.green { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.3); color: #4ade80; }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: -.02em;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #fff 30%, #a5b4fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 640px;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-top: 40px;
+  }
+  .meta-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .meta-item label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 4px;
+    font-family: 'Space Mono', monospace;
+  }
+  .meta-item span {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* ── LAYOUT ── */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px 32px 120px;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    margin-bottom: 48px;
+  }
+  .toc h2 { font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-family: 'Space Mono', monospace; margin-bottom: 16px; }
+  .toc ol { padding-right: 20px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: var(--accent); text-decoration: none; font-size: 14px; transition: color .2s; }
+  .toc a:hover { color: #a5b4fc; }
+
+  /* ── SECTION ── */
+  section {
+    margin-bottom: 56px;
+    scroll-margin-top: 24px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .section-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(79,110,247,.12);
+    border: 1px solid rgba(79,110,247,.25);
+    border-radius: 4px;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -.01em;
+  }
+
+  p { color: var(--text); margin-bottom: 14px; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .card p { color: var(--muted); font-size: 14px; margin: 0; }
+  .card-accent { border-right: 3px solid var(--accent); }
+  .card-green  { border-right: 3px solid var(--green); }
+  .card-amber  { border-right: 3px solid var(--amber); }
+  .card-purple { border-right: 3px solid var(--accent2); }
+
+  /* ── GRID ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media(max-width:700px){
+    .grid-2,.grid-3{ grid-template-columns:1fr; }
+    header { padding: 40px 24px 32px; }
+    main { padding: 32px 20px 80px; }
+  }
+
+  /* ── TAG LIST ── */
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .tag {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  /* ── FEATURE TABLE ── */
+  .feat-row {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: start;
+    gap: 14px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .feat-row:last-child { border-bottom: none; }
+  .feat-icon { font-size: 18px; margin-top: 2px; }
+  .feat-label { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .feat-desc { font-size: 13px; color: var(--muted); }
+  .priority-chip {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+  .p-high   { background: rgba(239,68,68,.15);  border:1px solid rgba(239,68,68,.3);  color:#fca5a5; }
+  .p-med    { background: rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.3); color:#fcd34d; }
+  .p-low    { background: rgba(34,197,94,.12);  border:1px solid rgba(34,197,94,.3);  color:#86efac; }
+
+  /* ── FLOW ── */
+  .flow { display: flex; flex-direction: column; gap: 0; }
+  .flow-step {
+    display: flex;
+    gap: 20px;
+    position: relative;
+  }
+  .flow-step:not(:last-child)::before {
+    content:'';
+    position: absolute;
+    right: 19px; top: 40px;
+    width: 2px; bottom: 0;
+    background: var(--border);
+  }
+  .flow-circle {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .flow-body { padding: 8px 0 32px; }
+  .flow-body strong { display: block; font-size: 15px; color: #fff; margin-bottom: 4px; }
+  .flow-body span { font-size: 13px; color: var(--muted); }
+
+  /* ── SCREEN MOCKUP ── */
+  .screen-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .screen-bar {
+    display: flex; gap: 6px; margin-bottom: 14px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-r { background: #ef4444; }
+  .dot-y { background: #f59e0b; }
+  .dot-g { background: #22c55e; }
+  .screen-content {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 20px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .sc-label { color: #7fa3ff; }
+  .sc-val   { color: #a5f3fc; }
+  .sc-str   { color: #86efac; }
+  .sc-cmt   { color: #4b5563; }
+
+  /* ── MILESTONE TABLE ── */
+  .milestone-table { width: 100%; border-collapse: collapse; }
+  .milestone-table th {
+    text-align: right;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .milestone-table td {
+    padding: 14px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+  .milestone-table tr:last-child td { border-bottom: none; }
+  .milestone-table tr:hover td { background: rgba(255,255,255,.02); }
+  .week-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: var(--accent);
+  }
+
+  /* ── RISK TABLE ── */
+  .risk-row { display: grid; grid-template-columns: 1fr 80px 80px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); align-items: start; font-size: 13px; }
+  .risk-row:last-child { border-bottom: none; }
+  .risk-head { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-family: 'Space Mono', monospace; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; display: grid; grid-template-columns: 1fr 80px 80px 1fr; gap: 16px; }
+
+  /* ── API COST ── */
+  .cost-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .cost-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .cost-row:last-child { border-bottom: none; }
+  .cost-label { color: var(--muted); }
+  .cost-val { font-family: 'Space Mono', monospace; color: #fff; font-size: 13px; }
+
+  /* ── DIVIDER ── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+  /* ── SCROLL ── */
+  html { scroll-behavior: smooth; }
+
+  /* ── PRINT ── */
+  @media print {
+    body { background: #fff; color: #000; }
+    header { background: #f8f8f8; border-color: #ddd; }
+    .card, .toc { border-color: #ddd; background: #fafafa; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<header>
+  <div class="header-meta">
+    <span class="badge blue">Claude Design · PRD</span>
+    <span class="badge">v1.0</span>
+    <span class="badge green">Active</span>
+  </div>
+  <h1>AffFlow Pro<br>מנוע שיווק שותפים מבוסס Claude</h1>
+  <p class="subtitle">
+    מסמך דרישות מוצר (PRD) לפיתוח Artifact מבוסס Claude API – שכפול ושיפור של פלטפורמת Afflow.co בעברית, עבור משווקי שותפים ישראלים.
+  </p>
+  <div class="meta-grid">
+    <div class="meta-item"><label>גרסה</label><span>1.0.0</span></div>
+    <div class="meta-item"><label>תאריך</label><span>אפריל 2026</span></div>
+    <div class="meta-item"><label>פלטפורמה</label><span>Claude Artifact</span></div>
+    <div class="meta-item"><label>מודל AI</label><span>claude-sonnet-4</span></div>
+    <div class="meta-item"><label>שוק יעד</label><span>ישראל – עברית</span></div>
+    <div class="meta-item"><label>מצב</label><span>תכנון</span></div>
+  </div>
+</header>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<main>
+
+  <!-- TOC -->
+  <div class="toc">
+    <h2>תוכן עניינים</h2>
+    <ol>
+      <li><a href="#overview">סקירה כללית ומטרות</a></li>
+      <li><a href="#persona">פרסונה ומשתמש יעד</a></li>
+      <li><a href="#scope">סקופ ומה אנחנו בונים</a></li>
+      <li><a href="#features">פיצ'רים ועדיפויות</a></li>
+      <li><a href="#flow">זרימת משתמש (User Flow)</a></li>
+      <li><a href="#screens">מסכים ו-UI</a></li>
+      <li><a href="#claude">ארכיטקטורת Claude API</a></li>
+      <li><a href="#milestones">מיילסטונים ולו"ז</a></li>
+      <li><a href="#risks">סיכונים ומיטיגציה</a></li>
+      <li><a href="#success">מדדי הצלחה</a></li>
+    </ol>
+  </div>
+
+  <!-- §1 OVERVIEW -->
+  <section id="overview">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <h2>סקירה כללית ומטרות</h2>
+    </div>
+    <p>
+      <strong>AffFlow Pro</strong> הוא Claude Artifact אינטראקטיבי שמשכפל ומשפר את הפונקציונליות המרכזית של <strong>Afflow.co</strong> – פלטפורמת אוטומציה לשיווק שותפים – תוך שימוש ב-Claude Sonnet 4 כמנוע ה-AI.
+      המוצר מאפשר למשווקי שותפים ישראלים לייבא מוצרים מ-AliExpress, לייצר פוסטים שיווקיים בעברית לפי פלטפורמה (טלגרם, וואטסאפ, פייסבוק), ולנהל את כל הזרימה בתוך ממשק אחד – ללא קוד.
+    </p>
+    <div class="grid-2">
+      <div class="card card-accent">
+        <div class="card-title">🎯 מטרת המוצר</div>
+        <p>לצמצם את הזמן שמשווקי שותפים מבלים על כתיבת פוסטים ידנית – מ-3 שעות ליום לפחות מ-15 דקות – באמצעות AI שמייצר תוכן מותאם לכל פלטפורמה בעברית.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-title">✨ מה מייחד אותנו</div>
+        <p>Claude מייצר עברית טבעית עם אמוג'י מדויקים, קריאות לפעולה, ופורמט ספציפי לכל ערוץ – לא תבניות גנריות. הפוסטים נשמעים כאילו נכתבו על ידי מומחה שיווק ישראלי.</p>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:16px">
+      <div class="card">
+        <div class="card-title">📦 מיובא מ-</div>
+        <p>AliExpress, קישור ישיר, או הזנה ידנית של שם + תמונה + מחיר</p>
+      </div>
+      <div class="card">
+        <div class="card-title">📤 מפורסם ל-</div>
+        <p>טלגרם, וואטסאפ, פייסבוק, אינסטגרם (עתידי)</p>
+      </div>
+      <div class="card">
+        <div class="card-title">📊 עם מעקב</div>
+        <p>קישורי אפיליאט + מעקב קליקים + UTM אוטומטי לכל פוסט</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- §2 PERSONA -->
+  <section id="persona">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <h2>פרסונה ומשתמש יעד</h2>
+    </div>
+    <div class="grid-2">
+      <div class="card card-purple">
+        <div class="card-title">👤 יוסי, 34 – משווק שותפים מנוסה</div>
+        <p>מנהל 8 קבוצות טלגרם עם 50K+ עוקבים. מוכר מוצרי AliExpress בקישורי אדמיטד. מבלה 3-4 שעות ביום על כתיבת פוסטים וגזירה בין פלטפורמות. מחפש כלי שיחסוך לו זמן בלי לאבד את הטון האישי שלו.</p>
+        <div class="tags">
+          <span class="tag">AliExpress</span>
+          <span class="tag">Admitad</span>
+          <span class="tag">טלגרם</span>
+          <span class="tag">Windows</span>
+        </div>
+      </div>
+      <div class="card card-purple">
+        <div class="card-title">👩 מיכל, 28 – מתחילה ב-Affiliate</div>
+        <p>הצטרפה לתחום לפני 3 חודשים. מנהלת קבוצת וואטסאפ ופייסבוק. מתקשה לכתוב טקסטים שיווקיים שנשמעים מקצועיים. רוצה כלי שיסביר לה מה לעשות שלב-שלב.</p>
+        <div class="tags">
+          <span class="tag">וואטסאפ</span>
+          <span class="tag">פייסבוק</span>
+          <span class="tag">מתחילה</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">💢 נקודות כאב מרכזיות (Pain Points)</div>
+      <p>
+        כתיבת פוסטים ידנית לכל פלטפורמה בנפרד · פורמט שונה לוואטסאפ לעומת טלגרם · תרגום כותרות אליאקספרס מסינית/אנגלית לעברית טבעית · אין מעקב ברור איזה פוסט מכר · חוסר עקביות בטון ובמיתוג
+      </p>
+    </div>
+  </section>
+
+  <!-- §3 SCOPE -->
+  <section id="scope">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <h2>סקופ – מה אנחנו בונים</h2>
+    </div>
+    <div class="grid-2">
+      <div>
+        <p style="color:var(--green);font-weight:700;margin-bottom:12px">✅ IN SCOPE (גרסה 1)</p>
+        <div class="card card-green">
+          <p>ייבוא מוצר לפי URL מ-AliExpress או הזנה ידנית</p>
+        </div>
+        <div class="card card-green">
+          <p>יצירת פוסטים בעברית לטלגרם / וואטסאפ / פייסבוק</p>
+        </div>
+        <div class="card card-green">
+          <p>עריכת הפוסט + אפשרות לרענן (Regenerate)</p>
+        </div>
+        <div class="card card-green">
+          <p>הכנסת קישור אפיליאט + UTM אוטומטי</p>
+        </div>
+        <div class="card card-green">
+          <p>העתקת פוסט מוכן ללחיצה</p>
+        </div>
+        <div class="card card-green">
+          <p>היסטוריית פוסטים בסשן הנוכחי</p>
+        </div>
+      </div>
+      <div>
+        <p style="color:var(--red);font-weight:700;margin-bottom:12px">❌ OUT OF SCOPE (גרסה 1)</p>
+        <div class="card card-amber">
+          <p>פרסום אוטומטי לטלגרם / וואטסאפ (API נפרד)</p>
+        </div>
+        <div class="card card-amber">
+          <p>מעקב קליקים בזמן אמת (דורש Backend)</p>
+        </div>
+        <div class="card card-amber">
+          <p>A/B Testing אוטומטי</p>
+        </div>
+        <div class="card card-amber">
+          <p>ניהול חשבון + Authentication</p>
+        </div>
+        <div class="card card-amber">
+          <p>תזמון פוסטים עתידי</p>
+        </div>
+        <div class="card card-amber">
+          <p>גרירת תמונות / העלאת קבצים</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- §4 FEATURES -->
+  <section id="features">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <h2>פיצ'רים ועדיפויות</h2>
+    </div>
+
+    <div class="card">
+      <div class="feat-row" style="padding-top:0">
+        <span class="feat-icon">🔗</span>
+        <div>
+          <div class="feat-label">ייבוא מוצר</div>
+          <div class="feat-desc">הדבקת URL מ-AliExpress → Claude מחלץ שם, מחיר, תיאור ומוצא קישור אפיליאט מוצע. גם הזנה ידנית אפשרית (שם + תמונה + מחיר + קישור)</div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <span class="feat-icon">✍️</span>
+        <div>
+          <div class="feat-label">יצירת פוסט בעברית</div>
+          <div class="feat-desc">Claude מייצר פוסט מותאם לפלטפורמה שנבחרה: טלגרם (קצר + אמוג'י), וואטסאפ (אישי יותר), פייסבוק (ממוקד מכירה). אפשר לבחור טון: מקצועי / כיפי / דחוף / כלכלי</div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <span class="feat-icon">🔄</span>
+        <div>
+          <div class="feat-label">Regenerate + וריאציות</div>
+          <div class="feat-desc">כפתור "נסח מחדש" שמייצר גרסה שונה של אותו פוסט. אפשרות להציג 2-3 וריאציות ולבחור</div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <span class="feat-icon">📋</span>
+        <div>
+          <div class="feat-label">העתקה חכמה</div>
+          <div class="feat-desc">כפתור "העתק לטלגרם" / "העתק לוואטסאפ" – מעצב את הטקסט בפורמט הנכון ומעתיק ללוח</div>
+        </div>
+        <span class="priority-chip p-med">MED</span>
+      </div>
+      <div class="feat-row">
+        <span class="feat-icon">📦</span>
+        <div>
+          <div class="feat-label">היסטוריית פוסטים</div>
+          <div class="feat-desc">שמירת כל הפוסטים שנוצרו בסשן הנוכחי עם תמונת מוצר, תאריך, ופלטפורמה</div>
+        </div>
+        <span class="priority-chip p-med">MED</span>
+      </div>
+      <div class="feat-row">
+        <span class="feat-icon">🤖</span>
+        <div>
+          <div class="feat-label">גילוי מוצרים (AI Discovery)</div>
+          <div class="feat-desc">Claude מחפש בזמן אמת (Web Search tool) מוצרים טרנדים עם עמלה גבוהה לפי קטגוריה שהמשתמש בוחר</div>
+        </div>
+        <span class="priority-chip p-low">FUTURE</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- §5 FLOW -->
+  <section id="flow">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <h2>זרימת משתמש</h2>
+    </div>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-circle">01</div>
+        <div class="flow-body">
+          <strong>ייבוא מוצר</strong>
+          <span>המשתמש מדביק URL מ-AliExpress או מזין שם + מחיר + קישור אפיליאט. Claude מחלץ את המידע ומציג תצוגה מקדימה של המוצר.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">02</div>
+        <div class="flow-body">
+          <strong>בחירת פלטפורמה וטון</strong>
+          <span>המשתמש בוחר יעד: טלגרם / וואטסאפ / פייסבוק. בוחר טון: מקצועי / כיפי / דחוף (מבצע). אפשרי לבחור מספר פלטפורמות בו-זמנית.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">03</div>
+        <div class="flow-body">
+          <strong>יצירת פוסט על ידי Claude</strong>
+          <span>Claude API נקרא עם Prompt מותאם. הפוסט מוצג בטקסט מבוסס RTL עם אמוג'י ו-CTA. זמן תגובה צפוי: 3-5 שניות.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">04</div>
+        <div class="flow-body">
+          <strong>עריכה ואישור</strong>
+          <span>המשתמש יכול לערוך את הפוסט ישירות, לבקש "נסח מחדש" (Regenerate), או לבקש שינוי טון ספציפי.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">05</div>
+        <div class="flow-body">
+          <strong>העתקה ופרסום</strong>
+          <span>לחיצה על "העתק" מכינה את הפוסט עם קישור האפיליאט ו-UTM. המשתמש מדביק בוואטסאפ / טלגרם / פייסבוק. הפוסט נשמר בהיסטוריה.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- §6 SCREENS -->
+  <section id="screens">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <h2>מסכים ו-UI</h2>
+    </div>
+    <p>הממשק מבנה כ-SPA חד-עמודי חלוקה ל-3 פאנלים עיקריים ב-React / HTML+CSS:</p>
+
+    <div class="grid-3" style="margin-top:16px">
+      <div class="card">
+        <div class="card-title">🏠 Panel A – ייבוא</div>
+        <p>שדה URL + כפתור "יבא מוצר" + הזנה ידנית (accordion). תצוגת כרטיסי מוצר עם תמונה, שם, מחיר</p>
+      </div>
+      <div class="card">
+        <div class="card-title">⚙️ Panel B – הגדרות</div>
+        <p>Toggle פלטפורמה (טלגרם/וואטסאפ/פייסבוק), בחירת טון, שדה קישור אפיליאט</p>
+      </div>
+      <div class="card">
+        <div class="card-title">📝 Panel C – פוסט</div>
+        <p>תיבת טקסט RTL עם הפוסט שנוצר, כפתורי "נסח מחדש" + "העתק" + "שמור להיסטוריה"</p>
+      </div>
+    </div>
+
+    <div class="screen-block" style="margin-top:24px">
+      <div class="screen-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-right:8px">Claude API Call – Post Generation</span>
+      </div>
+      <div class="screen-content">
+<span class="sc-cmt">// Prompt שנשלח ל-Claude Sonnet 4</span><br>
+<span class="sc-label">system</span>: <span class="sc-str">"אתה מומחה שיווק שותפים ישראלי. כתוב פוסטים מוכרים בעברית טבעית, ישירה ואנרגטית. פורמט לפי הפלטפורמה המבוקשת."</span><br><br>
+<span class="sc-label">user</span>: {<br>
+&nbsp;&nbsp;<span class="sc-label">product</span>: <span class="sc-str">"אוזניות Bluetooth TWS"</span>,<br>
+&nbsp;&nbsp;<span class="sc-label">price</span>: <span class="sc-val">₪39</span>,<br>
+&nbsp;&nbsp;<span class="sc-label">platform</span>: <span class="sc-str">"telegram"</span>,<br>
+&nbsp;&nbsp;<span class="sc-label">tone</span>: <span class="sc-str">"urgent_deal"</span>,<br>
+&nbsp;&nbsp;<span class="sc-label">affiliate_url</span>: <span class="sc-str">"https://s.click.aliexpress.com/..."</span><br>
+}<br><br>
+<span class="sc-cmt">// תגובה מוצפת של Claude:</span><br>
+<span class="sc-str">"🔥 אוזניות AirPods Style ב-39 ש"ח בלבד!<br>
+&nbsp;&nbsp;✅ חיבור Bluetooth 5.0 | סוללה 6 שעות<br>
+&nbsp;&nbsp;✅ אוזניות שזה עתה הגיעו מ-120 ש"ח → 39!<br>
+&nbsp;&nbsp;⚡️ מלאי מוגבל – תפסו לפני שנגמר:<br>
+&nbsp;&nbsp;👉 [קנה עכשיו](https://...)"</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- §7 CLAUDE API -->
+  <section id="claude">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <h2>ארכיטקטורת Claude API</h2>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-accent">
+        <div class="card-title">מודל</div>
+        <p><code style="color:#a5b4fc">claude-sonnet-4-20250514</code><br>שימוש ב-Streaming לחוויה מהירה יותר</p>
+      </div>
+      <div class="card card-accent">
+        <div class="card-title">Max Tokens</div>
+        <p>500 טוקן לפוסט בודד · 1,000 לגרסה עם 3 וריאציות</p>
+      </div>
+    </div>
+
+    <div class="cost-card" style="margin-top:20px">
+      <div class="cost-row" style="background:var(--surface2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-family:'Space Mono',monospace">
+        <span class="cost-label">Use Case</span>
+        <span class="cost-label">טוקן קלט</span>
+        <span class="cost-label">טוקן פלט</span>
+        <span class="cost-label">עלות משוערת</span>
+      </div>
+      <div class="cost-row">
+        <span>פוסט בודד (1 פלטפורמה)</span>
+        <span class="cost-val">~400</span>
+        <span class="cost-val">~300</span>
+        <span class="cost-val">~$0.003</span>
+      </div>
+      <div class="cost-row">
+        <span>3 וריאציות לפוסט</span>
+        <span class="cost-val">~450</span>
+        <span class="cost-val">~900</span>
+        <span class="cost-val">~$0.007</span>
+      </div>
+      <div class="cost-row">
+        <span>ייבוא + חילוץ מידע מ-URL</span>
+        <span class="cost-val">~600</span>
+        <span class="cost-val">~200</span>
+        <span class="cost-val">~$0.004</span>
+      </div>
+      <div class="cost-row">
+        <span>100 פוסטים ביום (משתמש פעיל)</span>
+        <span class="cost-val">–</span>
+        <span class="cost-val">–</span>
+        <span class="cost-val">~$0.70/יום</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <div class="card-title">🧠 System Prompt Design – עקרונות</div>
+      <p>
+        <strong>1. Persona:</strong> "אתה מומחה שיווק שותפים ישראלי עם 10 שנות ניסיון. אתה מכיר את השוק הישראלי, את שפת הרחוב, ואת מה שמוכר."<br><br>
+        <strong>2. Platform Rules:</strong> לכל פלטפורמה קיים prompt section עם הוראות פורמט (אורך, אמוג'י, hashtags, שימוש ב-HTML bold/italic לטלגרם).<br><br>
+        <strong>3. Few-Shot Examples:</strong> 2 דוגמאות לכל פלטפורמה ישולבו ב-System Prompt.<br><br>
+        <strong>4. JSON Output Mode:</strong> בקשת 3 וריאציות תחזיר JSON מובנה עם <code>{ variant_1, variant_2, variant_3 }</code>.
+      </p>
+    </div>
+  </section>
+
+  <!-- §8 MILESTONES -->
+  <section id="milestones">
+    <div class="section-header">
+      <span class="section-num">08</span>
+      <h2>מיילסטונים ולו"ז</h2>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="milestone-table">
+        <thead>
+          <tr>
+            <th>שלב</th>
+            <th>תיאור</th>
+            <th>דלטא</th>
+            <th>סטטוס</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="week-badge">שבוע 1</span></td>
+            <td>UI בסיסי – 3 פאנלים, RTL, עיצוב ראשוני</td>
+            <td>3 ימים</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 1</span></td>
+            <td>ייבוא ידני של מוצר (שם + מחיר + קישור)</td>
+            <td>1 יום</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 2</span></td>
+            <td>אינטגרציית Claude API – יצירת פוסט יחיד</td>
+            <td>2 ימים</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 2</span></td>
+            <td>Streaming response + Regenerate</td>
+            <td>1 יום</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 3</span></td>
+            <td>3 וריאציות עם JSON output + UI בחירה</td>
+            <td>2 ימים</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 3</span></td>
+            <td>היסטוריה + העתקה חכמה לפלטפורמה</td>
+            <td>2 ימים</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 4</span></td>
+            <td>QA, Prompt Tuning, שחרור MVP</td>
+            <td>3 ימים</td>
+            <td><span class="badge">בתכנון</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- §9 RISKS -->
+  <section id="risks">
+    <div class="section-header">
+      <span class="section-num">09</span>
+      <h2>סיכונים ומיטיגציה</h2>
+    </div>
+    <div class="card" style="padding:20px 24px">
+      <div class="risk-head">
+        <span>סיכון</span>
+        <span>הסתברות</span>
+        <span>השפעה</span>
+        <span>מיטיגציה</span>
+      </div>
+      <div class="risk-row">
+        <span>Claude מייצר עברית לא טבעית / עם שגיאות</span>
+        <span class="priority-chip p-med" style="display:inline-block">בינונית</span>
+        <span class="priority-chip p-high" style="display:inline-block">גבוהה</span>
+        <span style="color:var(--muted)">Few-Shot Examples + Human Review של 20 פוסטים ראשונים</span>
+      </div>
+      <div class="risk-row">
+        <span>API Rate Limit / Latency גבוה</span>
+        <span class="priority-chip p-low" style="display:inline-block">נמוכה</span>
+        <span class="priority-chip p-med" style="display:inline-block">בינונית</span>
+        <span style="color:var(--muted)">Streaming + Skeleton Loading + הודעת "יוצר פוסט..."</span>
+      </div>
+      <div class="risk-row">
+        <span>ייבוא URL מ-AliExpress נכשל (robots / JS rendering)</span>
+        <span class="priority-chip p-high" style="display:inline-block">גבוהה</span>
+        <span class="priority-chip p-med" style="display:inline-block">בינונית</span>
+        <span style="color:var(--muted)">גיבוי: הזנה ידנית מלאה. בגרסה 2: proxy scraper</span>
+      </div>
+      <div class="risk-row">
+        <span>משתמש מדביק קישור אפיליאט שגוי</span>
+        <span class="priority-chip p-med" style="display:inline-block">בינונית</span>
+        <span class="priority-chip p-high" style="display:inline-block">גבוהה</span>
+        <span style="color:var(--muted)">Validation של URL + הדגשת הקישור בפוסט לבדיקה לפני פרסום</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- §10 SUCCESS -->
+  <section id="success">
+    <div class="section-header">
+      <span class="section-num">10</span>
+      <h2>מדדי הצלחה (KPIs)</h2>
+    </div>
+    <div class="grid-3">
+      <div class="card card-green">
+        <div class="card-title">⏱️ זמן לפוסט ראשון</div>
+        <p>פחות מ-30 שניות מרגע הדבקת URL ועד פוסט מוכן להעתקה</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-title">⭐ ציון איכות</div>
+        <p>80%+ מהפוסטים לא ידרשו עריכה מהמשתמש (ייבדק בסקר Beta)</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-title">🔄 שיעור Regenerate</div>
+        <p>פחות מ-25% מהפוסטים ידרשו "נסח מחדש" – מדד לאיכות ה-Prompt</p>
+      </div>
+      <div class="card">
+        <div class="card-title">👥 Beta Users</div>
+        <p>10 משווקי שותפים ישראלים בשבוע הראשון לאחר MVP</p>
+      </div>
+      <div class="card">
+        <div class="card-title">📊 פוסטים ביום</div>
+        <p>ממוצע של 20+ פוסטים ליום לכל משתמש פעיל</p>
+      </div>
+      <div class="card">
+        <div class="card-title">💬 NPS</div>
+        <p>NPS > 50 לאחר 2 שבועות שימוש – נמדד בפידבק ישיר</p>
+      </div>
+    </div>
+
+    <div class="card card-amber" style="margin-top:24px">
+      <div class="card-title">🚀 Next Steps אחרי MVP</div>
+      <p>
+        גרסה 2 – Web Search לגילוי מוצרים טרנדים · ייבוא URL אוטומטי מ-AliExpress · שמירה ב-localStorage ·
+        גרסה 3 – SaaS מלא עם Backend: Authentication, תזמון, מעקב קליקים אמיתי, וחיבור ל-Telegram Bot API לפרסום אוטומטי.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+  <p style="text-align:center;color:var(--muted);font-size:12px;font-family:'Space Mono',monospace">
+    AffFlow Pro PRD · Win Solutions · אפריל 2026 · Claude Design v1.0
+  </p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALIBOT PRO — תוכנית עבודה להטמעה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #060a14;
+    --surface:   #0b1322;
+    --surface2:  #102040;
+    --border:    rgba(59,130,246,0.18);
+    --border2:   rgba(59,130,246,0.35);
+    --blue:      #3b82f6;
+    --blue-lt:   #60a5fa;
+    --blue-pale: #93c5fd;
+    --blue-dim:  rgba(59,130,246,0.12);
+    --blue-glow: rgba(59,130,246,0.22);
+    --green:     #10b981;
+    --amber:     #f59e0b;
+    --red:       #ef4444;
+    --purple:    #8b5cf6;
+    --text:      #e2e8f0;
+    --muted:     #7899c0;
+    --radius:    14px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Heebo', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    direction: rtl;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+  /* ══════════════════════════════════════════════════════
+     HEADER
+  ══════════════════════════════════════════════════════ */
+  header {
+    background: linear-gradient(135deg, #070d1e 0%, #0d1a35 60%, #091428 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 64px 56px 52px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute; top: -80px; left: -80px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(59,130,246,.20) 0%, transparent 68%);
+    pointer-events: none;
+  }
+  header::after {
+    content: '';
+    position: absolute; bottom: -100px; right: -60px;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(96,165,250,.10) 0%, transparent 68%);
+    pointer-events: none;
+  }
+
+  /* Logo row */
+  .logo-row {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 32px;
+  }
+  .logo-mark {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px rgba(59,130,246,.4);
+    flex-shrink: 0;
+  }
+  .logo-mark svg { width: 26px; height: 26px; fill: #fff; }
+  .logo-text {
+    font-size: 22px; font-weight: 900;
+    letter-spacing: -.02em; color: #fff;
+  }
+  .logo-text span { color: var(--blue-lt); }
+
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; padding: 4px 10px; border-radius: 5px;
+    background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.28);
+    color: var(--blue-pale); letter-spacing: .04em;
+  }
+  .badge.green { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #6ee7b7; }
+  .badge.amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #fcd34d; }
+  .badge.white { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); color: rgba(255,255,255,.65); }
+
+  h1 {
+    font-size: clamp(28px, 3.5vw, 46px); font-weight: 900;
+    line-height: 1.15; letter-spacing: -.025em; margin-bottom: 14px;
+    background: linear-gradient(140deg, #fff 0%, #93c5fd 50%, #60a5fa 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle { font-size: 15px; color: var(--muted); max-width: 600px; line-height: 1.65; }
+
+  .meta-strip {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px; margin-top: 44px;
+  }
+  .meta-item {
+    background: rgba(59,130,246,.06); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .meta-item label {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 5px;
+  }
+  .meta-item label svg { width: 11px; height: 11px; }
+  .meta-item span { font-size: 13px; font-weight: 600; color: var(--text); }
+
+  /* ══════════════════════════════════════════════════════
+     LAYOUT
+  ══════════════════════════════════════════════════════ */
+  main { max-width: 980px; margin: 0 auto; padding: 52px 32px 120px; }
+
+  /* ══════════════════════════════════════════════════════
+     TOC
+  ══════════════════════════════════════════════════════ */
+  .toc {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px 32px; margin-bottom: 52px;
+    position: relative; overflow: hidden;
+  }
+  .toc::before {
+    content: ''; position: absolute; top: 0; right: 0;
+    width: 200px; height: 100%;
+    background: radial-gradient(ellipse at top right, rgba(59,130,246,.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .toc-title {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase; margin-bottom: 18px;
+  }
+  .toc-title svg { width: 13px; height: 13px; }
+  .toc ol { padding-right: 22px; columns: 2; column-gap: 32px; }
+  .toc li { margin-bottom: 7px; break-inside: avoid; }
+  .toc a { color: var(--blue-lt); text-decoration: none; font-size: 14px; transition: color .2s; }
+  .toc a:hover { color: #fff; }
+
+  /* ══════════════════════════════════════════════════════
+     SECTION
+  ══════════════════════════════════════════════════════ */
+  section { margin-bottom: 60px; scroll-margin-top: 24px; }
+
+  .section-header {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 26px;
+  }
+  .section-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--blue-dim); border: 1px solid var(--border2);
+    display: flex; align-items: center; justify-center: center;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .section-icon svg { width: 18px; height: 18px; stroke: var(--blue-lt); fill: none; stroke-width: 1.8; }
+  .section-num {
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    color: var(--blue); background: rgba(59,130,246,.1);
+    border: 1px solid rgba(59,130,246,.25); border-radius: 5px;
+    padding: 3px 8px; white-space: nowrap;
+  }
+  h2 { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+
+  p { color: var(--text); margin-bottom: 14px; }
+
+  /* ══════════════════════════════════════════════════════
+     CARDS
+  ══════════════════════════════════════════════════════ */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 22px 26px; margin-bottom: 14px;
+    position: relative; overflow: hidden;
+    transition: border-color .2s;
+  }
+  .card:hover { border-color: var(--border2); }
+  .card-title {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 9px;
+  }
+  .card-title svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .card p { color: var(--muted); font-size: 13.5px; margin: 0; line-height: 1.65; }
+
+  .card-blue   { border-right: 3px solid var(--blue); }
+  .card-green  { border-right: 3px solid var(--green); }
+  .card-amber  { border-right: 3px solid var(--amber); }
+  .card-purple { border-right: 3px solid var(--purple); }
+  .card-red    { border-right: 3px solid var(--red); }
+
+  .card-glow {
+    background: linear-gradient(135deg, rgba(59,130,246,.08) 0%, var(--surface) 60%);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     GRIDS
+  ══════════════════════════════════════════════════════ */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media(max-width:720px){
+    .grid-2,.grid-3,.grid-4{ grid-template-columns:1fr; }
+    header { padding: 40px 24px 32px; }
+    main { padding: 32px 18px 80px; }
+    .toc ol { columns: 1; }
+  }
+
+  /* ══════════════════════════════════════════════════════
+     STATUS / TAGS
+  ══════════════════════════════════════════════════════ */
+  .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .tag {
+    font-size: 11.5px; padding: 3px 10px; border-radius: 99px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     STATUS CHIP  (done / in-progress / planned / future)
+  ══════════════════════════════════════════════════════ */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    padding: 3px 9px; border-radius: 5px; white-space: nowrap;
+  }
+  .chip svg { width: 9px; height: 9px; }
+  .chip-done     { background: rgba(16,185,129,.13); border: 1px solid rgba(16,185,129,.3); color: #6ee7b7; }
+  .chip-progress { background: rgba(59,130,246,.13); border: 1px solid rgba(59,130,246,.3); color: var(--blue-pale); }
+  .chip-planned  { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.28); color: #fcd34d; }
+  .chip-future   { background: rgba(139,92,246,.12); border: 1px solid rgba(139,92,246,.28); color: #c4b5fd; }
+
+  /* ══════════════════════════════════════════════════════
+     FEATURE TABLE
+  ══════════════════════════════════════════════════════ */
+  .feat-table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .feat-row {
+    display: grid; grid-template-columns: 42px 1fr auto;
+    align-items: start; gap: 16px; padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+    transition: background .18s;
+  }
+  .feat-row:hover { background: rgba(59,130,246,.04); }
+  .feat-row:last-child { border-bottom: none; }
+  .feat-icon-box {
+    width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--blue-dim); border: 1px solid var(--border);
+  }
+  .feat-icon-box svg { width: 17px; height: 17px; stroke: var(--blue-lt); fill: none; stroke-width: 1.8; }
+  .feat-icon-box.green { background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.2); }
+  .feat-icon-box.green svg { stroke: #34d399; }
+  .feat-icon-box.amber { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.2); }
+  .feat-icon-box.amber svg { stroke: #fbbf24; }
+  .feat-icon-box.purple { background: rgba(139,92,246,.1); border-color: rgba(139,92,246,.2); }
+  .feat-icon-box.purple svg { stroke: #a78bfa; }
+  .feat-label { font-size: 13.5px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .feat-desc  { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+  .priority-chip {
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    padding: 3px 8px; border-radius: 5px; white-space: nowrap;
+  }
+  .p-high   { background: rgba(239,68,68,.14);  border: 1px solid rgba(239,68,68,.3);  color: #fca5a5; }
+  .p-med    { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3); color: #fcd34d; }
+  .p-low    { background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.3); color: #86efac; }
+  .p-future { background: rgba(139,92,246,.12); border: 1px solid rgba(139,92,246,.3); color: #c4b5fd; }
+
+  /* ══════════════════════════════════════════════════════
+     FLOW / PHASES
+  ══════════════════════════════════════════════════════ */
+  .flow { display: flex; flex-direction: column; gap: 0; }
+  .flow-step { display: flex; gap: 22px; position: relative; }
+  .flow-step:not(:last-child)::before {
+    content: ''; position: absolute; right: 19px; top: 42px;
+    width: 2px; bottom: 0;
+    background: linear-gradient(to bottom, var(--blue), transparent);
+  }
+  .flow-circle {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--surface2); border: 2px solid var(--blue);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace; font-size: 12px; color: var(--blue);
+    flex-shrink: 0; position: relative; z-index: 1;
+    box-shadow: 0 0 14px rgba(59,130,246,.3);
+  }
+  .flow-body { padding: 8px 0 36px; }
+  .flow-body strong { display: block; font-size: 15px; color: #fff; margin-bottom: 5px; }
+  .flow-body span   { font-size: 13px; color: var(--muted); line-height: 1.65; }
+
+  /* ══════════════════════════════════════════════════════
+     PHASE BLOCK
+  ══════════════════════════════════════════════════════ */
+  .phase {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 16px; overflow: hidden;
+  }
+  .phase-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, rgba(59,130,246,.07) 0%, transparent 80%);
+  }
+  .phase-header-left { display: flex; align-items: center; gap: 12px; }
+  .phase-num {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--blue-dim); border: 1px solid var(--border2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace; font-size: 12px; color: var(--blue-lt);
+  }
+  .phase-title { font-size: 15px; font-weight: 700; color: #fff; }
+  .phase-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .phase-body { padding: 20px 22px; }
+  .phase-task {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 11px 0; border-bottom: 1px solid rgba(59,130,246,.08);
+  }
+  .phase-task:last-child { border-bottom: none; }
+  .task-dot {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid var(--border2);
+  }
+  .task-dot svg { width: 10px; height: 10px; }
+  .task-dot.done  { background: rgba(16,185,129,.15); border-color: rgba(16,185,129,.4); }
+  .task-dot.done svg  { stroke: #34d399; fill: none; stroke-width: 2.5; }
+  .task-dot.todo  { background: var(--blue-dim); border-color: var(--border2); }
+  .task-dot.todo svg  { stroke: var(--blue); fill: none; stroke-width: 2; }
+  .task-label { font-size: 13.5px; color: var(--text); flex: 1; }
+  .task-label small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .task-file {
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    color: var(--blue); background: rgba(59,130,246,.08);
+    border: 1px solid rgba(59,130,246,.2); border-radius: 4px;
+    padding: 2px 7px; white-space: nowrap;
+  }
+
+  /* ══════════════════════════════════════════════════════
+     COMPARISON TABLE (existing vs needed)
+  ══════════════════════════════════════════════════════ */
+  .cmp-table { width: 100%; border-collapse: collapse; }
+  .cmp-table th {
+    text-align: right; font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); padding: 11px 18px;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  .cmp-table td { padding: 14px 18px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .cmp-table tr:last-child td { border-bottom: none; }
+  .cmp-table tr:hover td { background: rgba(59,130,246,.03); }
+  .cmp-table td:first-child { font-weight: 600; color: #fff; }
+
+  /* ══════════════════════════════════════════════════════
+     CODE BLOCK
+  ══════════════════════════════════════════════════════ */
+  .code-block {
+    background: #060e1d; border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px 22px; margin-top: 16px;
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    color: var(--muted); line-height: 1.8; overflow-x: auto;
+  }
+  .code-bar { display: flex; gap: 6px; margin-bottom: 14px; align-items: center; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-r { background: #ef4444; } .dot-y { background: #f59e0b; } .dot-g { background: #10b981; }
+  .code-label { font-size: 10px; color: var(--muted); margin-right: 6px; }
+  .sc-blue  { color: #93c5fd; }
+  .sc-green { color: #86efac; }
+  .sc-amber { color: #fcd34d; }
+  .sc-grey  { color: #475569; }
+  .sc-white { color: #e2e8f0; }
+
+  /* ══════════════════════════════════════════════════════
+     MILESTONE TABLE
+  ══════════════════════════════════════════════════════ */
+  .milestone-table { width: 100%; border-collapse: collapse; }
+  .milestone-table th {
+    text-align: right; font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); padding: 12px 18px;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  .milestone-table td { padding: 14px 18px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .milestone-table tr:last-child td { border-bottom: none; }
+  .milestone-table tr:hover td { background: rgba(59,130,246,.03); }
+  .week-badge {
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25);
+    border-radius: 5px; padding: 2px 9px; color: var(--blue-lt);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     STATS ROW
+  ══════════════════════════════════════════════════════ */
+  .stat-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px;
+  }
+  @media(max-width:720px){ .stat-row { grid-template-columns: 1fr 1fr; } }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: ''; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+    width: 60px; height: 60px;
+    background: radial-gradient(circle, rgba(59,130,246,.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .stat-num { font-size: 28px; font-weight: 900; color: var(--blue-lt); letter-spacing: -.02em; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* ══════════════════════════════════════════════════════
+     RISK TABLE
+  ══════════════════════════════════════════════════════ */
+  .risk-row {
+    display: grid; grid-template-columns: 1fr 100px 100px 1fr;
+    gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--border);
+    align-items: start; font-size: 13px; color: var(--muted);
+  }
+  .risk-row:last-child { border-bottom: none; }
+  .risk-head {
+    font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+    display: grid; grid-template-columns: 1fr 100px 100px 1fr; gap: 16px;
+  }
+  .risk-title { color: var(--text); font-weight: 600; }
+
+  /* ══════════════════════════════════════════════════════
+     DIVIDER / FOOTER
+  ══════════════════════════════════════════════════════ */
+  hr { border: none; border-top: 1px solid var(--border); margin: 52px 0; }
+  .footer {
+    text-align: center; color: var(--muted);
+    font-family: 'Space Mono', monospace; font-size: 11px;
+    padding-bottom: 40px;
+  }
+
+  /* ══════════════════════════════════════════════════════
+     HIGHLIGHT BOX
+  ══════════════════════════════════════════════════════ */
+  .highlight-box {
+    background: rgba(59,130,246,.06); border: 1px solid rgba(59,130,246,.22);
+    border-radius: 12px; padding: 18px 22px; display: flex; align-items: flex-start; gap: 12px;
+  }
+  .highlight-box svg { width: 18px; height: 18px; stroke: var(--blue-lt); fill: none; stroke-width: 1.8; flex-shrink: 0; margin-top: 1px; }
+  .highlight-box p { margin: 0; font-size: 13.5px; color: var(--text); }
+  .highlight-box p strong { color: var(--blue-pale); }
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     HEADER
+══════════════════════════════════════ -->
+<header>
+  <div class="logo-row">
+    <div class="logo-mark">
+      <!-- Bot/Robot icon -->
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2a2 2 0 0 1 2 2v1h3a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h3V4a2 2 0 0 1 2-2zm0 2v3H9V4h3zm-5 5v9h10V9H7zm2 2h2v2H9v-2zm4 0h2v2h-2v-2zM9 15h6v1H9v-1z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">ALIBOT <span>PRO</span></div>
+    </div>
+  </div>
+
+  <div class="badge-row">
+    <span class="badge">תוכנית עבודה v1.0</span>
+    <span class="badge green">פעיל</span>
+    <span class="badge amber">אפריל 2026</span>
+    <span class="badge white">Next.js 14 + NestJS 11</span>
+  </div>
+
+  <h1>תוכנית הטמעה מלאה<br>ALIBOT PRO</h1>
+  <p class="subtitle">
+    מפת דרכים מפורטת לבניית פלטפורמת שיווק שותפים חכמה עבור משווקים ישראלים —<br>
+    ייבוא מוצרים, יצירת פוסטים בעברית עם OpenAI, שליחה אוטומטית לטלגרם, ותור חכם.
+  </p>
+
+  <div class="meta-strip">
+    <div class="meta-item">
+      <label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+        Stack Frontend
+      </label>
+      <span>Next.js 14 · Tailwind</span>
+    </div>
+    <div class="meta-item">
+      <label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        Stack Backend
+      </label>
+      <span>NestJS 11 · PostgreSQL</span>
+    </div>
+    <div class="meta-item">
+      <label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        AI Engine
+      </label>
+      <span>OpenAI GPT-4o-mini</span>
+    </div>
+    <div class="meta-item">
+      <label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        שלב נוכחי
+      </label>
+      <span>שלב 3 מתוך 5</span>
+    </div>
+    <div class="meta-item">
+      <label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        זמן פיתוח משוער
+      </label>
+      <span>4–5 שבועות</span>
+    </div>
+    <div class="meta-item">
+      <label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        קהל יעד
+      </label>
+      <span>משווקי שותפים ישראלים</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════
+     MAIN
+══════════════════════════════════════ -->
+<main>
+
+  <!-- STATS ROW -->
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-num">7</div>
+      <div class="stat-label">מודולים ראשיים</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">5</div>
+      <div class="stat-label">פאזות פיתוח</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">12</div>
+      <div class="stat-label">פיצ'רים מרכזיים</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">3</div>
+      <div class="stat-label">אינטגרציות API</div>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      תוכן עניינים
+    </div>
+    <ol>
+      <li><a href="#overview">סקירה ומטרות</a></li>
+      <li><a href="#current">מצב נוכחי — מה קיים</a></li>
+      <li><a href="#gap">ניתוח פערים (Gap Analysis)</a></li>
+      <li><a href="#phases">פאזות פיתוח מפורטות</a></li>
+      <li><a href="#features">פיצ'רים ועדיפויות</a></li>
+      <li><a href="#flow">זרימת משתמש</a></li>
+      <li><a href="#ai">ארכיטקטורת OpenAI / Prompts</a></li>
+      <li><a href="#milestones">מיילסטונים ולו"ז</a></li>
+      <li><a href="#risks">סיכונים ומיטיגציה</a></li>
+      <li><a href="#kpis">מדדי הצלחה</a></li>
+    </ol>
+  </div>
+
+  <!-- ── §1 OVERVIEW ─────────────────────────────── -->
+  <section id="overview">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </div>
+      <span class="section-num">01</span>
+      <h2>סקירה ומטרות</h2>
+    </div>
+
+    <p>
+      <strong>ALIBOT PRO</strong> הוא פלטפורמת SaaS לניהול מלא של שיווק שותפים AliExpress לשוק הישראלי. המערכת מחברת בין ייבוא מוצרים, יצירת תוכן שיווקי בעברית באמצעות AI, ושליחה אוטומטית לטלגרם — הכל בממשק ניהול אחד.
+    </p>
+
+    <div class="grid-2">
+      <div class="card card-blue card-glow">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          חסכון בזמן
+        </div>
+        <p>מ-3 שעות ליום של כתיבה ידנית לפחות מ-15 דקות — OpenAI מייצר פוסטים שיווקיים מותאמים לכל פלטפורמה בעברית טבעית ואנרגטית.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          אוטומציה מלאה
+        </div>
+        <p>תור שליחה חכם + תזמון אוטומטי לפי שעות — הפוסטים נשלחים לטלגרם בלי להיות ליד המחשב. מרווח הפוסטים, שעות השליחה — הכל ניתן להגדרה.</p>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:14px">
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          ייבוא מוצרים
+        </div>
+        <p>מחיפוש AliExpress ישיר, URL, או Discover Page — עם נתוני מחיר, תמונה ועמלה בזמן אמת.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          יצירת תוכן AI
+        </div>
+        <p>OpenAI GPT-4o-mini מייצר פוסטים בעברית, עם בחירת פלטפורמה, טון, וריאציות מרובות.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+          שליחה לטלגרם
+        </div>
+        <p>Telegram Bot API — שליחה ישירה לערוץ/קבוצה עם תמונת מוצר, קישור אפיליאט, וטקסט מעוצב.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §2 CURRENT STATE ─────────────────────────── -->
+  <section id="current">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <span class="section-num">02</span>
+      <h2>מצב נוכחי — מה כבר קיים</h2>
+    </div>
+
+    <div class="highlight-box" style="margin-bottom:22px">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <p>המערכת כבר בנויה חלקית ומכילה תשתית מוצקה. רוב ה-Backend קיים. הפיתוח הנדרש הוא בעיקר שכבת ה-Frontend ושיפורי UX.</p>
+    </div>
+
+    <div class="feat-table">
+      <div class="feat-row" style="padding-top:14px">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">קטלוג מוצרים (Catalog)</div>
+          <div class="feat-desc">רשימת מוצרים, סינון לפי סטטוס, חיפוש, אישור/דחייה, סנכרון מחיר, קישור אפיליאט. ✅ מלא</div>
+        </div>
+        <span class="chip chip-done">✓ מוכן</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Discover Page — גלה מוצרים</div>
+          <div class="feat-desc">Hot Products, חיפוש מוצרים לפי מילות מפתח, פילטרים, grid/list view, הוספה לקטלוג. ✅ מלא</div>
+        </div>
+        <span class="chip chip-done">✓ מוכן</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">תור שליחה (Queue System)</div>
+          <div class="feat-desc">הוספת מוצר לתור, OpenAI מייצר טקסט, שליחה לטלגרם לפי סדר. ✅ מלא Backend + UI בסיסי</div>
+        </div>
+        <span class="chip chip-done">✓ מוכן</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">תזמון אוטומטי (Scheduler)</div>
+          <div class="feat-desc">הגדרת שעות שליחה, מרווח בין פוסטים, Cron job כל דקה. ✅ Backend + SchedulingForm UI</div>
+        </div>
+        <span class="chip chip-done">✓ מוכן</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Campaigns (קמפיינים)</div>
+          <div class="feat-desc">יצירת קמפיין לפי מילות מפתח, תזמון cron, יצירת פוסטים אוטומטית. ✅ Backend + UI</div>
+        </div>
+        <span class="chip chip-done">✓ מוכן</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Post Generation — בחירת פלטפורמה + טון</div>
+          <div class="feat-desc">Backend קיים, אבל Frontend לא חושף אפשרות לבחור פלטפורמה (Telegram/WhatsApp/Facebook) או טון. נדרש UI.</div>
+        </div>
+        <span class="chip chip-progress">חלקי</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box amber">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">3 וריאציות לפוסט (Regenerate)</div>
+          <div class="feat-desc">לא קיים. Backend צריך לתמוך ב-JSON output עם 3 גרסאות. Frontend צריך UI לבחירה.</div>
+        </div>
+        <span class="chip chip-planned">נדרש</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box amber">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">העתקה חכמה לפלטפורמה</div>
+          <div class="feat-desc">כפתור "העתק לטלגרם/ווטסאפ" שמפרמט את הטקסט בצורה הנכונה לכל פלטפורמה. לא קיים.</div>
+        </div>
+        <span class="chip chip-planned">נדרש</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box purple">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">WhatsApp / Facebook ערוצים</div>
+          <div class="feat-desc">רק Telegram מיושם כרגע. WhatsApp Business API ו-Facebook Page API — עתידי.</div>
+        </div>
+        <span class="chip chip-future">עתידי</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §3 GAP ANALYSIS ─────────────────────────── -->
+  <section id="gap">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <span class="section-num">03</span>
+      <h2>ניתוח פערים (Gap Analysis)</h2>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>פיצ'ר (מה ה-PRD דורש)</th>
+            <th>מצב נוכחי</th>
+            <th>מה חסר</th>
+            <th>עדיפות</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ייבוא מוצר (URL / ידני)</td>
+            <td><span class="chip chip-done">קיים</span></td>
+            <td style="color:var(--muted)">שיפור UX ב-Quick Import מ-URL</td>
+            <td><span class="priority-chip p-med">MED</span></td>
+          </tr>
+          <tr>
+            <td>יצירת פוסט בעברית</td>
+            <td><span class="chip chip-progress">חלקי</span></td>
+            <td style="color:var(--muted)">חושף UI לבחירת פלטפורמה + טון</td>
+            <td><span class="priority-chip p-high">HIGH</span></td>
+          </tr>
+          <tr>
+            <td>3 וריאציות + Regenerate</td>
+            <td><span class="chip chip-planned">חסר</span></td>
+            <td style="color:var(--muted)">Backend: prompt עם JSON array. Frontend: UI picker</td>
+            <td><span class="priority-chip p-high">HIGH</span></td>
+          </tr>
+          <tr>
+            <td>בחירת טון (מקצועי/כיפי/דחוף)</td>
+            <td><span class="chip chip-planned">חסר</span></td>
+            <td style="color:var(--muted)">הוספת tone param ל-OpenAI prompt + UI</td>
+            <td><span class="priority-chip p-high">HIGH</span></td>
+          </tr>
+          <tr>
+            <td>העתקה חכמה לפלטפורמה</td>
+            <td><span class="chip chip-planned">חסר</span></td>
+            <td style="color:var(--muted)">פורמטר לכל פלטפורמה + clipboard API</td>
+            <td><span class="priority-chip p-med">MED</span></td>
+          </tr>
+          <tr>
+            <td>היסטוריית פוסטים משופרת</td>
+            <td><span class="chip chip-progress">חלקי</span></td>
+            <td style="color:var(--muted)">הצגת תמונת מוצר, פלטפורמה, פעולות מהירות</td>
+            <td><span class="priority-chip p-med">MED</span></td>
+          </tr>
+          <tr>
+            <td>Preview טרם שליחה</td>
+            <td><span class="chip chip-progress">חלקי</span></td>
+            <td style="color:var(--muted)">Preview modal מלא עם כפתור "שלח עכשיו"</td>
+            <td><span class="priority-chip p-high">HIGH</span></td>
+          </tr>
+          <tr>
+            <td>WhatsApp / Facebook</td>
+            <td><span class="chip chip-future">עתידי</span></td>
+            <td style="color:var(--muted)">Meta Business API — פאזה 5</td>
+            <td><span class="priority-chip p-future">V2</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §4 PHASES ─────────────────────────────── -->
+  <section id="phases">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </div>
+      <span class="section-num">04</span>
+      <h2>פאזות פיתוח מפורטות</h2>
+    </div>
+
+    <!-- PHASE 1 -->
+    <div class="phase">
+      <div class="phase-header">
+        <div class="phase-header-left">
+          <div class="phase-num">1</div>
+          <div>
+            <div class="phase-title">תשתית ותיקוני בסיס</div>
+            <div class="phase-subtitle">שגיאות קיימות, Bug fixes, Bug wrong-product fix</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip chip-done">✓ הושלם</span>
+          <span class="badge">שבוע 1</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            תיקון Bug — מוצר שגוי בתור
+            <small>הסרת fallback items[0] ב-refreshPrice · pass pre-fetched data מ-Discover page</small>
+          </div>
+          <span class="task-file">products.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            Light Mode — ריבועים שחורים
+            <small>החלפת hex ב-CSS variables · globals.css overrides לכל hex חסר</small>
+          </div>
+          <span class="task-file">globals.css</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            PostStatus — הוספת 'queued' + queue_order
+            <small>TypeORM entity + type + frontend types</small>
+          </div>
+          <span class="task-file">post.entity.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            Scheduling fields ב-CredentialSet
+            <small>schedule_enabled, start_hour, end_hour, interval_minutes, last_sent_at</small>
+          </div>
+          <span class="task-file">credential-set.entity.ts</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="phase">
+      <div class="phase-header">
+        <div class="phase-header-left">
+          <div class="phase-num">2</div>
+          <div>
+            <div class="phase-title">תור + תזמון אוטומטי</div>
+            <div class="phase-subtitle">Queue System · Scheduler Cron · SchedulingForm UI</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip chip-done">✓ הושלם</span>
+          <span class="badge">שבוע 1–2</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            createQueuedPost · listQueue · dequeue · processNextQueuedPost
+            <small>Backend posts.service.ts — OpenAI text generation + queue ordering</small>
+          </div>
+          <span class="task-file">posts.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            Cron Job — processQueue() every minute
+            <small>בדיקת שעה + מרווח + שליחה אוטומטית לטלגרם</small>
+          </div>
+          <span class="task-file">campaign-scheduler.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            SchedulingForm UI — toggle + time window + interval grid
+            <small>Visual timeline bar · estimated posts/day calculator</small>
+          </div>
+          <span class="task-file">SchedulingForm.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot done">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="task-label">
+            Posts Page — טאב "תור" עם QueuePanel + QueueItem
+            <small>Drag-to-reorder (planned), remove from queue, amber theme</small>
+          </div>
+          <span class="task-file">posts/page.tsx</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="phase">
+      <div class="phase-header">
+        <div class="phase-header-left">
+          <div class="phase-num">3</div>
+          <div>
+            <div class="phase-title">Platform & Tone Selector + Post Variations</div>
+            <div class="phase-subtitle">פיצ'ר מרכזי מה-PRD — בחירת פלטפורמה, טון, ו-3 וריאציות</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip chip-progress">בפיתוח</span>
+          <span class="badge amber">שבוע 2–3</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Backend: הוספת platform + tone + variants ל-OpenAI prompt
+            <small>posts.service.ts — system prompt מותאם לכל פלטפורמה. JSON output עם 3 גרסאות.</small>
+          </div>
+          <span class="task-file">posts.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Frontend: PostGeneratorModal — מודאל יצירת פוסט
+            <small>בחירת מוצר מהקטלוג → פלטפורמה (Telegram/WhatsApp/Facebook) → טון → Generate</small>
+          </div>
+          <span class="task-file">PostGeneratorModal.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            VariantPicker — הצגת 3 וריאציות עם בחירה
+            <small>3 cards, כל אחד עם טקסט ו"בחר גרסה זו". טאב "פרמיום" לגרסה משופרת.</small>
+          </div>
+          <span class="task-file">VariantPicker.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            SmartCopy — העתקה חכמה לפי פלטפורמה
+            <small>Telegram: HTML bold/italic. WhatsApp: *bold* _italic_. Facebook: plain text.</small>
+          </div>
+          <span class="task-file">SmartCopy.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Regenerate button — נסח מחדש
+            <small>שומר את הפלטפורמה והטון שנבחרו, מייצר גרסה חדשה.</small>
+          </div>
+          <span class="task-file">posts/page.tsx</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 4 -->
+    <div class="phase">
+      <div class="phase-header">
+        <div class="phase-header-left">
+          <div class="phase-num">4</div>
+          <div>
+            <div class="phase-title">UX ושיפורי ממשק</div>
+            <div class="phase-subtitle">Preview Modal · Post History · Quick Import · Dashboard stats</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip chip-planned">מתוכנן</span>
+          <span class="badge amber">שבוע 3–4</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Post Preview Modal — תצוגה מקדימה לפני שליחה
+            <small>תמונת מוצר + טקסט מעוצב + כפתורי "שלח עכשיו" / "הוסף לתור" / "העתק"</small>
+          </div>
+          <span class="task-file">PostPreviewModal.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Quick Import URL — הדבקת קישור AliExpress
+            <small>שדה URL ב-Products page → import מהיר → הוספה ישירה לתור</small>
+          </div>
+          <span class="task-file">products/page.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Post History — שיפור תצוגה
+            <small>פילטר לפי פלטפורמה, תמונת מוצר, טאג פלטפורמה, actions מהירות</small>
+          </div>
+          <span class="task-file">posts/page.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Dashboard — Stats cards + Chart
+            <small>פוסטים שנשלחו היום, שבוע, חודש. גרף שליחות לפי יום. עמלה משוערת.</small>
+          </div>
+          <span class="task-file">dashboard/page.tsx</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Queue Drag-to-Reorder
+            <small>@dnd-kit/core — גרירת פריטים בתור לשינוי סדר השליחה</small>
+          </div>
+          <span class="task-file">QueuePanel.tsx</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 5 -->
+    <div class="phase">
+      <div class="phase-header">
+        <div class="phase-header-left">
+          <div class="phase-num">5</div>
+          <div>
+            <div class="phase-title">ערוצים נוספים + גרסה 2</div>
+            <div class="phase-subtitle">WhatsApp Business API · Facebook Page API · AI Discovery</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip chip-future">עתידי</span>
+          <span class="badge">V2</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            WhatsApp Business Cloud API
+            <small>שליחת הודעות + תמונות לקבוצות/ערוצים WhatsApp</small>
+          </div>
+          <span class="task-file">whatsapp.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            Facebook Page API + Instagram Basic
+            <small>פרסום לדף פייסבוק + שיתוף לאינסטגרם</small>
+          </div>
+          <span class="task-file">social.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            AI Product Discovery — המלצות חכמות
+            <small>OpenAI web-browsing tool → מוצרים טרנדים + עמלה גבוהה לפי קטגוריה</small>
+          </div>
+          <span class="task-file">ai-discovery.service.ts</span>
+        </div>
+        <div class="phase-task">
+          <div class="task-dot todo">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="task-label">
+            A/B Testing — 2 גרסאות פוסט + מעקב ביצועים
+            <small>שליחת גרסה A לחלק ממנויים, גרסה B לחלק אחר — מדידת CTR</small>
+          </div>
+          <span class="task-file">ab-testing.service.ts</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §5 FEATURES ─────────────────────────────── -->
+  <section id="features">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </div>
+      <span class="section-num">05</span>
+      <h2>פיצ'רים ועדיפויות</h2>
+    </div>
+
+    <div class="feat-table">
+      <div class="feat-row" style="padding-top:14px">
+        <div class="feat-icon-box">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">ייבוא מוצר מ-URL / Discover</div>
+          <div class="feat-desc">הדבקת קישור AliExpress → auto-extract product_id → שמירת נתוני המוצר המדויקים (ללא keyword search שגוי)</div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box">
+          <svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Platform Selector — בחירת פלטפורמה</div>
+          <div class="feat-desc">טלגרם / ווטסאפ / פייסבוק — כל פלטפורמה מקבלת prompt שונה (אורך, פורמט, אמוג'י)</div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box amber">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Tone Selector — בחירת טון</div>
+          <div class="feat-desc">מקצועי · כיפי/קליל · דחוף/מבצע · חסכוני. כל טון משנה את סגנון הכתיבה של OpenAI</div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box">
+          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.77"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Regenerate + 3 וריאציות</div>
+          <div class="feat-desc">כפתור "נסח מחדש" + אפשרות להציג 3 גרסאות ולבחור. OpenAI מחזיר JSON: <code style="color:var(--blue-pale);font-family:'Space Mono',monospace">{v1, v2, v3}</code></div>
+        </div>
+        <span class="priority-chip p-high">HIGH</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Smart Copy — העתקה חכמה</div>
+          <div class="feat-desc">Telegram: <code style="color:var(--blue-pale);font-family:'Space Mono',monospace">&lt;b&gt;</code> HTML. WhatsApp: <code style="color:var(--blue-pale);font-family:'Space Mono',monospace">*bold*</code>. Facebook: plain text. כפתור "העתק לטלגרם" / "שלח לווטסאפ"</div>
+        </div>
+        <span class="priority-chip p-med">MED</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box green">
+          <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Post Preview Modal</div>
+          <div class="feat-desc">תצוגה מקדימה מלאה לפני שליחה — תמונת מוצר, טקסט כפי שיוצג, מחיר, קישור אפיליאט</div>
+        </div>
+        <span class="priority-chip p-med">MED</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box purple">
+          <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">Dashboard Analytics</div>
+          <div class="feat-desc">Stats cards: פוסטים שנשלחו / עמלה משוערת / קמפיינים פעילים. גרף שליחות שבועי.</div>
+        </div>
+        <span class="priority-chip p-med">MED</span>
+      </div>
+      <div class="feat-row">
+        <div class="feat-icon-box purple">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <div>
+          <div class="feat-label">AI Discovery חכמה</div>
+          <div class="feat-desc">המלצות מוצרים AI בהתבסס על קטגוריה + עונה + טרנדים. OpenAI + AliExpress API.</div>
+        </div>
+        <span class="priority-chip p-future">V2</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §6 USER FLOW ─────────────────────────────── -->
+  <section id="flow">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+      </div>
+      <span class="section-num">06</span>
+      <h2>זרימת משתמש — Flow מלא</h2>
+    </div>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-circle">01</div>
+        <div class="flow-body">
+          <strong>גילוי מוצר (Discover)</strong>
+          <span>המשתמש נכנס ל"גלה מוצרים" → מחפש לפי מילות מפתח או Hot Products → רואה מוצרים עם עמלה, מחיר ₪, דירוג. לוחץ "הוסף מוצר" → נשמר לקטלוג עם כל הנתונים המדויקים (ללא re-fetch שגוי).</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">02</div>
+        <div class="flow-body">
+          <strong>ניהול קטלוג</strong>
+          <span>המשתמש רואה את המוצרים שלו → מאשר/דוחה → לוחץ "הוסף לתור" → OpenAI מייצר פוסט + מוסיף לתור השליחה. אפשרות לייבוא ישיר מ-URL AliExpress.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">03</div>
+        <div class="flow-body">
+          <strong>עריכת פוסט (Phase 3)</strong>
+          <span>PostGeneratorModal נפתח → בחירת פלטפורמה (טלגרם/ווטסאפ/פייסבוק) → בחירת טון (מקצועי/כיפי/דחוף) → OpenAI מייצר 3 גרסאות → המשתמש בוחר, עורך ישיר, ולוחץ "הוסף לתור" או "שלח עכשיו".</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">04</div>
+        <div class="flow-body">
+          <strong>תור וסדר שליחה</strong>
+          <span>המשתמש רואה את התור עם drag-to-reorder → מגדיר שעות שליחה ומרווח → Cron Job שולח פוסט כל X דקות בין שעת ההתחלה לסיום.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-circle">05</div>
+        <div class="flow-body">
+          <strong>מעקב ואנליטיקס</strong>
+          <span>Dashboard מציג: פוסטים שנשלחו / עמלה משוערת / ביצועי קמפיינים. היסטוריית פוסטים מלאה עם תמונה, פלטפורמה, זמן שליחה.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §7 AI ARCHITECTURE ──────────────────────── -->
+  <section id="ai">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+      </div>
+      <span class="section-num">07</span>
+      <h2>ארכיטקטורת OpenAI / Prompts</h2>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-blue">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          מודל
+        </div>
+        <p><strong style="color:var(--blue-pale)">gpt-4o-mini</strong> — מהיר, זול, עברית מצוינת. לוריאציות premium: gpt-4o.</p>
+      </div>
+      <div class="card card-blue">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/></svg>
+          Max Tokens
+        </div>
+        <p>פוסט יחיד: <strong style="color:var(--blue-pale)">600 tokens</strong>. 3 וריאציות JSON: <strong style="color:var(--blue-pale)">1,200 tokens</strong>.</p>
+      </div>
+    </div>
+
+    <div class="code-block" style="margin-top:18px">
+      <div class="code-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="code-label">OpenAI System Prompt — Phase 3 Design</span>
+      </div>
+<span class="sc-grey">// SYSTEM PROMPT (מותאם לפלטפורמה + טון)</span><br>
+<span class="sc-blue">const</span> <span class="sc-white">systemPrompt</span> = <span class="sc-green">`</span><br>
+<span class="sc-green">אתה מומחה שיווק שותפים ישראלי עם 10 שנות ניסיון.</span><br>
+<span class="sc-green">כתוב פוסטים מוכרים בעברית טבעית, ישירה ואנרגטית.</span><br><br>
+<span class="sc-green">פלטפורמה: ${platform}</span><br>
+<span class="sc-green">${platform === 'telegram' ? '- שימוש ב-HTML: &lt;b&gt;, &lt;i&gt;. פוסט קצר 3-5 שורות.' : ''}</span><br>
+<span class="sc-green">${platform === 'whatsapp' ? '- פורמט WhatsApp: *bold* _italic_. אישי ויומיומי.' : ''}</span><br>
+<span class="sc-green">${platform === 'facebook'  ? '- פוסט ארוך יותר, פסקה פתיחה + bullets + CTA.' : ''}</span><br><br>
+<span class="sc-green">טון: ${tone}</span><br>
+<span class="sc-green">${tone === 'urgent'       ? '- הדגש מבצע מוגבל, מלאי קטן, תחושת דחיפות.' : ''}</span><br>
+<span class="sc-green">${tone === 'professional' ? '- טון עסקי, עובדות, ערך ברור, ניסוח מכובד.' : ''}</span><br>
+<span class="sc-green">${tone === 'fun'          ? '- אמוג\'י, קצר, כיפי, שפת רחוב ישראלי.' : ''}</span><br><br>
+<span class="sc-green">החזר JSON: {"v1": "...", "v2": "...", "v3": "..."}</span><span class="sc-green">`</span><br><br>
+<span class="sc-grey">// USER MESSAGE</span><br>
+<span class="sc-blue">const</span> <span class="sc-white">userMsg</span> = {<br>
+&nbsp;&nbsp;<span class="sc-blue">product:</span> <span class="sc-green">"${product.title}"</span>,<br>
+&nbsp;&nbsp;<span class="sc-blue">price:</span> <span class="sc-amber">₪${product.sale_price}</span>,<br>
+&nbsp;&nbsp;<span class="sc-blue">original_price:</span> <span class="sc-amber">₪${product.original_price}</span>,<br>
+&nbsp;&nbsp;<span class="sc-blue">discount:</span> <span class="sc-amber">${product.discount_percent}%</span>,<br>
+&nbsp;&nbsp;<span class="sc-blue">affiliate_url:</span> <span class="sc-green">"${affiliateUrl}"</span><br>
+}
+    </div>
+
+    <div class="grid-3" style="margin-top:16px">
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+          Telegram פורמט
+        </div>
+        <p style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:var(--blue-pale)">
+          🔥 &lt;b&gt;שם מוצר&lt;/b&gt;<br>
+          ✅ פיצ'ר 1 | פיצ'ר 2<br>
+          ⚡️ מחיר: ₪XX (היה ₪YY)<br>
+          👉 &lt;a href="URL"&gt;קנה עכשיו&lt;/a&gt;
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" width="16" height="16"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          WhatsApp פורמט
+        </div>
+        <p style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:#86efac">
+          🛍️ *שם מוצר*<br>
+          💰 רק ₪XX היום!<br>
+          _(היה ₪YY)_<br>
+          לינק: URL
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" width="16" height="16"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+          Facebook פורמט
+        </div>
+        <p style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:#c4b5fd">
+          מצאתי מוצר מדהים...<br><br>
+          • פיצ'ר 1<br>
+          • פיצ'ר 2<br><br>
+          מחיר: ₪XX בלבד 🎯<br>
+          קישור בתגובה!
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §8 MILESTONES ──────────────────────────── -->
+  <section id="milestones">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <span class="section-num">08</span>
+      <h2>מיילסטונים ולו"ז</h2>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="milestone-table">
+        <thead>
+          <tr>
+            <th>שלב</th>
+            <th>תיאור</th>
+            <th>משך</th>
+            <th>קבצים עיקריים</th>
+            <th>סטטוס</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="week-badge">שבוע 1</span></td>
+            <td>Bug fixes — Wrong product, Light mode, Queue entity</td>
+            <td style="color:var(--muted)">2 ימים</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">products.service.ts, globals.css</td>
+            <td><span class="chip chip-done">✓ הושלם</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 1</span></td>
+            <td>Queue System + Scheduling Form UI</td>
+            <td style="color:var(--muted)">3 ימים</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">posts.service.ts, SchedulingForm.tsx</td>
+            <td><span class="chip chip-done">✓ הושלם</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 2</span></td>
+            <td>Platform Selector + Tone Picker UI</td>
+            <td style="color:var(--muted)">2 ימים</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">PostGeneratorModal.tsx</td>
+            <td><span class="chip chip-planned">נדרש</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 2</span></td>
+            <td>3 Post Variants + Regenerate Button</td>
+            <td style="color:var(--muted)">2 ימים</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">VariantPicker.tsx, posts.service.ts</td>
+            <td><span class="chip chip-planned">נדרש</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 3</span></td>
+            <td>Smart Copy + Post Preview Modal</td>
+            <td style="color:var(--muted)">2 ימים</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">SmartCopy.tsx, PostPreviewModal.tsx</td>
+            <td><span class="chip chip-planned">נדרש</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 3</span></td>
+            <td>Quick URL Import + Post History UX</td>
+            <td style="color:var(--muted)">1 יום</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">products/page.tsx</td>
+            <td><span class="chip chip-planned">נדרש</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 4</span></td>
+            <td>Dashboard Analytics + Queue Drag-to-Reorder</td>
+            <td style="color:var(--muted)">2 ימים</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">dashboard/page.tsx, QueuePanel.tsx</td>
+            <td><span class="chip chip-planned">נדרש</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">שבוע 4</span></td>
+            <td>QA + Prompt Tuning + ביצועים</td>
+            <td style="color:var(--muted)">2 ימים</td>
+            <td style="color:var(--muted)">—</td>
+            <td><span class="chip chip-planned">נדרש</span></td>
+          </tr>
+          <tr>
+            <td><span class="week-badge">V2</span></td>
+            <td>WhatsApp API + Facebook + AI Discovery</td>
+            <td style="color:var(--muted)">2–3 שבועות</td>
+            <td style="color:var(--blue);font-family:'Space Mono',monospace;font-size:11px">social.service.ts</td>
+            <td><span class="chip chip-future">עתידי</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §9 RISKS ─────────────────────────────────── -->
+  <section id="risks">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <span class="section-num">09</span>
+      <h2>סיכונים ומיטיגציה</h2>
+    </div>
+
+    <div class="card" style="padding:20px 26px">
+      <div class="risk-head">
+        <span>סיכון</span>
+        <span>הסתברות</span>
+        <span>השפעה</span>
+        <span>מיטיגציה</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-title">AliExpress keyword search מחזיר מוצר שגוי</span>
+        <span class="priority-chip p-high">גבוהה</span>
+        <span class="priority-chip p-high">גבוהה</span>
+        <span>✅ נפתר — pass pre-fetched data + הסרת items[0] fallback</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-title">OpenAI מייצר עברית לא טבעית</span>
+        <span class="priority-chip p-med">בינונית</span>
+        <span class="priority-chip p-high">גבוהה</span>
+        <span>Few-Shot Examples בכל prompt · Prompt tuning לאחר 50 פוסטים ראשונים</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-title">Telegram Bot Rate Limit</span>
+        <span class="priority-chip p-med">בינונית</span>
+        <span class="priority-chip p-med">בינונית</span>
+        <span>מרווח מינימלי 1 דקה בין הודעות · Retry עם exponential backoff</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-title">OpenAI API Latency &gt;5 שניות</span>
+        <span class="priority-chip p-low">נמוכה</span>
+        <span class="priority-chip p-med">בינונית</span>
+        <span>Streaming response + Skeleton UI + "מייצר פוסט..." עם spinner</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-title">AliExpress Affiliate API key שגוי</span>
+        <span class="priority-chip p-med">בינונית</span>
+        <span class="priority-chip p-high">גבוהה</span>
+        <span>Credentials verify endpoint קיים · הודעת שגיאה ברורה בממשק</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── §10 KPIs ────────────────────────────────── -->
+  <section id="kpis">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      </div>
+      <span class="section-num">10</span>
+      <h2>מדדי הצלחה (KPIs)</h2>
+    </div>
+
+    <div class="grid-3">
+      <div class="card card-green">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          זמן לפוסט ראשון
+        </div>
+        <p>פחות מ-30 שניות מרגע לחיצת "הוסף לתור" ועד פוסט מוכן בממשק.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" width="16" height="16"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          איכות פוסטים
+        </div>
+        <p>80%+ מהפוסטים לא ידרשו עריכה — נמדד ב-Beta עם 10 משתמשים ראשונים.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" width="16" height="16"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.77"/></svg>
+          שיעור Regenerate
+        </div>
+        <p>פחות מ-25% מהפוסטים ידרשו "נסח מחדש" — מדד לאיכות ה-Prompt.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          משתמשי Beta
+        </div>
+        <p>10 משווקי שותפים ישראלים פעילים בשבוע הראשון לאחר MVP.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          פוסטים ביום
+        </div>
+        <p>ממוצע של 20+ פוסטים שנשלחו ביום לכל משתמש פעיל.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          NPS
+        </div>
+        <p>NPS &gt; 50 לאחר 2 שבועות שימוש — נמדד בפידבק ישיר.</p>
+      </div>
+    </div>
+
+    <div class="card card-blue" style="margin-top:18px">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue-lt)" stroke-width="2" width="16" height="16"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        Next Steps — מה לעשות עכשיו (Phase 3)
+      </div>
+      <p>
+        <strong style="color:var(--blue-pale)">1.</strong> לבנות <code style="background:rgba(59,130,246,.1);padding:1px 6px;border-radius:4px;font-family:'Space Mono',monospace;font-size:12px">PostGeneratorModal.tsx</code> עם Platform + Tone selector<br>
+        <strong style="color:var(--blue-pale)">2.</strong> לעדכן את posts.service.ts לתמוך ב-<code style="background:rgba(59,130,246,.1);padding:1px 6px;border-radius:4px;font-family:'Space Mono',monospace;font-size:12px">platform + tone + variants JSON</code><br>
+        <strong style="color:var(--blue-pale)">3.</strong> לבנות <code style="background:rgba(59,130,246,.1);padding:1px 6px;border-radius:4px;font-family:'Space Mono',monospace;font-size:12px">VariantPicker.tsx</code> — בחירה בין 3 גרסאות<br>
+        <strong style="color:var(--blue-pale)">4.</strong> להוסיף Smart Copy formatter לכל פלטפורמה<br>
+        <strong style="color:var(--blue-pale)">5.</strong> לבנות Post Preview Modal מלא לפני שליחה
+      </p>
+    </div>
+  </section>
+
+  <hr>
+  <div class="footer">
+    ALIBOT PRO · Implementation Plan v1.0 · אפריל 2026 · Next.js + NestJS + OpenAI
+  </div>
+
+</main>
+</body>
+</html>

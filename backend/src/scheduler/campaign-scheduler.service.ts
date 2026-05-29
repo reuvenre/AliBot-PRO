@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CampaignsService } from '../campaigns/campaigns.service';
 import { PostsService } from '../posts/posts.service';
 import { CredentialsService } from '../credentials/credentials.service';
+import { OrchestratorAgent } from '../agents/orchestrator.agent';
 
 @Injectable()
 export class CampaignSchedulerService {
@@ -13,6 +14,7 @@ export class CampaignSchedulerService {
     private readonly campaigns: CampaignsService,
     private readonly posts: PostsService,
     private readonly credentials: CredentialsService,
+    @Optional() private readonly orchestrator: OrchestratorAgent,
   ) {}
 
   /** Runs every minute — sends posts that have reached their scheduled_at time */
@@ -103,10 +105,13 @@ export class CampaignSchedulerService {
       if (this.running.has(campaign.id)) continue;
 
       this.running.add(campaign.id);
-      this.logger.log(`Running campaign "${campaign.name}" (${campaign.id})`);
+      this.logger.log(`Running campaign "${campaign.name}" (${campaign.id}) [agents=${campaign.use_agents}]`);
 
-      this.campaigns.markRun(campaign.id)
-        .then(() => this.posts.runCampaign(campaign, campaign.user_id))
+      const runner = this.orchestrator
+        ? this.campaigns.markRun(campaign.id).then(() => this.orchestrator.run(campaign, campaign.user_id))
+        : this.campaigns.markRun(campaign.id).then(() => this.posts.runCampaign(campaign, campaign.user_id));
+
+      runner
         .catch((err) => this.logger.error(`Campaign ${campaign.id} failed: ${err.message}`))
         .finally(() => this.running.delete(campaign.id));
     }
