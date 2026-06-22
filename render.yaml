@@ -1,14 +1,20 @@
-# NEXUS backend — Render Blueprint.
-# One-click infra: NestJS API + managed Postgres + managed Redis (Key Value).
-# In Render: New → Blueprint → connect this repo. Render reads this file.
-# Secrets marked `sync: false` must be filled in the dashboard after the first apply.
+# NEXUS backend — Render Blueprint (FREE tier, no credit card).
+#
+# Uses the existing free Supabase Postgres for the database and an in-memory
+# cache (no Redis needed). Only one free web service is created.
+#
+# In Render: New → Blueprint → repo reuvenre/AliBot-PRO → branch `main`.
+# After the first apply, fill the secrets marked `sync: false` in the dashboard.
+#
+# Note: the free instance spins down after ~15 min of inactivity (cold start on
+# the next request), so the background schedulers (posts/boost) run only while
+# the service is awake. Upgrade to a paid instance for always-on automation.
 services:
-  # ── NestJS API ───────────────────────────────────────────────────────────
   - type: web
     name: nexus-backend
     runtime: node
     rootDir: backend
-    plan: starter
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: node dist/main
     healthCheckPath: /health
@@ -18,49 +24,25 @@ services:
         value: production
       - key: PORT
         value: 3001
-      # Managed Postgres + Redis are wired automatically below. To use the
-      # existing Supabase project instead, set DATABASE_URL manually (sync:false)
-      # to the Supabase connection string and keep DATABASE_SSL=true.
       - key: DATABASE_SSL
         value: 'true'
+      # Supabase Postgres connection string (already provisioned with full schema):
+      #   postgresql://postgres:[DB-PASSWORD]@db.pyppovzopxleknwmgdiu.supabase.co:5432/postgres
+      # Get the password from Supabase → Project Settings → Database.
       - key: DATABASE_URL
-        fromDatabase:
-          name: nexus-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: nexus-redis
-          property: connectionString
-      # JWT secrets can be any random string — let Render generate them
+        sync: false
+      # JWT secrets — generated automatically
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      # ENCRYPTION_KEY must be 32-byte hex (openssl rand -hex 32) — set manually
+      # ENCRYPTION_KEY must be 32-byte hex: openssl rand -hex 32
       - key: ENCRYPTION_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      # URLs — set to the Vercel frontend and this service's own URL
       - key: FRONTEND_URL
         sync: false
       - key: BACKEND_URL
         sync: false
-
-  # ── Redis / Key Value ────────────────────────────────────────────────────
-  - type: redis
-    name: nexus-redis
-    plan: starter
-    maxmemoryPolicy: noeviction
-    ipAllowList: []   # only reachable from Render services
-
-databases:
-  - name: nexus-db
-    plan: basic-256mb
-    databaseName: nexus
-    user: nexus
+      # No REDIS_URL → the app uses an in-memory cache automatically.

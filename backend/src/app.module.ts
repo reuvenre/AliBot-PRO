@@ -32,12 +32,15 @@ import { HealthController } from './health.controller';
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        stores: [
-          new KeyvRedis(config.get<string>('REDIS_URL') || 'redis://localhost:6379'),
-        ],
-        ttl: 0,
-      }),
+      // Use Redis when REDIS_URL is configured; otherwise fall back to an
+      // in-memory cache so the app runs with zero external dependencies
+      // (e.g. a free single-instance deploy). Rates simply cache per-instance.
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        const options: { ttl: number; stores?: KeyvRedis[] } = { ttl: 0 };
+        if (redisUrl) options.stores = [new KeyvRedis(redisUrl)];
+        return options;
+      },
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),
