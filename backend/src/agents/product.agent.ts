@@ -119,6 +119,13 @@ Format: [{ product_id, title, sale_price, original_price, discount_percent, orde
           }
         }
 
+        // If the model asked for tool(s) we don't handle, there are no results to send
+        // back — pushing an empty content array would error/loop. Stop instead.
+        if (toolResults.length === 0) {
+          this.logger.warn('ProductAgent: tool_use turn produced no handled tool results');
+          break;
+        }
+
         messages.push({ role: 'user', content: toolResults });
         continue;
       }
@@ -129,7 +136,9 @@ Format: [{ product_id, title, sale_price, original_price, discount_percent, orde
         const match = textBlock.text.match(/\[[\s\S]*\]/);
         if (match) {
           try {
-            rankedProducts = JSON.parse(match[0]);
+            const parsed = JSON.parse(match[0]);
+            if (Array.isArray(parsed)) rankedProducts = parsed;
+            else this.logger.warn('ProductAgent: parsed JSON was not an array');
           } catch {
             this.logger.warn('ProductAgent: failed to parse JSON from response');
           }

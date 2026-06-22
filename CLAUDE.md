@@ -5,16 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Repository Layout
 
 ```
-AliBot-PRO/
-└── alibot-pro/          ← monorepo root
-    ├── backend/         ← NestJS API (port 3001)
-    ├── frontend/        ← Next.js 14 app (port 3000)
-    ├── nginx/           ← reverse-proxy config (prod only)
-    ├── .env             ← single env file shared by both apps
-    └── docker-compose.yml
+AliBot-PRO/              ← repo root (monorepo)
+├── backend/             ← NestJS API (port 3001)
+├── frontend/            ← Next.js 14 app (port 3000)
+├── nginx/               ← reverse-proxy config (prod only)
+├── .env                 ← single env file shared by both apps
+└── docker-compose.yml
 ```
 
-All `npm` commands below are run from their respective subdirectory (`alibot-pro/backend/` or `alibot-pro/frontend/`).
+All `npm` commands below are run from their respective subdirectory (`backend/` or `frontend/`).
 
 ## Development Commands
 
@@ -53,7 +52,7 @@ docker compose --profile prod up -d
 
 ## Environment
 
-One `.env` lives at `alibot-pro/.env` (not inside `backend/` or `frontend/`). Both the backend and the frontend Dockerfile read it. The backend `ConfigModule` is configured to find it at `../.env` when running from `alibot-pro/backend/`.
+One `.env` lives at the repo root (not inside `backend/` or `frontend/`). Both the backend and the frontend Dockerfile read it. The backend `ConfigModule` looks for it at `../.env` (repo root) when running from `backend/`, falling back to a local `.env`.
 
 Required variables: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BACKEND_URL`, `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `ANTHROPIC_API_KEY`.
 
@@ -66,7 +65,7 @@ Every feature follows: `{name}.entity.ts` → `{name}.service.ts` → `{name}.co
 
 ### Auth
 - Guards: `@UseGuards(JwtAuthGuard)` — standard Passport JWT guard.
-- `req.user.userId` is the authenticated user ID inside guarded routes.
+- `req.user` is the full `User` entity inside guarded routes (the JWT strategy returns it); use `req.user.id` for the authenticated user ID.
 - Access tokens expire in 15 min; refresh tokens in 30 days and are persisted in DB + `refresh_token` cookie.
 
 ### Credentials & encryption

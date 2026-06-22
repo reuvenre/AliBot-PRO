@@ -513,7 +513,10 @@ export class PostsService {
       : (product.original_price * rate).toFixed(0);
     const currencyPair = creds?.currency_pair || 'USD_ILS';
     const symbol = currencyPair.includes('ILS') ? '₪' : currencyPair.includes('EUR') ? '€' : currencyPair.includes('GBP') ? '£' : '$';
-    const discount = product.discount_percent || Math.round((1 - product.sale_price / product.original_price) * 100);
+    const discount = product.discount_percent
+      || (product.original_price > 0
+        ? Math.round((1 - product.sale_price / product.original_price) * 100)
+        : 0);
 
     if (!creds?.openai_api_key) {
       return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
@@ -555,7 +558,11 @@ export class PostsService {
             timeout: 20_000,
           },
         );
-        return res.data.choices[0].message.content.trim();
+        const content = res.data?.choices?.[0]?.message?.content;
+        if (typeof content !== 'string') {
+          throw new Error('OpenAI returned no message content');
+        }
+        return content.trim();
       } catch (err: any) {
         if (err?.response?.status === 429 && attempt < retries - 1) {
           await new Promise((r) => setTimeout(r, 2 ** attempt * 1000)); // 1s, 2s

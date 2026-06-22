@@ -3,12 +3,16 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthDto } from './dto/auth.dto';
 import { UsersService } from '../users/users.service';
 
+// Brute-force / enumeration protection on unauthenticated auth endpoints.
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { ttl: 60_000, limit: 10 } })
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -93,8 +97,12 @@ export class AuthController {
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
     try {
-      const { access_token } = await this.auth.issueTokensPublic(req.user as any, res);
-      return res.redirect(`${frontendUrl}/google/success?token=${access_token}`);
+      // issueTokens sets the HttpOnly refresh cookie. The frontend's bootstrap()
+      // exchanges that cookie for an access token via /auth/refresh — so we must NOT
+      // put the access token in the redirect URL (it would leak into browser history,
+      // Referer headers, and proxy/server logs).
+      await this.auth.issueTokensPublic(req.user as any, res);
+      return res.redirect(`${frontendUrl}/google/success`);
     } catch {
       return res.redirect(`${frontendUrl}/login?error=google_failed`);
     }

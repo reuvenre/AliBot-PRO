@@ -7,6 +7,13 @@ const TAG_LEN = 16;
 function getKey(): Buffer {
   const hex = process.env.ENCRYPTION_KEY || '';
   if (hex.length !== 64) {
+    // A missing/invalid key in production would silently encrypt every user's secrets
+    // with a hardcoded, source-visible key — refuse to start instead.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'ENCRYPTION_KEY must be a 64-character hex string (32 bytes) in production',
+      );
+    }
     // In dev without key set, use a deterministic fallback (NOT for prod)
     return Buffer.alloc(32, 'dev-key-fallback');
   }
@@ -35,7 +42,16 @@ export function decrypt(ciphertext: string): string {
     decipher.setAuthTag(tag);
     return decipher.update(enc) + decipher.final('utf8');
   } catch {
-    return ciphertext; // not encrypted yet (migration safety)
+    // The value may be legacy plaintext from before encryption was added (migration
+    // safety). But this also fires on a wrong/rotated ENCRYPTION_KEY — in which case we
+    // would otherwise hand raw ciphertext to Telegram/OpenAI/AliExpress silently. A
+    // value that looks like our base64 envelope (>= IV+TAG bytes) almost certainly IS
+    // encrypted, so surface the failure rather than returning garbage.
+    const looksEncrypted = Buffer.from(ciphertext, 'base64').length >= IV_LEN + TAG_LEN;
+    if (looksEncrypted) {
+      console.error('[crypto] decrypt failed for an encrypted value — check ENCRYPTION_KEY');
+    }
+    return ciphertext; // assume legacy plaintext
   }
 }
 

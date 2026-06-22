@@ -94,8 +94,12 @@ export class AuthService {
 
     await this.mail.sendPasswordReset(email, resetUrl);
 
+    // Only expose the reset URL in local development (convenience when SMTP isn't set up).
+    // NEVER return it otherwise — doing so lets any unauthenticated caller obtain a
+    // victim's reset token directly from the API response → account takeover.
+    const isDev = this.config.get('NODE_ENV') === 'development';
     const smtpHost = this.config.get<string>('SMTP_HOST');
-    if (!smtpHost) {
+    if (isDev && !smtpHost) {
       return { message: 'If that email exists, a reset link has been sent.', reset_url: resetUrl };
     }
 

@@ -1,8 +1,15 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, IsNull } from 'typeorm';
+import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { User } from './user.entity';
+
+/** Reset tokens are 256-bit random, so a fast cryptographic hash is sufficient
+ *  (and lets us look them up by an indexed equality match instead of scanning). */
+function hashResetToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class UsersService {
@@ -56,21 +63,19 @@ export class UsersService {
   }
 
   async saveResetToken(userId: string, token: string, expiresAt: Date) {
-    const hash = await bcrypt.hash(token, 10);
-    await this.repo.update(userId, { reset_token_hash: hash, reset_token_expires: expiresAt });
+    await this.repo.update(userId, {
+      reset_token_hash: hashResetToken(token),
+      reset_token_expires: expiresAt,
+    });
   }
 
   async findByResetToken(token: string): Promise<User | null> {
-    const users = await this.repo.find({
-      where: { reset_token_hash: Not(IsNull()) },
+    return this.repo.findOne({
+      where: {
+        reset_token_hash: hashResetToken(token),
+        reset_token_expires: MoreThan(new Date()),
+      },
     });
-    for (const user of users) {
-      if (!user.reset_token_hash) continue;
-      if (user.reset_token_expires && user.reset_token_expires < new Date()) continue;
-      const match = await bcrypt.compare(token, user.reset_token_hash);
-      if (match) return user;
-    }
-    return null;
   }
 
   async updatePassword(userId: string, newPassword: string) {
@@ -79,6 +84,9 @@ export class UsersService {
       password_hash: hash,
       reset_token_hash: null,
       reset_token_expires: null,
+      // Revoke any active session so a password reset/change kicks out
+      // an attacker who still holds a valid refresh token.
+      refresh_token_hash: null,
     });
   }
 

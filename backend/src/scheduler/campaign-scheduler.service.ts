@@ -9,6 +9,8 @@ import { OrchestratorAgent } from '../agents/orchestrator.agent';
 export class CampaignSchedulerService {
   private readonly logger = new Logger(CampaignSchedulerService.name);
   private running = new Set<string>();
+  private sendingScheduled = false;
+  private processingQueue = false;
 
   constructor(
     private readonly campaigns: CampaignsService,
@@ -20,6 +22,11 @@ export class CampaignSchedulerService {
   /** Runs every minute — sends posts that have reached their scheduled_at time */
   @Cron(CronExpression.EVERY_MINUTE)
   async sendScheduledPosts() {
+    // Sending is sequential and each post can take up to 15s (Telegram timeout),
+    // so a tick can outlast the 1-minute interval. Without this guard the next tick
+    // would re-fetch posts still in 'scheduled' status and send them twice.
+    if (this.sendingScheduled) return;
+    this.sendingScheduled = true;
     try {
       const due = await this.posts.findDueScheduledPosts();
       for (const post of due) {
@@ -27,6 +34,8 @@ export class CampaignSchedulerService {
       }
     } catch (err: any) {
       this.logger.error(`Scheduled posts tick failed: ${err.message}`);
+    } finally {
+      this.sendingScheduled = false;
     }
   }
 
@@ -39,16 +48,22 @@ export class CampaignSchedulerService {
    */
   @Cron(CronExpression.EVERY_MINUTE)
   async processQueue() {
+    // Guard against overlapping ticks — sending posts can outlast the 1-minute interval.
+    if (this.processingQueue) return;
+    this.processingQueue = true;
+
     let credentialSets: any[];
     try {
       credentialSets = await this.credentials.getAllSchedulingEnabled();
     } catch {
+      this.processingQueue = false;
       return;
     }
 
     const now = new Date();
     const nowHour = now.getHours();
 
+    try {
     for (const cred of credentialSets) {
       try {
         const startHour = cred.schedule_start_hour ?? 9;
@@ -74,6 +89,9 @@ export class CampaignSchedulerService {
       } catch (err: any) {
         this.logger.error(`Queue tick failed for user ${cred.user_id}: ${err.message}`);
       }
+    }
+    } finally {
+      this.processingQueue = false;
     }
   }
 

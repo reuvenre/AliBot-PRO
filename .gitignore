@@ -24,6 +24,6 @@ Thumbs.db
 postgres_data/
 redis_data/
 
-# user settings
-.claude/settings.local.json
+# Claude Code local state (settings, worktrees, scratch)
+.claude/
 *.tsbuildinfo
