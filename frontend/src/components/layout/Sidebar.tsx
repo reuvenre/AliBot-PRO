@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Megaphone, Zap, FileText, Layout,
   Users, BarChart3, Settings, LogOut, Bot, Tag,
   ShoppingCart, Sun, Moon, Sparkles, Package,
-  Radar, Rocket,
+  Radar, Rocket, Shield,
 } from 'lucide-react';
 
 const NAV_SECTIONS = [
@@ -115,6 +115,26 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* ── Admin (admins only) ──────────────────────────────────────────── */}
+      {user?.role === 'admin' && (
+        <div className="px-3 pb-1 border-t border-edge pt-2.5">
+          <p className="section-label px-2.5 mb-1.5">ניהול מערכת</p>
+          <Link
+            href="/admin/users"
+            className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[9px] text-body font-medium transition-all duration-150
+              ${isActive('/admin/users')
+                ? 'bg-violet-500/[0.14] text-violet-300'
+                : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'}`}
+          >
+            {isActive('/admin/users') && (
+              <span className="absolute inset-y-1.5 right-0 w-[3px] rounded-full bg-violet-500" />
+            )}
+            <Shield size={14} className={`shrink-0 ${isActive('/admin/users') ? 'text-violet-300' : 'text-white/30 group-hover:text-white/55'}`} />
+            <span>ניהול משתמשים</span>
+          </Link>
+        </div>
+      )}
 
       {/* ── Settings ─────────────────────────────────────────────────────── */}
       <div className="px-3 pb-2 border-t border-edge pt-2.5">

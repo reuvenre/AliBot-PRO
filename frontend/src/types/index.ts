@@ -3,8 +3,25 @@
 export interface User {
   id: string;
   email: string;
+  role?: 'user' | 'admin';
   footer_text?: string;
   created_at: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: 'user' | 'admin';
+  created_at: string;
+  via_google: boolean;
+  posts_count: number;
+  campaigns_count: number;
+}
+
+export interface AdminStats {
+  total_users: number;
+  admins: number;
+  google_users: number;
 }
 
 export interface AuthResponse {

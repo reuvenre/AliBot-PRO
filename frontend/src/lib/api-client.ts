@@ -27,6 +27,8 @@ import type {
   PerformanceRunResult,
   HuntResult,
   ValidateResult,
+  AdminUser,
+  AdminStats,
 } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -154,6 +156,13 @@ export const adsApi = {
   list: () => http.get<AdBoost[]>('/ads').then(extract),
   summary: () => http.get<AdsSummary>('/ads/summary').then(extract),
   run: () => http.post<PerformanceRunResult>('/ads/run').then(extract),
+};
+
+// ─── Admin API ───────────────────────────────────────────────────────────────
+
+export const adminApi = {
+  users: () => http.get<AdminUser[]>('/admin/users').then(extract),
+  stats: () => http.get<AdminStats>('/admin/stats').then(extract),
 };
 
 // ─── Discovery API ───────────────────────────────────────────────────────────

@@ -14,6 +14,10 @@ export class User {
   @Column()
   password_hash: string;
 
+  /** Access role: 'user' (default) or 'admin' (can view all users) */
+  @Column({ default: 'user' })
+  role: string;
+
   @Column({ nullable: true })
   google_id: string;
 

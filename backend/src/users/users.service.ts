@@ -1,4 +1,4 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -11,11 +11,55 @@ function hashResetToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/** The single bootstrap admin — owner of the instance. Override with ADMIN_EMAIL. */
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'rubypc6@gmail.com').toLowerCase();
+
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User) private readonly repo: Repository<User>,
   ) {}
+
+  /** Promote the configured admin email to 'admin' on every boot. */
+  async onModuleInit() {
+    try {
+      await this.repo
+        .createQueryBuilder()
+        .update(User)
+        .set({ role: 'admin' })
+        .where('LOWER(email) = :email AND role != :role', { email: ADMIN_EMAIL, role: 'admin' })
+        .execute();
+    } catch (err: any) {
+      // Table may not exist yet on a brand-new DB before sync/migrations — ignore.
+      this.logger.warn(`Admin bootstrap skipped: ${err.message}`);
+    }
+  }
+
+  /** Lists every user with activity counts — admin only. */
+  async listAll(): Promise<any[]> {
+    return this.repo.query(`
+      SELECT u.id, u.email, u.role, u.created_at,
+             (u.google_id IS NOT NULL) AS via_google,
+             (SELECT COUNT(*)::int FROM posts p WHERE p.user_id = u.id) AS posts_count,
+             (SELECT COUNT(*)::int FROM campaigns c WHERE c.user_id = u.id) AS campaigns_count
+      FROM users u
+      ORDER BY u.created_at DESC
+    `);
+  }
+
+  /** Aggregate counts for the admin dashboard. */
+  async adminStats(): Promise<{ total_users: number; admins: number; google_users: number }> {
+    const rows = await this.repo.query(`
+      SELECT
+        COUNT(*)::int AS total_users,
+        COUNT(*) FILTER (WHERE role = 'admin')::int AS admins,
+        COUNT(*) FILTER (WHERE google_id IS NOT NULL)::int AS google_users
+      FROM users
+    `);
+    return rows[0] || { total_users: 0, admins: 0, google_users: 0 };
+  }
 
   async findOrCreateGoogle(email: string, googleId: string, _displayName: string): Promise<User> {
     let user = await this.repo.findOne({ where: { google_id: googleId } });
@@ -35,7 +79,8 @@ export class UsersService {
     const exists = await this.repo.findOne({ where: { email } });
     if (exists) throw new ConflictException('Email already registered');
     const password_hash = await bcrypt.hash(password, 12);
-    const user = this.repo.create({ email, password_hash });
+    const role = email.toLowerCase() === ADMIN_EMAIL ? 'admin' : 'user';
+    const user = this.repo.create({ email, password_hash, role });
     return this.repo.save(user);
   }
 
@@ -94,6 +139,7 @@ export class UsersService {
     return {
       id: user.id,
       email: user.email,
+      role: user.role || 'user',
       footer_text: user.footer_text,
       created_at: user.created_at,
     };
