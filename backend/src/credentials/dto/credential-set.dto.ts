@@ -98,6 +98,10 @@ export class CredentialSetDto {
 
   @IsOptional()
   @IsString()
+  boost_target_countries?: string;
+
+  @IsOptional()
+  @IsString()
   currency_pair?: string;
 
   @IsOptional()

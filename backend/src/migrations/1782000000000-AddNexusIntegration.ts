@@ -24,7 +24,8 @@ export class AddNexusIntegration1782000000000 implements MigrationInterface {
         ADD COLUMN IF NOT EXISTS boost_enabled boolean NOT NULL DEFAULT false,
         ADD COLUMN IF NOT EXISTS boost_roas_threshold double precision NOT NULL DEFAULT 2.0,
         ADD COLUMN IF NOT EXISTS boost_daily_budget integer NOT NULL DEFAULT 50,
-        ADD COLUMN IF NOT EXISTS boost_hard_limit_usd integer NOT NULL DEFAULT 200
+        ADD COLUMN IF NOT EXISTS boost_hard_limit_usd integer NOT NULL DEFAULT 200,
+        ADD COLUMN IF NOT EXISTS boost_target_countries varchar NOT NULL DEFAULT 'IL'
     `);
 
     // ── posts: Facebook post id ──
@@ -85,7 +86,8 @@ export class AddNexusIntegration1782000000000 implements MigrationInterface {
         DROP COLUMN IF EXISTS boost_enabled,
         DROP COLUMN IF EXISTS boost_roas_threshold,
         DROP COLUMN IF EXISTS boost_daily_budget,
-        DROP COLUMN IF EXISTS boost_hard_limit_usd
+        DROP COLUMN IF EXISTS boost_hard_limit_usd,
+        DROP COLUMN IF EXISTS boost_target_countries
     `);
   }
 }

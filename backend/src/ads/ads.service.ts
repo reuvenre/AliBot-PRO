@@ -198,7 +198,9 @@ export class AdsService {
       access_token: token,
     });
 
-    // 2. AdSet — daily budget, optimize for link clicks, default geo = Israel.
+    // 2. AdSet — daily budget, optimize for link clicks, geo per user setting.
+    const countries = (creds.boost_target_countries || 'IL')
+      .split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
     const adset_id = await this.graphPost(`${adAccount}/adsets`, {
       name: `NEXUS AdSet — ${label}`,
       campaign_id,
@@ -206,7 +208,7 @@ export class AdsService {
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LINK_CLICKS',
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-      targeting: JSON.stringify({ geo_locations: { countries: ['IL'] } }),
+      targeting: JSON.stringify({ geo_locations: { countries: countries.length ? countries : ['IL'] } }),
       status: 'PAUSED',
       access_token: token,
     });

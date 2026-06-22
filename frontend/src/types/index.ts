@@ -44,6 +44,7 @@ export interface CredentialSet {
   boost_roas_threshold: number;
   boost_daily_budget: number;
   boost_hard_limit_usd: number;
+  boost_target_countries: string;
   currency_pair: 'USD_ILS' | 'USD_EUR' | 'USD_GBP';
   // Scheduling queue
   schedule_enabled: boolean;

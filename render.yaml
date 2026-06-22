@@ -1,0 +1,62 @@
+# NEXUS backend — Render Blueprint.
+# One-click infra: NestJS API + managed Postgres + managed Redis (Key Value).
+# In Render: New → Blueprint → connect this repo. Render reads this file.
+# Secrets marked `sync: false` must be filled in the dashboard after the first apply.
+services:
+  # ── NestJS API ───────────────────────────────────────────────────────────
+  - type: web
+    name: nexus-backend
+    runtime: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: node dist/main
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      # Wired automatically from the managed resources below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexus-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: nexus-redis
+          property: connectionString
+      # JWT secrets can be any random string — let Render generate them
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # ENCRYPTION_KEY must be 32-byte hex (openssl rand -hex 32) — set manually
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # URLs — set to the Vercel frontend and this service's own URL
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_URL
+        sync: false
+
+  # ── Redis / Key Value ────────────────────────────────────────────────────
+  - type: redis
+    name: nexus-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []   # only reachable from Render services
+
+databases:
+  - name: nexus-db
+    plan: basic-256mb
+    databaseName: nexus
+    user: nexus

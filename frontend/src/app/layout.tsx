@@ -6,15 +6,50 @@ import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://nexus.app';
+
 export const metadata: Metadata = {
-  title: 'NEXUS — Affiliate Automation',
-  description: 'NEXUS — the all-in-one AI affiliate engine: discover, generate, publish multi-channel (Telegram + Facebook), and auto-boost with Meta Ads.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'NEXUS — אוטומציית שיווק שותפים מבוססת AI',
+    template: '%s · NEXUS',
+  },
+  description:
+    'NEXUS — מנוע שיווק השותפים שעושה הכל: גילוי מוצרים מ-AliExpress, כתיבת קופי עם AI, פרסום רב-ערוצי (טלגרם + פייסבוק), וקידום אוטומטי לפי ROAS.',
+  applicationName: 'NEXUS',
+  openGraph: {
+    type: 'website',
+    siteName: 'NEXUS',
+    locale: 'he_IL',
+    title: 'NEXUS — אוטומציית שיווק שותפים מבוססת AI',
+    description: 'גילוי מוצרים, קופי עם AI, פרסום רב-ערוצי, וקידום אוטומטי לפי ROAS — מערכת אחת.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'NEXUS — אוטומציית שיווק שותפים מבוססת AI',
+    description: 'גילוי מוצרים, קופי עם AI, פרסום רב-ערוצי, וקידום אוטומטי לפי ROAS — מערכת אחת.',
+  },
+};
+
+const ORG_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'NEXUS',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  description:
+    'All-in-one AI affiliate marketing automation: AliExpress product discovery, AI copywriting, multi-channel publishing (Telegram + Facebook), and ROAS-driven Meta Ads auto-boost.',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="he" dir="rtl" data-theme="dark" className="dark">
       <body className={`${inter.className} antialiased`} style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ORG_JSONLD) }}
+        />
         <ThemeProvider>
           <AuthProvider>
             {children}

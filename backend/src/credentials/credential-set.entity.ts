@@ -96,6 +96,10 @@ export class CredentialSet {
   @Column({ default: 200 })
   boost_hard_limit_usd: number;
 
+  /** Comma-separated ISO country codes for boosted-ad targeting (e.g. "IL,US") */
+  @Column({ default: 'IL' })
+  boost_target_countries: string;
+
   @Column({ default: 'USD_ILS' })
   currency_pair: string;
 

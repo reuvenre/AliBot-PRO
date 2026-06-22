@@ -94,7 +94,11 @@ Requirements:
         maxTokens: 1024,
         temperature: 0.85,
       });
-      return { text: r?.text || '', language, tokens: r?.tokens || 0 };
+      // Fall back to a deterministic post so the campaign stays populated even
+      // if the provider call fails or returns empty.
+      const text = r?.text?.trim()
+        || fallbackPost(language, product.title, currencySymbol, priceLocal, originalLocal, discount);
+      return { text, language, tokens: r?.tokens || 0 };
     }
 
     const messages: Anthropic.MessageParam[] = [
@@ -176,6 +180,20 @@ ${productBrief}`,
 
     return { text: generatedText, language, tokens: totalTokens };
   }
+}
+
+/** Deterministic post used when an AI provider returns nothing. */
+function fallbackPost(
+  language: string, title: string, symbol: string,
+  priceLocal: string, originalLocal: string, discount: number,
+): string {
+  if (language === 'ar') {
+    return `<b>${title}</b>\n\n💸 <b>${symbol}${priceLocal}</b> بدلاً من ${symbol}${originalLocal} (−${discount}%)\n\n👇 للتفاصيل والشراء`;
+  }
+  if (language === 'en') {
+    return `<b>${title}</b>\n\n💸 <b>${symbol}${priceLocal}</b> instead of ${symbol}${originalLocal} (−${discount}%)\n\n👇 Tap for details`;
+  }
+  return `<b>${title}</b>\n\n💸 <b>${symbol}${priceLocal}</b> במקום ${symbol}${originalLocal} (−${discount}%)\n\n👇 לפרטים ולרכישה`;
 }
 
 function buildSystemPrompt(language: string, template?: string): string {

@@ -33,6 +33,7 @@ export interface DecryptedCredentials {
   boost_roas_threshold?: number;
   boost_daily_budget?: number;
   boost_hard_limit_usd?: number;
+  boost_target_countries?: string;
   currency_pair?: string;
   schedule_enabled?: boolean;
   schedule_start_hour?: number;
@@ -83,6 +84,7 @@ export class CredentialsService {
     if (dto.boost_roas_threshold !== undefined)  cred.boost_roas_threshold = dto.boost_roas_threshold;
     if (dto.boost_daily_budget !== undefined)    cred.boost_daily_budget = dto.boost_daily_budget;
     if (dto.boost_hard_limit_usd !== undefined)  cred.boost_hard_limit_usd = dto.boost_hard_limit_usd;
+    if (dto.boost_target_countries?.trim())      cred.boost_target_countries = dto.boost_target_countries.trim();
 
     // Scheduling queue settings
     if (dto.schedule_enabled !== undefined)  cred.schedule_enabled = dto.schedule_enabled;
@@ -206,6 +208,7 @@ export class CredentialsService {
       boost_roas_threshold: cred.boost_roas_threshold,
       boost_daily_budget: cred.boost_daily_budget,
       boost_hard_limit_usd: cred.boost_hard_limit_usd,
+      boost_target_countries: cred.boost_target_countries,
       currency_pair: cred.currency_pair,
       schedule_enabled: cred.schedule_enabled,
       schedule_start_hour: cred.schedule_start_hour,
@@ -260,6 +263,7 @@ export class CredentialsService {
       boost_roas_threshold: cred.boost_roas_threshold ?? 2.0,
       boost_daily_budget: cred.boost_daily_budget ?? 50,
       boost_hard_limit_usd: cred.boost_hard_limit_usd ?? 200,
+      boost_target_countries: cred.boost_target_countries || 'IL',
       currency_pair: cred.currency_pair || 'USD_ILS',
       schedule_enabled: cred.schedule_enabled ?? false,
       schedule_start_hour: cred.schedule_start_hour ?? 9,

@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/register'];
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow public routes
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  // Public marketing landing page (SEO entry point) — served to everyone.
+  if (pathname === '/') {
     return NextResponse.next();
   }
 
-  // Redirect root to dashboard
-  if (pathname === '/') {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+  // Allow public auth routes
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
   }
 
   // The actual auth check happens in the dashboard layout via useAuth hook.
