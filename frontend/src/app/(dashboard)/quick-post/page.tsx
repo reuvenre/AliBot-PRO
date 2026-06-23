@@ -124,16 +124,14 @@ export default function QuickPostPage() {
       const product: AliProduct = JSON.parse(raw);
       setSelected(product);
       setPreview(null);
-      setAffiliateUrl(product.affiliate_url || '');
+      setAffiliateUrl('');
       setView('review');
-      // Fetch fresh affiliate link in background if not present
-      if (!product.affiliate_url) {
-        setAffiliateLoading(true);
-        productsApi.affiliateLink(product.product_id)
-          .then((res) => setAffiliateUrl(res.url))
-          .catch(() => setAffiliateUrl(product.product_url || ''))
-          .finally(() => setAffiliateLoading(false));
-      }
+      // Always generate the short affiliate link (catalog links may be raw URLs).
+      setAffiliateLoading(true);
+      productsApi.affiliateLink(product.product_id)
+        .then((res) => setAffiliateUrl(res.url))
+        .catch(() => setAffiliateUrl(product.affiliate_url || product.product_url || ''))
+        .finally(() => setAffiliateLoading(false));
     } catch {
       // ignore parse errors
     }
@@ -228,20 +226,16 @@ export default function QuickPostPage() {
     setPreview(null);
     setView('review');
 
-    // Prefer the ready-made affiliate (s.click) link returned with the product.
-    if (product.affiliate_url) {
-      setAffiliateUrl(product.affiliate_url);
-      return;
-    }
-
-    // Otherwise generate one on demand.
+    // Generate the SHORT affiliate link (s.click.aliexpress.com/e/_xxx) via
+    // link.generate. The product's inline promotion_link is the long /s/ form,
+    // so it's only a fallback if generation fails.
     setAffiliateUrl('');
     setAffiliateLoading(true);
     try {
       const res = await productsApi.affiliateLink(product.product_id);
       setAffiliateUrl(res.url);
     } catch {
-      setAffiliateUrl(product.product_url);
+      setAffiliateUrl(product.affiliate_url || product.product_url);
     } finally {
       setAffiliateLoading(false);
     }
