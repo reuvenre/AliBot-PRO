@@ -596,8 +596,11 @@ export class PostsService {
     const priceLocal = priceLocalOverride !== undefined
       ? priceLocalOverride.toFixed(0)
       : (product.sale_price * rate).toFixed(0);
+    // When priceLocalOverride is set the prices are ALREADY in local currency, so
+    // the original must NOT be multiplied by the rate again (that double-converted
+    // it, e.g. ₪31.49 → ₪94). Only convert from USD when there's no override.
     const originalLocal = priceLocalOverride !== undefined
-      ? (product.original_price * rate).toFixed(0)
+      ? (product.original_price || 0).toFixed(0)
       : (product.original_price * rate).toFixed(0);
     const currencyPair = creds?.currency_pair || 'USD_ILS';
     const symbol = currencyPair.includes('ILS') ? '₪' : currencyPair.includes('EUR') ? '€' : currencyPair.includes('GBP') ? '£' : '$';
