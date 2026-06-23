@@ -11,16 +11,18 @@ const ALI_API = 'https://api-sg.aliexpress.com/sync';
 // target_sale_price / target_original_price = AliExpress's own converted price in the
 // requested target_currency — this matches what users see on the website.
 // sale_price / original_price stay as USD fallback.
+// promotion_link = the ready-made affiliate (s.click) link AliExpress returns when
+// a valid tracking_id is supplied — using it directly avoids a separate generate call.
 const PRODUCT_FIELDS =
   'product_id,product_title,original_price,sale_price,' +
   'target_original_price,target_sale_price,target_sale_price_currency,' +
-  'discount,product_main_image_url,' +
+  'discount,product_main_image_url,promotion_link,' +
   'product_detail_url,evaluate_rate,first_level_category_name,lastest_volume';
 
 const HOT_FIELDS =
   'product_id,product_title,original_price,sale_price,' +
   'target_original_price,target_sale_price,target_sale_price_currency,' +
-  'discount,product_main_image_url,' +
+  'discount,product_main_image_url,promotion_link,' +
   'product_detail_url,evaluate_rate,first_level_category_name,lastest_volume,' +
   'promotion_type,hot_product_commission_rate';
 
@@ -314,10 +316,19 @@ export class ProductsService {
       }, creds.aliexpress_app_secret);
 
       const res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
-      const links = res.data?.aliexpress_affiliate_link_generate_response?.resp_result?.result?.promotion_links?.promotion_link;
-      return { url: links?.[0]?.promotion_link || `https://www.aliexpress.com/item/${productId}.html` };
-    } catch {
-      return { url: `https://www.aliexpress.com/item/${productId}.html` };
+      const resp = res.data?.aliexpress_affiliate_link_generate_response?.resp_result;
+      const links = resp?.result?.promotion_links?.promotion_link;
+      const url = links?.[0]?.promotion_link;
+      if (url) return { url };
+
+      // generate returned nothing — log why, then try the product query's promotion_link.
+      this.logger.warn(`affiliate.link.generate empty: code=${resp?.resp_code} msg=${resp?.resp_msg}`);
+      const viaQuery = await this.refreshPrice(userId, productId);
+      return { url: viaQuery?.affiliate_url || `https://www.aliexpress.com/item/${productId}.html` };
+    } catch (err: any) {
+      this.logger.error(`affiliate.link.generate failed: ${err?.response?.data ? JSON.stringify(err.response.data) : err?.message}`);
+      const viaQuery = await this.refreshPrice(userId, productId).catch(() => null);
+      return { url: viaQuery?.affiliate_url || `https://www.aliexpress.com/item/${productId}.html` };
     }
   }
 
@@ -334,8 +345,15 @@ export class ProductsService {
       const targetOrig = parseFloat(p.target_original_price);
       const resolvedCurrency = p.target_sale_price_currency || currency;
 
-      const finalSale = targetSale > 0 ? targetSale : +(usdSale * rate).toFixed(2);
-      const finalOrig = targetOrig > 0 ? targetOrig : +(usdOrig * rate).toFixed(2);
+      let finalSale = targetSale > 0 ? targetSale : +(usdSale * rate).toFixed(2);
+      let finalOrig = targetOrig > 0 ? targetOrig : +(usdOrig * rate).toFixed(2);
+
+      // Sanity guard: original must never be below the sale price (the affiliate API
+      // occasionally returns a min-variant "original" that's lower than the sale,
+      // producing a negative/odd discount). Keep the higher value as the original.
+      if (finalOrig > 0 && finalSale > 0 && finalOrig < finalSale) {
+        [finalSale, finalOrig] = [Math.min(finalSale, finalOrig), Math.max(finalSale, finalOrig)];
+      }
 
       // evaluate_rate is a 0-100 positive-review percentage (e.g. "96.7" or "96.7%").
       // Convert to a 0-5 star rating so it matches what AliExpress shows on product pages.
@@ -355,6 +373,8 @@ export class ProductsService {
         discount_percent: parseInt(p.discount) || 0,
         image_url: p.product_main_image_url,
         product_url: p.product_detail_url,
+        // Ready-made affiliate link from the API (s.click.aliexpress.com).
+        affiliate_url: p.promotion_link || undefined,
         category: p.first_level_category_name,
         orders_count: ordersCount,
         rating,

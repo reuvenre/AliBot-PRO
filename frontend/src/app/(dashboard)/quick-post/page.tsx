@@ -226,10 +226,16 @@ export default function QuickPostPage() {
   const handleSelect = async (product: AliProduct) => {
     setSelected(product);
     setPreview(null);
-    setAffiliateUrl('');
     setView('review');
 
-    // Fetch affiliate link in background
+    // Prefer the ready-made affiliate (s.click) link returned with the product.
+    if (product.affiliate_url) {
+      setAffiliateUrl(product.affiliate_url);
+      return;
+    }
+
+    // Otherwise generate one on demand.
+    setAffiliateUrl('');
     setAffiliateLoading(true);
     try {
       const res = await productsApi.affiliateLink(product.product_id);

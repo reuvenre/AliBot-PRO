@@ -13,6 +13,20 @@ import { normalizeTelegramChatId } from '../common/crypto';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
 
+/**
+ * Convert Markdown bold (**x** / __x__) to Telegram HTML (<b>x</b>). Models often
+ * emit Markdown even when asked for HTML; Telegram with parse_mode=HTML renders the
+ * asterisks literally, so we normalise them to <b> (and strip stray ** that remain).
+ */
+function mdBoldToHtml(s: string): string {
+  if (!s) return s;
+  return s
+    .replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>')
+    .replace(/__(.+?)__/gs, '<b>$1</b>')
+    .replace(/\*\*/g, '')   // drop any unmatched leftover asterisks
+    .trim();
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -414,6 +428,9 @@ export class PostsService {
       body = `${body}\n\n${footer}`;
     }
 
+    // Normalise any Markdown bold the model emitted so Telegram doesn't show ** literally.
+    body = mdBoldToHtml(body);
+
     // A channelOverride always targets Telegram. Otherwise respect the user's
     // per-channel publish toggles (Telegram defaults on, Facebook defaults off).
     const wantTelegram = !!channelOverride || creds?.publish_telegram !== false;
@@ -616,7 +633,8 @@ export class PostsService {
       temperature: hasTemplate ? 0.7 : 0.85,
     });
 
-    return result?.text || this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
+    const text = result?.text ? mdBoldToHtml(result.text) : '';
+    return text || this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
   }
 
   private defaultSystemPrompt(language: string): string {
