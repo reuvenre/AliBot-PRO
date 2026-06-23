@@ -55,12 +55,12 @@ export default function RegisterPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
               <Bot size={20} className="text-white" />
             </div>
-            <span className="text-white font-bold text-lg tracking-tight">AliBot Pro</span>
+            <span className="text-white font-bold text-lg tracking-tight">NEXUS</span>
           </div>
 
           <div className="mb-7">
             <h2 className="text-2xl font-bold text-white">יצירת חשבון</h2>
-            <p className="text-white/40 text-sm mt-1">הצטרף ל-AliBot Pro בחינם</p>
+            <p className="text-white/40 text-sm mt-1">הצטרף ל-NEXUS בחינם</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -180,7 +180,7 @@ export default function RegisterPage() {
             </span>
           </h1>
 
-          <p className="text-white/45 text-base leading-relaxed mb-8">
+          <p className="text-white/70 text-base leading-relaxed mb-8">
             צור חשבון תוך שניות ותתחיל לאוטמט את שיווק השותפים שלך עם כלים מתקדמים.
           </p>
 
@@ -192,7 +192,7 @@ export default function RegisterPage() {
             ].map(({ icon: Icon, label }) => (
               <div
                 key={label}
-                className="flex items-center gap-2 border border-edge-hover rounded-full px-4 py-1.5 text-sm text-white/55"
+                className="flex items-center gap-2 border border-edge-hover rounded-full px-4 py-1.5 text-sm text-white/75"
                 style={{ background: 'rgba(255,255,255,0.04)' }}
               >
                 <Icon size={13} className="text-blue-400" />

@@ -49,7 +49,7 @@ export default function LoginPage() {
             <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
-            <span className="text-sm font-semibold text-gray-900 tracking-tight">AliBot Pro</span>
+            <span className="text-sm font-semibold text-gray-900 tracking-tight">NEXUS</span>
           </div>
           <Link
             href="/register"
@@ -185,7 +185,7 @@ export default function LoginPage() {
             <span className="gradient-text-hero">בפלטפורמה אחת</span>
           </h1>
 
-          <p className="text-[15px] text-white/40 leading-relaxed mb-10 max-w-sm">
+          <p className="text-[15px] text-white/70 leading-relaxed mb-10 max-w-sm">
             מוצרים, תוכן AI, פרסום אוטומטי ומעקב הכנסות —
             הכל בממשק אחד ופשוט.
           </p>
@@ -197,7 +197,7 @@ export default function LoginPage() {
                 <div className="w-4 h-4 rounded-full bg-blue-500/15 border border-blue-500/25 flex items-center justify-center shrink-0">
                   <CheckCheck size={9} className="text-blue-400" />
                 </div>
-                <span className="text-body text-white/55">{f}</span>
+                <span className="text-body text-white/75">{f}</span>
               </div>
             ))}
           </div>
@@ -209,7 +209,7 @@ export default function LoginPage() {
             <div className="w-6 h-6 rounded-[7px] bg-white/10 flex items-center justify-center">
               <Bot size={12} className="text-white/60" />
             </div>
-            <p className="text-xs text-white/28">AliBot Pro · כל הזכויות שמורות 2026</p>
+            <p className="text-xs text-white/45">NEXUS · כל הזכויות שמורות 2026</p>
           </div>
         </div>
       </div>

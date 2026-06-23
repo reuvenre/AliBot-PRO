@@ -139,12 +139,22 @@ export class AiService {
         {
           // Gemini has no separate system role — prepend the system prompt.
           contents: [{ parts: [{ text: `${opts.system}\n\n${opts.prompt}` }] }],
-          generationConfig: { temperature, maxOutputTokens: maxTokens },
+          generationConfig: {
+            temperature,
+            // Give headroom so the full post is never cut off mid-sentence.
+            maxOutputTokens: Math.max(maxTokens, 1024),
+            // gemini-2.5-* are "thinking" models — by default reasoning tokens eat
+            // the entire output budget and the actual post comes back truncated.
+            // Disable thinking so all the budget goes to the post itself.
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         },
         { headers: { 'Content-Type': 'application/json' }, timeout: 25_000 },
       ),
     );
-    const text = (res.data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    // Join every text part (a response may be split across parts).
+    const parts = res.data?.candidates?.[0]?.content?.parts || [];
+    const text = parts.map((p: any) => p?.text || '').join('').trim();
     const usage = res.data?.usageMetadata || {};
     return { text, provider: 'gemini', tokens: usage.totalTokenCount || 0 };
   }
