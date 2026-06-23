@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { User, ShoppingBag, Plug, ShieldCheck, Bell, CreditCard, ListOrdered } from 'lucide-react';
+import { User, ShoppingBag, Plug, ShieldCheck, Bell, CreditCard, ListOrdered, Calculator } from 'lucide-react';
 import { CredentialsForm }    from '@/components/settings/CredentialsForm';
 import { ProfileForm }        from '@/components/settings/ProfileForm';
 import { IntegrationsForm }   from '@/components/settings/IntegrationsForm';
@@ -9,12 +9,14 @@ import { SecurityForm }       from '@/components/settings/SecurityForm';
 import { NotificationsForm }  from '@/components/settings/NotificationsForm';
 import { SubscriptionForm }   from '@/components/settings/SubscriptionForm';
 import { SchedulingForm }     from '@/components/settings/SchedulingForm';
+import { PricingForm }        from '@/components/settings/PricingForm';
 
-type Tab = 'profile' | 'marketplaces' | 'integrations' | 'scheduling' | 'security' | 'notifications' | 'subscription';
+type Tab = 'profile' | 'marketplaces' | 'pricing' | 'integrations' | 'scheduling' | 'security' | 'notifications' | 'subscription';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: 'profile',       label: 'פרופיל',        icon: User,          desc: 'פרטי חשבון והעדפות' },
   { id: 'marketplaces',  label: 'שווקים',         icon: ShoppingBag,   desc: 'AliExpress ו-OpenAI' },
+  { id: 'pricing',       label: 'תמחור',          icon: Calculator,    desc: 'המרת מטבע, רווח ועיגול' },
   { id: 'integrations',  label: 'אינטגרציות',     icon: Plug,          desc: 'Telegram וערוצים' },
   { id: 'scheduling',    label: 'תזמון אוטומטי',  icon: ListOrdered,   desc: 'הגדרות תור שליחה אוטומטי' },
   { id: 'security',      label: 'אבטחה',          icon: ShieldCheck,   desc: 'שינוי סיסמה' },
@@ -69,6 +71,7 @@ export default function SettingsPage() {
 
           {tab === 'profile'       && <ProfileForm />}
           {tab === 'marketplaces'  && <CredentialsForm />}
+          {tab === 'pricing'       && <PricingForm />}
           {tab === 'integrations'  && <IntegrationsForm />}
           {tab === 'scheduling'    && <SchedulingForm />}
           {tab === 'security'      && <SecurityForm />}

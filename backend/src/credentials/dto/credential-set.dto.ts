@@ -109,6 +109,23 @@ export class CredentialSetDto {
   @IsString()
   default_footer_template_id?: string;
 
+  // ── Pricing converter ──
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  price_markup_pct?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(200)
+  price_shipping_buffer_ils?: number;
+
+  @IsOptional()
+  @IsIn(['natural', 'charming', 'exact'])
+  price_rounding_mode?: string;
+
   @IsOptional()
   @IsString()
   currency_pair?: string;

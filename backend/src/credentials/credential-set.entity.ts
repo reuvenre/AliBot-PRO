@@ -110,6 +110,20 @@ export class CredentialSet {
   @Column({ nullable: true })
   default_footer_template_id: string;
 
+  /* ── Pricing (USD→ILS converter) ───────────────────────────────────────── */
+
+  /** Reseller margin added to the converted price (0–100%) */
+  @Column('float', { default: 0 })
+  price_markup_pct: number;
+
+  /** Flat shipping buffer added before markup, in display currency (0–200) */
+  @Column('float', { default: 0 })
+  price_shipping_buffer_ils: number;
+
+  /** Rounding mode for final prices: 'natural' | 'charming' | 'exact' */
+  @Column({ default: 'natural' })
+  price_rounding_mode: string;
+
   @Column({ default: 'USD_ILS' })
   currency_pair: string;
 

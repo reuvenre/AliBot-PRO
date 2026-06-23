@@ -4,6 +4,7 @@ import { Cache } from 'cache-manager';
 import axios from 'axios';
 import { CredentialsService, DecryptedCredentials } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
+import { PricingService, PricingConfig } from '../pricing/pricing.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
@@ -45,6 +46,7 @@ export class ProductsService {
   constructor(
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
+    private readonly pricing: PricingService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -97,7 +99,7 @@ export class ProductsService {
       const items = result?.products?.product || [];
       const total = result?.total_record_count || items.length;
 
-      const data = this.mapProducts(items, rate, currency);
+      const data = this.mapProducts(items, rate, currency, this.pricingFrom(creds));
 
       const filtered = params.min_discount
         ? data.filter((p) => p.discount_percent >= params.min_discount!)
@@ -162,7 +164,7 @@ export class ProductsService {
       const items = result?.products?.product || [];
       const total = result?.total_record_count || items.length;
 
-      let data = this.mapProducts(items, rate, currency);
+      let data = this.mapProducts(items, rate, currency, this.pricingFrom(creds));
       if (minDiscount) data = data.filter((p) => p.discount_percent >= minDiscount);
 
       return { data, total, page, limit };
@@ -215,7 +217,7 @@ export class ProductsService {
       const items = result?.products?.product || [];
       const total = result?.total_record_count || items.length;
 
-      const data = this.mapProducts(items, rate, currency);
+      const data = this.mapProducts(items, rate, currency, this.pricingFrom(creds));
       return { data, total, page, limit };
     } catch (err: any) {
       this.logger.error(`AliExpress promotional failed: ${err?.response?.data ? JSON.stringify(err.response.data) : err?.message}`);
@@ -292,7 +294,7 @@ export class ProductsService {
       const exact = items.find((p: any) => String(p.product_id) === productId);
       if (!exact) return null;
 
-      return this.mapProducts([exact], rate, currency)[0];
+      return this.mapProducts([exact], rate, currency, this.pricingFrom(creds))[0];
     } catch {
       return null;
     }
@@ -334,28 +336,37 @@ export class ProductsService {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  private mapProducts(items: any[], rate: number, currency: string) {
+  /** Extract the user's pricing-converter config from their credentials. */
+  private pricingFrom(creds: DecryptedCredentials | null): PricingConfig {
+    return {
+      markup_pct: creds?.price_markup_pct,
+      shipping_buffer_ils: creds?.price_shipping_buffer_ils,
+      rounding_mode: creds?.price_rounding_mode as any,
+    };
+  }
+
+  private mapProducts(items: any[], rate: number, currency: string, pricing?: PricingConfig) {
     return items.map((p: any) => {
       const usdSale = parseFloat(p.sale_price) || 0;
       const usdOrig = parseFloat(p.original_price) || 0;
 
-      // Prefer AliExpress's own converted price (matches website exactly).
-      // Fall back to manual conversion only when target_sale_price is absent.
+      // Prefer AliExpress's own converted price as the COST base (matches website
+      // best); fall back to USD × rate when target_sale_price is absent.
       const targetSale = parseFloat(p.target_sale_price);
       const targetOrig = parseFloat(p.target_original_price);
       const resolvedCurrency = p.target_sale_price_currency || currency;
 
-      let finalSale = targetSale > 0 ? targetSale : +(usdSale * rate).toFixed(2);
-      let finalOrig = targetOrig > 0 ? targetOrig : +(usdOrig * rate).toFixed(2);
+      let baseSale = targetSale > 0 ? targetSale : +(usdSale * rate).toFixed(2);
+      let baseOrig = targetOrig > 0 ? targetOrig : +(usdOrig * rate).toFixed(2);
+      if (baseOrig > 0 && baseSale > 0 && baseOrig < baseSale) baseOrig = baseSale;
 
-      // Sanity guard: the original must never be below the sale price (the affiliate
-      // API sometimes returns an odd low "original" that would show a negative
-      // discount). Keep the sale price as-is — it's the closer-to-reality value —
-      // and lift the original to match (so no fake discount), rather than swapping
-      // (which would corrupt the real sale price).
-      if (finalOrig > 0 && finalSale > 0 && finalOrig < finalSale) {
-        finalOrig = finalSale;
-      }
+      // Apply the user's pricing converter (shipping buffer + markup + rounding).
+      // With the affiliate-safe defaults this is just a tidy rounding of the cost.
+      let finalSale = this.pricing.computeIls(baseSale, usdSale, rate, pricing);
+      let finalOrig = this.pricing.computeIls(baseOrig, usdOrig, rate, pricing);
+      if (finalOrig > 0 && finalSale > 0 && finalOrig < finalSale) finalOrig = finalSale;
+      if (finalSale <= 0) finalSale = baseSale;   // never zero out a real price
+      if (finalOrig <= 0) finalOrig = baseOrig;
 
       // evaluate_rate is a 0-100 positive-review percentage (e.g. "96.7" or "96.7%").
       // Convert to a 0-5 star rating so it matches what AliExpress shows on product pages.
@@ -367,12 +378,17 @@ export class ProductsService {
       // Parse as an integer; AliExpress product pages may show a higher cumulative total.
       const ordersCount = parseInt(String(p.lastest_volume || '0').replace(/,/g, ''), 10) || 0;
 
+      // Recompute the discount from the FINAL prices (markup/rounding change it).
+      const discountPercent = finalOrig > finalSale && finalOrig > 0
+        ? Math.round((1 - finalSale / finalOrig) * 100)
+        : 0;
+
       return {
         product_id: String(p.product_id),
         title: p.product_title,
         original_price: +finalOrig.toFixed(2),
         sale_price: +finalSale.toFixed(2),
-        discount_percent: parseInt(p.discount) || 0,
+        discount_percent: discountPercent,
         image_url: p.product_main_image_url,
         product_url: p.product_detail_url,
         // Ready-made affiliate link from the API (s.click.aliexpress.com).

@@ -65,6 +65,10 @@ export interface CredentialSet {
   // Default templates
   default_body_template_id: string;
   default_footer_template_id: string | null;
+  // Pricing converter
+  price_markup_pct: number;
+  price_shipping_buffer_ils: number;
+  price_rounding_mode: 'natural' | 'charming' | 'exact';
   currency_pair: 'USD_ILS' | 'USD_EUR' | 'USD_GBP';
   // Scheduling queue
   schedule_enabled: boolean;
@@ -106,6 +110,10 @@ export interface CredentialSetInput {
   // Default templates
   default_body_template_id?: string;
   default_footer_template_id?: string;
+  // Pricing converter
+  price_markup_pct?: number;
+  price_shipping_buffer_ils?: number;
+  price_rounding_mode?: 'natural' | 'charming' | 'exact';
   currency_pair?: string;
   // Scheduling
   schedule_enabled?: boolean;

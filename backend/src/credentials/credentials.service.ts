@@ -36,6 +36,9 @@ export interface DecryptedCredentials {
   boost_target_countries?: string;
   default_body_template_id?: string;
   default_footer_template_id?: string;
+  price_markup_pct?: number;
+  price_shipping_buffer_ils?: number;
+  price_rounding_mode?: string;
   currency_pair?: string;
   schedule_enabled?: boolean;
   schedule_start_hour?: number;
@@ -91,6 +94,11 @@ export class CredentialsService {
     // Default templates — allow clearing (empty → null to deselect)
     if (dto.default_body_template_id !== undefined)   cred.default_body_template_id = dto.default_body_template_id || null;
     if (dto.default_footer_template_id !== undefined) cred.default_footer_template_id = dto.default_footer_template_id || null;
+
+    // Pricing converter config
+    if (dto.price_markup_pct !== undefined)          cred.price_markup_pct = dto.price_markup_pct;
+    if (dto.price_shipping_buffer_ils !== undefined) cred.price_shipping_buffer_ils = dto.price_shipping_buffer_ils;
+    if (dto.price_rounding_mode?.trim())             cred.price_rounding_mode = dto.price_rounding_mode.trim();
 
     // Scheduling queue settings
     if (dto.schedule_enabled !== undefined)  cred.schedule_enabled = dto.schedule_enabled;
@@ -217,6 +225,9 @@ export class CredentialsService {
       boost_target_countries: cred.boost_target_countries,
       default_body_template_id: cred.default_body_template_id,
       default_footer_template_id: cred.default_footer_template_id,
+      price_markup_pct: cred.price_markup_pct,
+      price_shipping_buffer_ils: cred.price_shipping_buffer_ils,
+      price_rounding_mode: cred.price_rounding_mode,
       currency_pair: cred.currency_pair,
       schedule_enabled: cred.schedule_enabled,
       schedule_start_hour: cred.schedule_start_hour,
@@ -274,6 +285,9 @@ export class CredentialsService {
       boost_target_countries: cred.boost_target_countries || 'IL',
       default_body_template_id: cred.default_body_template_id || 'builtin_default',
       default_footer_template_id: cred.default_footer_template_id || null,
+      price_markup_pct: cred.price_markup_pct ?? 0,
+      price_shipping_buffer_ils: cred.price_shipping_buffer_ils ?? 0,
+      price_rounding_mode: cred.price_rounding_mode || 'natural',
       currency_pair: cred.currency_pair || 'USD_ILS',
       schedule_enabled: cred.schedule_enabled ?? false,
       schedule_start_hour: cred.schedule_start_hour ?? 9,
