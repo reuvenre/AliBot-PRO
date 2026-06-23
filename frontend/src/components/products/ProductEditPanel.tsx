@@ -148,6 +148,22 @@ export function ProductEditPanel({
           </div>
         </div>
 
+        {/* Price-accuracy hint — the AliExpress API price can differ from the live
+            site (variant / bulk tiers), so make verifying & correcting it one click. */}
+        <p className="text-2xs text-white/30 -mt-1 flex items-center gap-1 flex-wrap">
+          <span>מחיר משוער מ-AliExpress — מומלץ לוודא.</span>
+          {product.product_url && (
+            <a
+              href={product.product_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 hover:underline"
+            >
+              פתח את המוצר באתר לבדיקה/תיקון ↗
+            </a>
+          )}
+        </p>
+
         {/* Discount preview */}
         {discountPct > 0 && (
           <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
