@@ -27,3 +27,5 @@ redis_data/
 # Claude Code local state (settings, worktrees, scratch)
 .claude/
 *.tsbuildinfo
+# Local cloud startup script with secrets (never commit)
+backend/start-cloud.ps1
