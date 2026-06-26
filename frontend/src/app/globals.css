@@ -211,6 +211,19 @@ input:-webkit-autofill {
 [data-theme="light"] .text-white\/15    { color: rgba(15,17,23,0.22) !important; }
 [data-theme="light"] .text-white\/10    { color: rgba(15,17,23,0.18) !important; }
 
+/* Browser autofill on the white auth inputs: Chrome (esp. in OS dark mode) paints
+   a dark autofill background, hiding the dark text. Force a white box + dark text. */
+input.bg-white:-webkit-autofill,
+input.bg-white:-webkit-autofill:hover,
+input.bg-white:-webkit-autofill:focus,
+input.bg-white:-webkit-autofill:active {
+  -webkit-text-fill-color: #111827 !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  caret-color: #111827 !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 /* Always-dark panels (e.g. the auth hero) keep LIGHT text in BOTH themes.
    Declared after the light overrides so it wins by source order when both match. */
 .always-dark .text-white      { color: #fff !important; }
