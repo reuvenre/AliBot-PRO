@@ -5,9 +5,9 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowRight, Loader2, AlertCircle, Save, Trash2,
   RotateCw, FileText, CheckCircle2, XCircle, Star,
-  ShoppingBag, Package,
+  ShoppingBag, Package, Sparkles,
 } from 'lucide-react';
-import { catalogApi } from '@/lib/api-client';
+import { catalogApi, postsApi } from '@/lib/api-client';
 import type { CatalogProduct } from '@/types';
 
 const SYMS: Record<string, string> = { ILS: '₪', EUR: '€', GBP: '£', USD: '$' };
@@ -92,6 +92,8 @@ export default function EditProductPage() {
   const [category, setCategory] = useState('');
   const [affiliateUrl, setAffiliateUrl] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [postText, setPostText] = useState('');
+  const [generatingPost, setGeneratingPost] = useState(false);
 
   useEffect(() => {
     catalogApi.get(id)
@@ -107,6 +109,7 @@ export default function EditProductPage() {
         setCategory(p.category || '');
         setAffiliateUrl(p.affiliate_url || '');
         setImageUrl(p.image_url || '');
+        setPostText(p.post_text || '');
       })
       .catch(() => setError('שגיאה בטעינת המוצר'))
       .finally(() => setLoading(false));
@@ -127,6 +130,7 @@ export default function EditProductPage() {
         category: category || undefined,
         affiliate_url: affiliateUrl || undefined,
         image_url: imageUrl || undefined,
+        post_text: postText,
       });
       setProduct(updated);
       setSaved(true);
@@ -169,6 +173,30 @@ export default function EditProductPage() {
   async function handleReject() {
     const updated = await catalogApi.reject(id);
     setProduct(updated);
+  }
+
+  async function handleGeneratePost() {
+    if (!product) return;
+    setGeneratingPost(true);
+    setError('');
+    try {
+      const p = await postsApi.preview(product.product_id, 'he', {
+        product_id: product.product_id,
+        title,
+        sale_price: parseFloat(salePrice) || 0,
+        original_price: parseFloat(origPrice) || 0,
+        discount_percent: parseInt(discount) || 0,
+        image_url: imageUrl,
+        currency: product.currency,
+        orders_count: product.orders_count,
+        rating: product.rating,
+      } as never);
+      setPostText(p.generated_text || '');
+    } catch {
+      setError('שגיאה ביצירת הפוסט');
+    } finally {
+      setGeneratingPost(false);
+    }
   }
 
   function handleCreatePost() {
@@ -273,6 +301,33 @@ export default function EditProductPage() {
                 <p className="text-2xs text-white/20 text-left mt-1">{description.length}/1000</p>
               </Field>
             </div>
+          </div>
+
+          {/* Post content */}
+          <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-body font-semibold text-white/70 flex items-center gap-2">
+                <FileText size={13} className="text-white/30" />
+                תוכן הפוסט
+              </h2>
+              <button
+                onClick={handleGeneratePost}
+                disabled={generatingPost}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 hover:brightness-110 disabled:opacity-50 text-white text-xs font-medium transition-all"
+              >
+                {generatingPost ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {generatingPost ? 'יוצר...' : 'צור עם AI'}
+              </button>
+            </div>
+            <textarea
+              value={postText}
+              onChange={(e) => setPostText(e.target.value)}
+              rows={8}
+              dir="rtl"
+              placeholder="כתוב או צור פוסט עם AI. הטקסט יישמר עם המוצר ותוכל לתזמן אותו מרשימת המוצרים."
+              className="w-full bg-surface-tertiary border border-edge rounded-xl px-3.5 py-3 text-body text-white/80 placeholder-white/20 outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all resize-none leading-relaxed"
+            />
+            <p className="text-2xs text-white/25 mt-1.5">💡 שמור ב&quot;עדכן מוצר&quot;, ואז תזמן את הפוסט ממסך המוצרים.</p>
           </div>
 
           {/* Pricing */}

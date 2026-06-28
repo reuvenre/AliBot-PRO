@@ -176,6 +176,7 @@ export class CatalogService {
   async update(userId: string, id: string, dto: Partial<{
     title: string;
     description: string;
+    post_text: string;
     original_price: number;
     sale_price: number;
     currency: string;

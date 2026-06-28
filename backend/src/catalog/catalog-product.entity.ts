@@ -28,6 +28,10 @@ export class CatalogProduct {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  /** Saved/edited marketing post text (draft) — scheduled later from the catalog. */
+  @Column({ type: 'text', nullable: true })
+  post_text: string;
+
   @Column('float', { default: 0 })
   original_price: number;
 

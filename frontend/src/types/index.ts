@@ -255,6 +255,7 @@ export interface CatalogProduct {
   product_id: string;
   title: string;
   description?: string;
+  post_text?: string;
   original_price: number;
   sale_price: number;
   currency: string;

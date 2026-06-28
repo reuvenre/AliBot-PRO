@@ -6,9 +6,9 @@ import {
   Search, Plus, RefreshCw, Trash2, Link2, RotateCw,
   FileText, Pencil, XCircle, CheckCircle2, ShoppingBag,
   Star, X, Upload, Globe, Tag, Loader2, AlertCircle,
-  CheckCheck, Package, ListOrdered,
+  CheckCheck, Package, ListOrdered, Clock,
 } from 'lucide-react';
-import { catalogApi } from '@/lib/api-client';
+import { catalogApi, postsApi } from '@/lib/api-client';
 import type { CatalogProduct, CatalogStats } from '@/types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -246,6 +246,33 @@ function ProductRow({
   const [loadingQueue, setLoadingQueue] = useState(false);
   const [queued, setQueued] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [scheduling, setScheduling] = useState(false);
+
+  // min = now + 2 min (can't schedule in the past)
+  const minDateTime = new Date(Date.now() + 2 * 60 * 1000).toISOString().slice(0, 16);
+
+  async function handleSchedule() {
+    if (!scheduledAt) return;
+    setScheduling(true);
+    try {
+      await postsApi.schedulePost({
+        product_id: product.product_id,
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        text: product.post_text || undefined,
+        product_image: product.image_url || undefined,
+        affiliate_url: product.affiliate_url || undefined,
+      });
+      setShowSchedule(false);
+      setScheduledAt('');
+      onRefresh();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'שגיאה בתזמון הפוסט');
+    } finally {
+      setScheduling(false);
+    }
+  }
 
   async function handleDelete() {
     if (!confirm(`למחוק את "${product.title.slice(0, 40)}..."?`)) return;
@@ -419,11 +446,62 @@ function ProductRow({
           <ActionBtn icon={copied ? CheckCheck : Link2} label={copied ? 'הועתק!' : 'העתק קישור שותפים'} onClick={handleCopyLink} color="blue" loading={loadingLink} />
           <ActionBtn icon={RotateCw} label="סנכרן נתונים" onClick={handleSync} color="blue" loading={loadingSync} />
           <ActionBtn icon={FileText} label="צור פוסט" onClick={handleCreatePost} color="purple" />
+          <ActionBtn icon={Clock} label="תזמן פוסט" onClick={() => setShowSchedule(true)} color="purple" />
           <ActionBtn icon={queued ? CheckCheck : ListOrdered} label={queued ? 'נוסף לתור!' : 'הוסף לתור'} onClick={handleQueue} color="blue" loading={loadingQueue} />
           <ActionBtn icon={Pencil} label="ערוך מוצר" onClick={() => router.push(`/products/${product.id}/edit`)} color="blue" />
           <ActionBtn icon={XCircle} label="דחה מוצר" onClick={handleReject} color="red" loading={loadingStatus && product.status !== 'rejected'} />
           <ActionBtn icon={CheckCircle2} label="אשר מוצר" onClick={handleApprove} color="green" loading={loadingStatus && product.status !== 'approved'} />
         </div>
+
+        {showSchedule && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowSchedule(false)}
+          >
+            <div
+              className="bg-surface-secondary border border-edge rounded-2xl p-5 w-[360px] shadow-elevated"
+              onClick={(e) => e.stopPropagation()}
+              style={{ direction: 'rtl' }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Clock size={14} className="text-blue-400" /> תזמון פרסום
+                </h3>
+                <button onClick={() => setShowSchedule(false)} className="text-white/30 hover:text-white/60">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="text-xs text-white/40 line-clamp-1 mb-3">{product.title}</p>
+
+              {!product.post_text && (
+                <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3">
+                  <AlertCircle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-2xs text-amber-400">
+                    אין פוסט שמור — ייווצר טקסט אוטומטי. לשליטה בתוכן, ערוך ושמור פוסט קודם.
+                  </p>
+                </div>
+              )}
+
+              <label className="block text-2xs text-white/40 mb-1.5">תאריך ושעה לפרסום</label>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                min={minDateTime}
+                className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-colors mb-4"
+                dir="ltr"
+              />
+              <button
+                onClick={handleSchedule}
+                disabled={!scheduledAt || scheduling}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all"
+              >
+                {scheduling ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+                {scheduling ? 'מתזמן...' : 'תזמן פרסום'}
+              </button>
+            </div>
+          </div>
+        )}
       </td>
     </tr>
   );
