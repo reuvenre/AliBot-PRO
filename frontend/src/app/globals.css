@@ -160,6 +160,23 @@ input:-webkit-autofill {
 .btn-sm { font-size: 12px; padding: 5px 10px; border-radius: 6px; }
 .btn-xs { font-size: 11px; padding: 3px 8px; border-radius: 5px; }
 
+/* ── Primary-button unification ───────────────────────────────────────────────
+   Many primary actions are authored as `bg-blue-600 hover:bg-blue-500`. This
+   pairing IS the primary-button pattern (standalone `bg-blue-600` toggles and
+   badges don't include `hover:bg-blue-500`), so we upgrade exactly that combo
+   to the brand gradient + lifted shadow — one rule keeps every CTA on-brand. */
+.bg-blue-600.hover\:bg-blue-500 {
+  background-image: var(--accent-gradient);
+  background-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 6px 16px -6px var(--accent-glow);
+  transition: filter 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.bg-blue-600.hover\:bg-blue-500:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 24px -6px rgba(59,130,246,0.5);
+}
+.bg-blue-600.hover\:bg-blue-500:active:not(:disabled) { transform: translateY(1px); }
+
 /* ── Badges / Status pills ────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
