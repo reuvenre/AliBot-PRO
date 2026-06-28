@@ -45,8 +45,8 @@ export default function SettingsPage() {
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-right
                 ${tab === id
                   ? id === 'scheduling'
-                    ? 'bg-amber-500/12 text-amber-400 border border-amber-500/25'
-                    : 'bg-blue-600/15 text-blue-400 border border-blue-500/25'
+                    ? 'bg-gradient-to-l from-amber-500/[0.16] to-amber-500/[0.04] text-amber-400 border border-amber-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                    : 'bg-gradient-to-l from-blue-500/[0.16] to-violet-500/[0.05] text-blue-400 border border-blue-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
                   : 'text-white/45 hover:text-white/80 hover:bg-white/5 border border-transparent'
                 }`}
             >

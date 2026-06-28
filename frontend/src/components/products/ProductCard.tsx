@@ -28,16 +28,16 @@ export function ProductCard({ product, onSelect, isSelected }: ProductCardProps)
   return (
     <div
       onClick={() => onSelect(product)}
-      className={`group relative cursor-pointer rounded-xl overflow-hidden transition-all duration-200
+      className={`group relative cursor-pointer rounded-xl overflow-hidden transition-all duration-300
         ${isSelected
           ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-surface-primary bg-blue-500/5 border border-blue-500/30'
-          : 'border border-edge bg-surface-secondary hover:border-edge-hover hover:bg-surface-tertiary'
+          : 'border border-edge bg-surface-secondary hover:border-edge-hover hover:bg-surface-tertiary hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-20px_rgba(0,0,0,0.55)]'
         }`}
       style={{ boxShadow: isSelected ? '0 0 0 1px rgba(59,130,246,0.3), 0 4px 16px rgba(59,130,246,0.08)' : undefined }}
     >
       {/* Discount badge */}
       {hasDiscount && (
-        <div className="absolute top-2 right-2 z-10 bg-red-500 text-white text-2xs font-bold px-1.5 py-0.5 rounded-md shadow-sm tracking-wide">
+        <div className="absolute top-2 right-2 z-10 bg-gradient-to-br from-rose-500 to-red-600 text-white text-2xs font-bold px-1.5 py-0.5 rounded-md shadow-[0_4px_12px_-2px_rgba(244,63,94,0.5)] tracking-wide">
           -{product.discount_percent}%
         </div>
       )}

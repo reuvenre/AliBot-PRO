@@ -306,6 +306,13 @@ input.bg-white:-webkit-autofill:active {
   border-left-color: rgba(0,0,0,0.07) !important;
 }
 
+/* Sidebar active-state text: the dark-theme pale-blue would wash out on the
+   near-white light sidebar — restore a readable blue, scoped to the sidebar. */
+[data-theme="light"] .sidebar-root .text-blue-200,
+[data-theme="light"] .sidebar-root .text-blue-300 { color: #2563eb !important; }
+[data-theme="light"] .sidebar-root .text-violet-200,
+[data-theme="light"] .sidebar-root .text-violet-300 { color: #7c3aed !important; }
+
 /* Input fields */
 [data-theme="light"] input,
 [data-theme="light"] textarea,

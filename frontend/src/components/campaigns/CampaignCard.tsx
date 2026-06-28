@@ -52,7 +52,7 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
   return (
     <div
       onClick={() => onClick(campaign.id)}
-      className="group bg-surface-secondary border border-edge hover:border-edge-hover rounded-xl p-5 cursor-pointer transition-all hover:bg-surface-tertiary"
+      className="group bg-surface-secondary border border-edge hover:border-edge-hover rounded-xl p-5 cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-20px_rgba(0,0,0,0.6)]"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
