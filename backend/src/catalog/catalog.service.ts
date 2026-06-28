@@ -228,6 +228,45 @@ export class CatalogService {
     return this.repo.save(product);
   }
 
+  // ── Bulk re-price ───────────────────────────────────────────────────────────
+
+  /**
+   * Re-pull authoritative prices from the AliExpress Affiliate API for every
+   * catalog product. Fixes items that were saved with the old (broken) discovery
+   * price. Processed in small concurrent batches to stay fast without tripping
+   * rate limits.
+   */
+  async resyncPrices(userId: string) {
+    const products = await this.repo.find({ where: { user_id: userId } });
+    let updated = 0;
+    let failed = 0;
+    const BATCH = 5;
+
+    for (let i = 0; i < products.length; i += BATCH) {
+      const slice = products.slice(i, i + BATCH);
+      await Promise.all(slice.map(async (product) => {
+        try {
+          const ali = await this.productsService.refreshPrice(userId, product.product_id);
+          if (ali && ali.sale_price > 0) {
+            product.original_price = ali.original_price;
+            product.sale_price = ali.sale_price;
+            product.currency = ali.currency;
+            product.discount_percent = ali.discount_percent;
+            product.synced_at = new Date();
+            await this.repo.save(product);
+            updated++;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+      }));
+    }
+
+    return { total: products.length, updated, failed };
+  }
+
   // ── Affiliate link ────────────────────────────────────────────────────────
 
   async affiliateLink(userId: string, id: string) {

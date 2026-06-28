@@ -450,6 +450,10 @@ export default function ProductsPage() {
   // Import modal
   const [showImport, setShowImport] = useState(false);
 
+  // Bulk price re-sync
+  const [repricing, setRepricing] = useState(false);
+  const [repriceMsg, setRepriceMsg] = useState('');
+
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   const load = useCallback(async (p = 1, silent = false) => {
@@ -487,6 +491,23 @@ export default function ProductsPage() {
     searchTimeout.current = setTimeout(() => setSearch(val), 400);
   }
 
+  // Bulk re-price every catalog product from the AliExpress Affiliate API
+  const handleResyncPrices = async () => {
+    if (!confirm('לתקן מחירים לכל המוצרים בקטלוג מ-AliExpress? הפעולה עשויה לקחת מספר שניות.')) return;
+    setRepricing(true);
+    setRepriceMsg('');
+    try {
+      const r = await catalogApi.resyncPrices();
+      setRepriceMsg(`✓ עודכנו ${r.updated} מתוך ${r.total} מוצרים${r.failed ? ` · ${r.failed} לא נמצאו` : ''}`);
+      await load(page, true);
+      setTimeout(() => setRepriceMsg(''), 7000);
+    } catch {
+      setRepriceMsg('שגיאה בעדכון המחירים');
+    } finally {
+      setRepricing(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
 
   const STATUS_TABS = [
@@ -520,6 +541,15 @@ export default function ProductsPage() {
             גלה מוצרים
           </button>
           <button
+            onClick={handleResyncPrices}
+            disabled={repricing}
+            title="מושך מחדש מחירים נכונים מ-AliExpress לכל המוצרים"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] hover:bg-amber-500/[0.14] text-xs text-amber-400 hover:text-amber-300 font-medium transition-all disabled:opacity-50"
+          >
+            <Tag size={12} className={repricing ? 'animate-pulse' : ''} />
+            {repricing ? 'מתקן מחירים...' : 'תקן מחירים'}
+          </button>
+          <button
             onClick={() => load(page, true)}
             disabled={refreshing}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-edge bg-white/[0.03] hover:bg-white/[0.06] text-xs text-white/55 hover:text-white/80 transition-all disabled:opacity-50"
@@ -536,6 +566,13 @@ export default function ProductsPage() {
           </button>
         </div>
       </div>
+
+      {repriceMsg && (
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3.5 py-2.5 mb-4">
+          <Tag size={13} className="text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-400">{repriceMsg}</p>
+        </div>
+      )}
 
       {/* ── Stats Bar ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-3 mb-6">

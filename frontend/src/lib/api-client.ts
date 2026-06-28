@@ -335,6 +335,9 @@ export const catalogApi = {
   sync: (id: string) =>
     http.post<CatalogProduct>(`/catalog/${id}/sync`).then(extract),
 
+  resyncPrices: () =>
+    http.post<{ total: number; updated: number; failed: number }>('/catalog/resync-prices').then(extract),
+
   affiliateLink: (id: string) =>
     http.post<{ url: string }>(`/catalog/${id}/affiliate-link`).then(extract),
 

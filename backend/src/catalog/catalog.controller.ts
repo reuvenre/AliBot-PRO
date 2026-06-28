@@ -111,6 +111,14 @@ export class CatalogController {
     return this.svc.sync(this.uid(req), id);
   }
 
+  // ── Bulk re-price ─────────────────────────────────────────────────────────
+
+  @Post('resync-prices')
+  @HttpCode(200)
+  resyncPrices(@Req() req: Request) {
+    return this.svc.resyncPrices(this.uid(req));
+  }
+
   // ── Affiliate link ────────────────────────────────────────────────────────
 
   @Post(':id/affiliate-link')
