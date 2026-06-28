@@ -274,6 +274,30 @@ export class ProductsService {
 
     if (!creds?.aliexpress_app_key) return null;
 
+    // 1) Authoritative: fetch the EXACT product by id via productdetail.get. This is
+    //    far more reliable than a keyword search for a numeric id, and returns the
+    //    price already converted to the target currency (₪).
+    try {
+      const signed = signAliexpress({
+        method: 'aliexpress.affiliate.productdetail.get',
+        app_key: creds.aliexpress_app_key,
+        product_ids: productId,
+        fields: PRODUCT_FIELDS,
+        target_currency: currency,
+        tracking_id: creds.aliexpress_tracking_id,
+      }, creds.aliexpress_app_secret);
+
+      const res = await axios.get(ALI_API, { params: signed, timeout: 8000 });
+      const items: any[] =
+        res.data?.aliexpress_affiliate_productdetail_get_response?.resp_result?.result?.products?.product || [];
+      const exact = items.find((p: any) => String(p.product_id) === productId) || items[0];
+      if (exact) return this.mapProducts([exact], rate, currency, this.pricingFrom(creds))[0];
+    } catch (err: any) {
+      this.logger.warn(`refreshPrice: productdetail.get failed for ${productId}, falling back to query: ${err?.message}`);
+    }
+
+    // 2) Fallback: keyword search by id (exact match only — never items[0], since a
+    //    keyword search for a numeric ID can return unrelated products).
     try {
       const signed = signAliexpress({
         method: 'aliexpress.affiliate.product.query',
@@ -289,8 +313,6 @@ export class ProductsService {
       const items: any[] =
         res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
 
-      // Require an exact product_id match — never fall back to items[0],
-      // as a keyword search for a numeric ID can return completely unrelated products.
       const exact = items.find((p: any) => String(p.product_id) === productId);
       if (!exact) return null;
 

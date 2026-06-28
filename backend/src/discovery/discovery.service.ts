@@ -5,6 +5,7 @@ import axios from 'axios';
 import { CatalogProduct } from '../catalog/catalog-product.entity';
 import { CredentialsService } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
+import { ProductsService } from '../products/products.service';
 
 const APIFY_ACTOR = 'devcake~aliexpress-products-scraper';
 
@@ -39,6 +40,7 @@ export class DiscoveryService {
     private readonly catalog: Repository<CatalogProduct>,
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
+    private readonly products: ProductsService,
   ) {}
 
   // ── Hunter ─────────────────────────────────────────────────────────────────
@@ -73,17 +75,42 @@ export class DiscoveryService {
 
         result.skipped_existing += filtered.length - fresh.length;
 
+        const targetCcy = (creds.currency_pair || 'USD_ILS').split('_')[1] || 'ILS';
+
         for (const p of fresh) {
           const pid = String(p.productId ?? '');
           if (!pid) continue;
-          const priceUsd = parseFloat(p.priceCurrentMin ?? p.price ?? '0') || 0;
+
+          // Price source of truth = the AliExpress Affiliate API, which returns the
+          // price already converted to the target currency (₪). Apify's scraped
+          // `priceCurrentMin` is unreliable — it can be a cheapest-variant teaser and
+          // it isn't currency-converted — so we only fall back to it (converted ONCE,
+          // consistently) when the API can't resolve the product.
+          let salePrice = 0;
+          let originalPrice = 0;
+          let discountPercent = 0;
+          let currency = targetCcy;
+
+          const authoritative = await this.products.refreshPrice(userId, pid).catch(() => null);
+          if (authoritative && authoritative.sale_price > 0) {
+            salePrice = authoritative.sale_price;
+            originalPrice = authoritative.original_price || authoritative.sale_price;
+            discountPercent = authoritative.discount_percent || 0;
+            currency = authoritative.currency || targetCcy;
+          } else {
+            const scraped = parseFloat(p.priceCurrentMin ?? p.price ?? '0') || 0;
+            salePrice = +(scraped * rate).toFixed(2);
+            originalPrice = salePrice;
+          }
+
           const entity = this.catalog.create({
             user_id: userId,
             product_id: pid,
             title: p.title ?? p.name ?? 'Unknown',
-            original_price: priceUsd,
-            sale_price: +(priceUsd * rate).toFixed(2),
-            currency: (creds.currency_pair || 'USD_ILS').split('_')[1] || 'ILS',
+            original_price: originalPrice,
+            sale_price: salePrice,
+            discount_percent: discountPercent,
+            currency,
             image_url: p.imageUrl ?? p.image ?? '',
             product_url: p.productUrl ?? p.url ?? '',
             affiliate_url: p.productUrl ?? p.url ?? '',

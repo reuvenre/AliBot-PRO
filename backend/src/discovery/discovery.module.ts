@@ -5,12 +5,14 @@ import { DiscoveryService } from './discovery.service';
 import { DiscoveryController } from './discovery.controller';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { RatesModule } from '../rates/rates.module';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CatalogProduct]),
     CredentialsModule,
     RatesModule,
+    ProductsModule,
   ],
   providers: [DiscoveryService],
   controllers: [DiscoveryController],
