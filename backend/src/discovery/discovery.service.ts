@@ -7,9 +7,10 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { ProductsService } from '../products/products.service';
 
-const APIFY_ACTOR = 'devcake~aliexpress-products-scraper';
-
-const FILTERS = { minRating: 4.5, minOrders: 500, maxResults: 20 };
+// Quality gate for discovered products. minOrders is matched against the Affiliate
+// API's `lastest_volume` (RECENT sales), which is far smaller than the cumulative
+// "sold" count shown on product pages — hence a modest threshold.
+const FILTERS = { minRating: 4.4, minOrders: 30, maxResults: 20 };
 
 export interface HuntResult {
   keyword_count: number;
@@ -47,10 +48,10 @@ export class DiscoveryService {
 
   async hunt(userId: string, keywords: string[]): Promise<HuntResult> {
     const creds = await this.credentials.getRaw(userId);
-    if (!creds?.apify_api_token) throw new Error('Apify API token not configured');
+    if (!creds?.aliexpress_app_key) throw new Error('AliExpress affiliate credentials not configured');
 
     const result: HuntResult = { keyword_count: keywords.length, scraped: 0, saved: 0, skipped_existing: 0 };
-    const rate = await this.rates.getRate(creds.currency_pair || 'USD_ILS');
+    const targetCcy = (creds.currency_pair || 'USD_ILS').split('_')[1] || 'ILS';
 
     // Existing product ids for this user (dedupe)
     const existing = new Set(
@@ -60,63 +61,44 @@ export class DiscoveryService {
 
     for (const keyword of keywords) {
       try {
-        const raw = await this.runApifyScraper(keyword, creds.apify_api_token);
-        result.scraped += raw.length;
-
-        const filtered = raw.filter((p) => {
-          const rating = parseFloat(p.ratingValue ?? '0');
-          const orders = this.parseSoldCount(p);
-          return rating >= FILTERS.minRating && orders >= FILTERS.minOrders;
+        // Source products straight from the AliExpress Affiliate API (free — no Apify).
+        // Every result is affiliate-promotable, already priced in the target currency
+        // (₪) with a working affiliate link, sorted best-sellers first.
+        const res = await this.products.search(userId, {
+          keyword,
+          limit: 50,
+          sort: 'LAST_VOLUME_DESC',
         });
+        const items: any[] = res.data || [];
+        result.scraped += items.length;
+
+        const filtered = items.filter(
+          (p) => (p.rating || 0) >= FILTERS.minRating && (p.orders_count || 0) >= FILTERS.minOrders,
+        );
 
         const fresh = filtered
-          .filter((p) => !existing.has(String(p.productId ?? '')))
+          .filter((p) => !existing.has(String(p.product_id ?? '')))
           .slice(0, FILTERS.maxResults);
 
         result.skipped_existing += filtered.length - fresh.length;
 
-        const targetCcy = (creds.currency_pair || 'USD_ILS').split('_')[1] || 'ILS';
-
         for (const p of fresh) {
-          const pid = String(p.productId ?? '');
+          const pid = String(p.product_id ?? '');
           if (!pid) continue;
-
-          // Price source of truth = the AliExpress Affiliate API, which returns the
-          // price already converted to the target currency (₪). Apify's scraped
-          // `priceCurrentMin` is unreliable — it can be a cheapest-variant teaser and
-          // it isn't currency-converted — so we only fall back to it (converted ONCE,
-          // consistently) when the API can't resolve the product.
-          let salePrice = 0;
-          let originalPrice = 0;
-          let discountPercent = 0;
-          let currency = targetCcy;
-
-          const authoritative = await this.products.refreshPrice(userId, pid).catch(() => null);
-          if (authoritative && authoritative.sale_price > 0) {
-            salePrice = authoritative.sale_price;
-            originalPrice = authoritative.original_price || authoritative.sale_price;
-            discountPercent = authoritative.discount_percent || 0;
-            currency = authoritative.currency || targetCcy;
-          } else {
-            const scraped = parseFloat(p.priceCurrentMin ?? p.price ?? '0') || 0;
-            salePrice = +(scraped * rate).toFixed(2);
-            originalPrice = salePrice;
-          }
-
           const entity = this.catalog.create({
             user_id: userId,
             product_id: pid,
-            title: p.title ?? p.name ?? 'Unknown',
-            original_price: originalPrice,
-            sale_price: salePrice,
-            discount_percent: discountPercent,
-            currency,
-            image_url: p.imageUrl ?? p.image ?? '',
-            product_url: p.productUrl ?? p.url ?? '',
-            affiliate_url: p.productUrl ?? p.url ?? '',
+            title: p.title ?? 'Unknown',
+            original_price: p.original_price ?? 0,
+            sale_price: p.sale_price ?? 0,
+            discount_percent: p.discount_percent ?? 0,
+            currency: p.currency ?? targetCcy,
+            image_url: p.image_url ?? '',
+            product_url: p.product_url ?? '',
+            affiliate_url: p.affiliate_url ?? p.product_url ?? '',
             keyword,
-            orders_count: this.parseSoldCount(p),
-            rating: parseFloat(p.ratingValue ?? '0') || 0,
+            orders_count: p.orders_count ?? 0,
+            rating: p.rating ?? 0,
             status: 'pending',
             supplier: 'AliExpress',
           });
@@ -130,41 +112,6 @@ export class DiscoveryService {
     }
 
     return result;
-  }
-
-  private async runApifyScraper(keyword: string, token: string): Promise<any[]> {
-    // Start a run
-    const runRes = await axios.post(
-      `https://api.apify.com/v2/acts/${APIFY_ACTOR}/runs?token=${token}`,
-      { searchQueries: [keyword], maxItems: 50 },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 20_000 },
-    );
-    const run = runRes.data?.data;
-    if (!run?.id) throw new Error('Apify did not return a run id');
-
-    // Poll until finished (max ~3 minutes)
-    for (let i = 0; i < 36; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      const statusRes = await axios.get(`https://api.apify.com/v2/actor-runs/${run.id}?token=${token}`, { timeout: 10_000 });
-      const status = statusRes.data?.data?.status;
-      if (status === 'SUCCEEDED') break;
-      if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
-        throw new Error(`Apify run ${status}`);
-      }
-    }
-
-    const dataRes = await axios.get(
-      `https://api.apify.com/v2/datasets/${run.defaultDatasetId}/items?token=${token}&clean=true`,
-      { timeout: 20_000 },
-    );
-    return Array.isArray(dataRes.data) ? dataRes.data : [];
-  }
-
-  private parseSoldCount(p: any): number {
-    const desc = p.soldDescription ?? '';
-    const match = String(desc).match(/([\d,]+)\+?\s*sold/i);
-    if (match) return parseInt(match[1].replace(/,/g, ''), 10);
-    return parseInt(p.soldCount ?? '0', 10) || 0;
   }
 
   // ── Link validator ─────────────────────────────────────────────────────────

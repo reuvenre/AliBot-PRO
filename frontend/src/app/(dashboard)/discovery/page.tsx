@@ -29,7 +29,7 @@ export default function DiscoveryPage() {
     try {
       setHuntResult(await discoveryApi.hunt(keywords));
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'הסריקה נכשלה — ודא שמפתח Apify מוגדר בהגדרות');
+      setError(e?.response?.data?.message || 'הסריקה נכשלה — ודא שמפתחות AliExpress מוגדרים בהגדרות');
     } finally {
       setHunting(false);
     }
@@ -56,7 +56,7 @@ export default function DiscoveryPage() {
             <Radar size={22} className="text-blue-400" /> גילוי מוצרים
           </h1>
           <p className="text-sm text-white/40 mt-1">
-            סורק AliExpress דרך Apify ומוסיף מוצרים חמים לקטלוג (דירוג ≥ 4.5, ‎500+‎ מכירות)
+            מוצא מוצרים חמים מ-AliExpress דרך ה-Affiliate API ומוסיף לקטלוג — מדורגים גבוה ונמכרים היטב, עם מחיר ולינק שותפים תקינים
           </p>
         </div>
         <Link href="/products" className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors">
