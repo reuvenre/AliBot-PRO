@@ -212,7 +212,8 @@ export class ProductsService {
       }, creds.aliexpress_app_secret);
 
       const res = await axios.get(ALI_API, { params: signed, timeout: 12000 });
-      this.logger.warn(`[AliDiag hot "${params.keyword}" ccy=${currency}] ${JSON.stringify(res.data).slice(0, 700)}`);
+      const _p0 = res.data?.aliexpress_affiliate_hotproduct_query_response?.resp_result?.result?.products?.product?.[0];
+      this.logger.warn(`[AliDiag hot "${params.keyword}"] keys=${_p0 ? Object.keys(_p0).join(',') : 'none'} | sale=${_p0?.sale_price} tgtSale=${_p0?.target_sale_price} eval=${_p0?.evaluate_rate} vol=${_p0?.lastest_volume}`);
       const respResult = res.data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
       if (respResult?.resp_code !== 200) {
         this.logger.error(`AliExpress promotional API error: code=${respResult?.resp_code} msg=${respResult?.resp_msg}`);

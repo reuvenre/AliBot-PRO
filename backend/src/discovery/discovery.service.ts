@@ -72,9 +72,10 @@ export class DiscoveryService {
         }
         result.scraped += items.length;
 
-        const filtered = items.filter(
-          (p) => (p.rating || 0) >= FILTERS.minRating && (p.orders_count || 0) >= FILTERS.minOrders,
-        );
+        // hotproduct.query is already a curated best-sellers feed and doesn't always
+        // populate rating/volume. So only drop items that EXPLICITLY report a rating
+        // below the bar; keep everything else (don't lose products to missing fields).
+        const filtered = items.filter((p) => !(p.rating > 0) || p.rating >= FILTERS.minRating);
 
         const fresh = filtered
           .filter((p) => !existing.has(String(p.product_id ?? '')))
