@@ -146,7 +146,7 @@ export default function RegisterPage() {
 
           {/* Google button */}
           <a
-            href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/auth/google`}
+            href="/api/auth/google"
             className="mt-4 w-full flex items-center justify-center gap-3 py-2.5 rounded-xl border border-edge-hover bg-white/4 hover:bg-white/8 transition-all text-sm text-white/70 hover:text-white"
           >
             <svg width="18" height="18" viewBox="0 0 48 48">

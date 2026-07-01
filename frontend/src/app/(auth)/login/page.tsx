@@ -72,7 +72,7 @@ export default function LoginPage() {
 
             {/* Google OAuth */}
             <a
-              href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/auth/google`}
+              href="/api/auth/google"
               className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all text-body text-gray-700 font-medium shadow-sm mb-5"
             >
               <svg width="17" height="17" viewBox="0 0 48 48" className="shrink-0">
