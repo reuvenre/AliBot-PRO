@@ -22,6 +22,7 @@ export function IntegrationsForm() {
   const [pubTelegram, setPubTelegram] = useState(true);
   const [pubFacebook, setPubFacebook] = useState(false);
   const [facebookOk, setFacebookOk] = useState<boolean | null>(null);
+  const [facebookError, setFacebookError] = useState<string | null>(null);
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
@@ -74,6 +75,7 @@ export function IntegrationsForm() {
       const res = await credentialsApi.verify();
       setTelegramOk(res.telegram);
       setFacebookOk(res.facebook);
+      setFacebookError(res.facebook ? null : res.errors?.facebook || null);
     } finally {
       setVerifying(false);
     }
@@ -165,6 +167,9 @@ export function IntegrationsForm() {
               : <XCircle size={13} className="text-red-400" />
           )}
         </h3>
+        {facebookError && (
+          <p className="text-2xs text-red-400 -mt-3 mb-4">⚠️ {facebookError}</p>
+        )}
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">Page ID</label>

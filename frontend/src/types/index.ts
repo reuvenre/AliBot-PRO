@@ -131,6 +131,7 @@ export interface VerifyResult {
   anthropic: boolean;
   facebook: boolean;
   apify: boolean;
+  errors?: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook', string>>;
 }
 
 // ─── Ads / Boost ─────────────────────────────────────────────────────────────

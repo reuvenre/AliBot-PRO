@@ -154,6 +154,9 @@ export function CredentialsForm() {
           </button>
         </div>
         <p className="text-2xs text-white/30 mb-4">בחר את ספק יצירת התוכן. המערכת תשתמש בספק שבחרת, ותיפול אוטומטית לספק אחר עם מפתח תקין.</p>
+        {verifyStatus?.errors?.[form.ai_provider as 'anthropic' | 'openai' | 'gemini'] && (
+          <p className="text-2xs text-red-400 -mt-3 mb-4">⚠️ {verifyStatus.errors[form.ai_provider as 'anthropic' | 'openai' | 'gemini']}</p>
+        )}
 
         {/* Provider selector */}
         <div className="grid grid-cols-3 gap-2 mb-4">

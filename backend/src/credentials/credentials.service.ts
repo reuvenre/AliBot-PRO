@@ -136,19 +136,28 @@ export class CredentialsService {
   async verify(userId: string): Promise<{
     aliexpress: boolean; telegram: boolean; openai: boolean;
     gemini: boolean; anthropic: boolean; facebook: boolean; apify: boolean;
+    errors: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook', string>>;
   }> {
     const empty = { aliexpress: false, telegram: false, openai: false, gemini: false, anthropic: false, facebook: false, apify: false };
     const cred = await this.repo.findOne({ where: { user_id: userId } });
-    if (!cred) return empty;
+    if (!cred) return { ...empty, errors: {} };
 
     const results = { ...empty };
+    const errors: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook', string>> = {};
+    const apiErrorMessage = (err: any): string =>
+      err?.response?.data?.error?.message
+      || err?.response?.data?.description
+      || err?.response?.data?.error
+      || err?.message
+      || 'unknown error';
 
     // Verify Telegram
     try {
       const token = decrypt(cred.telegram_bot_token_enc);
       const res = await axios.get(`https://api.telegram.org/bot${token}/getMe`, { timeout: 5000 });
       results.telegram = res.data?.ok === true;
-    } catch {}
+      if (!results.telegram) errors.telegram = res.data?.description || 'invalid response';
+    } catch (err: any) { errors.telegram = apiErrorMessage(err); }
 
     // Verify OpenAI
     try {
@@ -159,8 +168,10 @@ export class CredentialsService {
           timeout: 5000,
         });
         results.openai = res.status === 200;
+      } else {
+        errors.openai = 'לא הוזן מפתח API';
       }
-    } catch {}
+    } catch (err: any) { errors.openai = apiErrorMessage(err); }
 
     // Verify Gemini
     try {
@@ -171,8 +182,10 @@ export class CredentialsService {
           { timeout: 5000 },
         );
         results.gemini = res.status === 200;
+      } else {
+        errors.gemini = 'לא הוזן מפתח API';
       }
-    } catch {}
+    } catch (err: any) { errors.gemini = apiErrorMessage(err); }
 
     // Verify Anthropic (per-user key, falling back to the server key)
     try {
@@ -184,7 +197,7 @@ export class CredentialsService {
         });
         results.anthropic = res.status === 200;
       }
-    } catch {}
+    } catch (err: any) { errors.anthropic = apiErrorMessage(err); }
 
     // Verify Facebook page token
     try {
@@ -195,8 +208,13 @@ export class CredentialsService {
           { timeout: 5000 },
         );
         results.facebook = res.status === 200 && !res.data?.error;
+        if (!results.facebook) errors.facebook = res.data?.error?.message || 'unknown error';
+      } else if (!token) {
+        errors.facebook = 'לא הוזן Page Access Token';
+      } else {
+        errors.facebook = 'לא הוזן Page ID';
       }
-    } catch {}
+    } catch (err: any) { errors.facebook = apiErrorMessage(err); }
 
     // Apify: token presence (full validation requires a paid run)
     results.apify = !!decrypt(cred.apify_api_token_enc);
@@ -204,7 +222,7 @@ export class CredentialsService {
     // AliExpress: just check that keys are set
     results.aliexpress = !!(cred.aliexpress_app_key && cred.aliexpress_tracking_id);
 
-    return results;
+    return { ...results, errors };
   }
 
   // Return decrypted credentials for internal use
