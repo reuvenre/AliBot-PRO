@@ -135,15 +135,15 @@ export class CredentialsService {
 
   async verify(userId: string): Promise<{
     aliexpress: boolean; telegram: boolean; openai: boolean;
-    gemini: boolean; anthropic: boolean; facebook: boolean; apify: boolean;
-    errors: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook', string>>;
+    gemini: boolean; anthropic: boolean; facebook: boolean; metaAdAccount: boolean; apify: boolean;
+    errors: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook' | 'metaAdAccount', string>>;
   }> {
-    const empty = { aliexpress: false, telegram: false, openai: false, gemini: false, anthropic: false, facebook: false, apify: false };
+    const empty = { aliexpress: false, telegram: false, openai: false, gemini: false, anthropic: false, facebook: false, metaAdAccount: false, apify: false };
     const cred = await this.repo.findOne({ where: { user_id: userId } });
     if (!cred) return { ...empty, errors: {} };
 
     const results = { ...empty };
-    const errors: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook', string>> = {};
+    const errors: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook' | 'metaAdAccount', string>> = {};
     const apiErrorMessage = (err: any): string =>
       err?.response?.data?.error?.message
       || err?.response?.data?.description
@@ -215,6 +215,24 @@ export class CredentialsService {
         errors.facebook = 'לא הוזן Page ID';
       }
     } catch (err: any) { errors.facebook = apiErrorMessage(err); }
+
+    // Verify Meta Ad Account (used only by the auto-boost feature — separate from the
+    // page check since it's a distinct purpose/permission, though it reuses the token).
+    try {
+      const token = decrypt(cred.facebook_page_token_enc);
+      if (token && cred.meta_ad_account_id) {
+        const res = await axios.get(
+          `https://graph.facebook.com/v19.0/${cred.meta_ad_account_id}?fields=name,account_status&access_token=${token}`,
+          { timeout: 5000 },
+        );
+        results.metaAdAccount = res.status === 200 && !res.data?.error;
+        if (!results.metaAdAccount) errors.metaAdAccount = res.data?.error?.message || 'unknown error';
+      } else if (!token) {
+        errors.metaAdAccount = 'נדרש Page Access Token (למעלה)';
+      } else {
+        errors.metaAdAccount = 'לא הוזן Meta Ad Account ID';
+      }
+    } catch (err: any) { errors.metaAdAccount = apiErrorMessage(err); }
 
     // Apify: token presence (full validation requires a paid run)
     results.apify = !!decrypt(cred.apify_api_token_enc);

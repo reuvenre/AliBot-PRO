@@ -130,8 +130,9 @@ export interface VerifyResult {
   gemini: boolean;
   anthropic: boolean;
   facebook: boolean;
+  metaAdAccount: boolean;
   apify: boolean;
-  errors?: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook', string>>;
+  errors?: Partial<Record<'telegram' | 'openai' | 'gemini' | 'anthropic' | 'facebook' | 'metaAdAccount', string>>;
 }
 
 // ─── Ads / Boost ─────────────────────────────────────────────────────────────

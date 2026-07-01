@@ -23,6 +23,8 @@ export function IntegrationsForm() {
   const [pubFacebook, setPubFacebook] = useState(false);
   const [facebookOk, setFacebookOk] = useState<boolean | null>(null);
   const [facebookError, setFacebookError] = useState<string | null>(null);
+  const [adAccountOk, setAdAccountOk] = useState<boolean | null>(null);
+  const [adAccountError, setAdAccountError] = useState<string | null>(null);
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
@@ -76,6 +78,8 @@ export function IntegrationsForm() {
       setTelegramOk(res.telegram);
       setFacebookOk(res.facebook);
       setFacebookError(res.facebook ? null : res.errors?.facebook || null);
+      setAdAccountOk(res.metaAdAccount);
+      setAdAccountError(res.metaAdAccount ? null : res.errors?.metaAdAccount || null);
     } finally {
       setVerifying(false);
     }
@@ -161,18 +165,17 @@ export function IntegrationsForm() {
       <section className="bg-surface-secondary border border-edge rounded-xl p-5">
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
           <span className="text-lg">📘</span> Facebook Pages
-          {facebookOk !== null && (
-            facebookOk
-              ? <CheckCircle2 size={13} className="text-emerald-400" />
-              : <XCircle size={13} className="text-red-400" />
-          )}
         </h3>
-        {facebookError && (
-          <p className="text-2xs text-red-400 -mt-3 mb-4">⚠️ {facebookError}</p>
-        )}
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-white/50 mb-1.5">Page ID</label>
+            <label className="block text-xs font-medium text-white/50 mb-1.5 flex items-center gap-1.5">
+              Page ID
+              {facebookOk !== null && (
+                facebookOk
+                  ? <CheckCircle2 size={12} className="text-emerald-400" />
+                  : <XCircle size={12} className="text-red-400" />
+              )}
+            </label>
             <input
               value={fbPageId}
               onChange={(e) => setFbPageId(e.target.value)}
@@ -199,8 +202,18 @@ export function IntegrationsForm() {
             </div>
             <p className="text-2xs text-white/25 mt-1">טוקן דף קבוע מ-Meta Graph API · ממולא רק בעת עדכון</p>
           </div>
+          {facebookError && (
+            <p className="text-2xs text-red-400 -mt-2">⚠️ חיבור הדף: {facebookError}</p>
+          )}
           <div>
-            <label className="block text-xs font-medium text-white/50 mb-1.5">Meta Ad Account ID <span className="text-white/25">(ל-Boost)</span></label>
+            <label className="block text-xs font-medium text-white/50 mb-1.5 flex items-center gap-1.5">
+              Meta Ad Account ID <span className="text-white/25">(ל-Boost)</span>
+              {adAccountOk !== null && (
+                adAccountOk
+                  ? <CheckCircle2 size={12} className="text-emerald-400" />
+                  : <XCircle size={12} className="text-red-400" />
+              )}
+            </label>
             <input
               value={metaAdAccount}
               onChange={(e) => setMetaAdAccount(e.target.value)}
@@ -208,6 +221,9 @@ export function IntegrationsForm() {
               className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
               dir="ltr"
             />
+            {adAccountError && (
+              <p className="text-2xs text-red-400 mt-1">⚠️ חשבון פרסום: {adAccountError}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 mt-4">
@@ -219,7 +235,7 @@ export function IntegrationsForm() {
           <button onClick={handleVerify} disabled={verifying}
             className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all">
             {verifying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-            בדוק חיבור Facebook
+            בדוק דף + חשבון פרסום
           </button>
         </div>
       </section>
