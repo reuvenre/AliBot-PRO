@@ -799,45 +799,42 @@ export class PostsService {
       .orderBy('p.scheduled_at', 'ASC')
       .getMany();
 
-    // Drip, don't flood: at most ONE overdue post per destination group per tick, and
-    // only when a full interval passed since the last ACTUAL Telegram publish to that
-    // group. The gate reads MAX(sent_at) of posts that really went to Telegram — NOT the
-    // shared channel clock, which the hourly Instagram campaign and the auto-send queue
-    // also stamp. That shared clock never went stale, so Telegram posts froze for hours
-    // (watchdog #9/#10). Sourcing the gate from real Telegram sends means only a genuine
-    // Telegram publish can defer the next one — nothing else can deadlock it.
-    const seen = new Set<string>();
+    // Release the OLDEST due post per group this tick, and RE-SPACE that group's remaining
+    // overdue posts into future slots (now + N·interval). This one change fixes all three
+    // symptoms this pipeline kept hitting, using scheduled_at — an IMMUTABLE pacing source
+    // that nothing external can freeze:
+    //  • stuck backlog: it now drains one per interval instead of freezing on a shared clock;
+    //  • 06:00/06:01 double: the 2nd overdue post is pushed to the next interval, not fired
+    //    a minute later;
+    //  • runaway pile-up: because the backlog now carries FUTURE scheduled_at, nextGroupSlot
+    //    sees the group as booked-ahead and stops creating new posts until it drains — so an
+    //    over-subscribed group (2 campaigns, 1/hour interval) can't accumulate unbounded.
     const picked: Post[] = [];
+    const headTaken = new Set<string>();
+    const backlog = new Map<string, Post[]>();
     for (const p of due) {
       const key = `${p.user_id}::${p.channel_override || 'default'}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (p.channel_override) {
-        const intervalMin = (await this.channels.getIntervalMinutes(p.user_id, p.channel_override).catch(() => null)) ?? 60;
-        const lastMs = await this.lastTelegramSendToGroup(p.user_id, p.channel_override).catch(() => 0);
-        if (lastMs && now.getTime() - lastMs < intervalMin * 60_000) continue; // published to TG within interval
+      if (!headTaken.has(key)) {
+        headTaken.add(key);
+        picked.push(p);
+      } else {
+        const arr = backlog.get(key) || [];
+        arr.push(p);
+        backlog.set(key, arr);
       }
-      picked.push(p);
     }
-    return picked;
-  }
 
-  /**
-   * MAX(sent_at) of posts that actually PUBLISHED to this Telegram group — a sent post
-   * targeting the group whose campaign isn't platform-filtered away from Telegram. Same
-   * filter as nextGroupSlot, so booking and release agree on what "a Telegram post to the
-   * group" is. Returns 0 when none. This is the ONLY thing that paces the scheduled drip.
-   */
-  private async lastTelegramSendToGroup(userId: string, groupId: string): Promise<number> {
-    const row = await this.repo.createQueryBuilder('p')
-      .select('MAX(p.sent_at)', 'max')
-      .leftJoin(Campaign, 'c', 'c.id = p.campaign_id')
-      .where('p.user_id = :userId', { userId })
-      .andWhere("p.status = 'sent'")
-      .andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)', { g: groupId, like: `%"${groupId}"%` })
-      .andWhere('(p.campaign_id IS NULL OR c.target_platforms IS NULL OR c.target_platforms LIKE :tg)', { tg: '%telegram%' })
-      .getRawOne();
-    return row?.max ? new Date(row.max).getTime() : 0;
+    for (const [key, posts] of backlog) {
+      const groupId = key.slice(key.indexOf('::') + 2);
+      const interval = groupId === 'default'
+        ? 60
+        : ((await this.channels.getIntervalMinutes(posts[0].user_id, groupId).catch(() => null)) ?? 60);
+      posts.forEach((p, i) => { p.scheduled_at = new Date(now.getTime() + (i + 1) * interval * 60_000); });
+      await this.repo.save(posts).catch((err: any) =>
+        this.logger.warn(`backlog re-space failed for ${key}: ${err?.message}`));
+    }
+
+    return picked;
   }
 
   async sendScheduled(post: Post) {
