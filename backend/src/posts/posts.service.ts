@@ -790,6 +790,21 @@ export class PostsService {
 
   // ── Due scheduled posts (called by cron) ──────────────────────────────────
 
+  /**
+   * Is the send window for this destination currently open? Group window overrides the
+   * account's; default (no group) uses the account window; 9–22 when unset. Same rule
+   * the campaign runner uses (isCampaignWindowOpen) so creation and release agree.
+   */
+  private async isSendWindowOpen(userId: string, groupId: string | null): Promise<boolean> {
+    const win = groupId ? await this.channels.getScheduleWindow(userId, groupId).catch(() => null) : null;
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const startHour = win?.startHour ?? creds?.schedule_start_hour ?? 9;
+    const endHour = win?.endHour ?? creds?.schedule_end_hour ?? 22;
+    if (startHour >= endHour) return true; // 24h / misconfigured → never block
+    const h = this.hourInZone(new Date(), process.env.SCHEDULER_TZ || 'Asia/Jerusalem');
+    return h >= startHour && h < endHour;
+  }
+
   async findDueScheduledPosts(): Promise<Post[]> {
     const now = new Date();
     const due = await this.repo
@@ -800,20 +815,26 @@ export class PostsService {
       .getMany();
 
     // Release the OLDEST due post per group this tick, and RE-SPACE that group's remaining
-    // overdue posts into future slots (now + N·interval). This one change fixes all three
-    // symptoms this pipeline kept hitting, using scheduled_at — an IMMUTABLE pacing source
-    // that nothing external can freeze:
-    //  • stuck backlog: it now drains one per interval instead of freezing on a shared clock;
-    //  • 06:00/06:01 double: the 2nd overdue post is pushed to the next interval, not fired
-    //    a minute later;
-    //  • runaway pile-up: because the backlog now carries FUTURE scheduled_at, nextGroupSlot
-    //    sees the group as booked-ahead and stops creating new posts until it drains — so an
-    //    over-subscribed group (2 campaigns, 1/hour interval) can't accumulate unbounded.
+    // overdue posts into future slots (now + N·interval). This uses scheduled_at — an
+    // IMMUTABLE pacing source nothing external can freeze — to fix three symptoms at once:
+    //  • stuck backlog: drains one per interval instead of freezing on a shared clock;
+    //  • 06:00/06:01 double: the 2nd overdue post is pushed to the next interval;
+    //  • runaway pile-up: the future scheduled_at makes nextGroupSlot report booked-ahead,
+    //    so an over-subscribed group (2 campaigns, 1/hour interval) can't accumulate.
+    //
+    // AND the send window is enforced HERE: a group whose window is currently CLOSED
+    // releases NOTHING (posts wait for the window to reopen) — the scheduled-send path
+    // had no window check, so an overdue backlog fired at 00:24 even with a 23:00 cutoff.
     const picked: Post[] = [];
     const headTaken = new Set<string>();
     const backlog = new Map<string, Post[]>();
+    const windowOpen = new Map<string, boolean>();
     for (const p of due) {
       const key = `${p.user_id}::${p.channel_override || 'default'}`;
+      if (!windowOpen.has(key)) {
+        windowOpen.set(key, await this.isSendWindowOpen(p.user_id, p.channel_override || null).catch(() => true));
+      }
+      if (!windowOpen.get(key)) continue; // window closed → hold everything for this group
       if (!headTaken.has(key)) {
         headTaken.add(key);
         picked.push(p);
