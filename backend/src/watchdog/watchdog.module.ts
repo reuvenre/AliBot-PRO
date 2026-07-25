@@ -7,9 +7,10 @@ import { MailModule } from '../mail/mail.module';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { WatchdogService } from './watchdog.service';
 import { SecurityModule } from '../security/security.module';
+import { ChannelsModule } from '../channels/channels.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Post, Campaign, User]), MailModule, CredentialsModule, SecurityModule],
+  imports: [TypeOrmModule.forFeature([Post, Campaign, User]), MailModule, CredentialsModule, SecurityModule, ChannelsModule],
   providers: [WatchdogService],
   exports: [WatchdogService],
 })

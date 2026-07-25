@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
+import { CronTime } from 'cron';
 import axios from 'axios';
 import { Post } from '../posts/post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -9,6 +10,24 @@ import { User } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
 import { SecurityService } from '../security/security.service';
 import { CredentialsService } from '../credentials/credentials.service';
+import { ChannelsService } from '../channels/channels.service';
+
+/** The tightest interval (minutes) a cron fires at — min gap over its next few fires.
+ *  Hourly → 60, every-2h → 120. null when the expression can't be parsed. */
+function cronBaseIntervalMin(expr: string): number | null {
+  try {
+    const ct = new CronTime(expr);
+    let from = new Date();
+    let min = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const a = ct.getNextDateFrom(from).toJSDate();
+      const b = ct.getNextDateFrom(new Date(a.getTime() + 1000)).toJSDate();
+      min = Math.min(min, (b.getTime() - a.getTime()) / 60_000);
+      from = new Date(b.getTime() + 1000);
+    }
+    return Number.isFinite(min) && min > 0 ? Math.round(min) : null;
+  } catch { return null; }
+}
 
 /**
  * 24/7 self-monitoring. Every 15 minutes the watchdog scans for anomalies that
@@ -39,6 +58,7 @@ export class WatchdogService {
     private readonly mail: MailService,
     private readonly credentials: CredentialsService,
     private readonly security: SecurityService,
+    private readonly channels: ChannelsService,
   ) {}
 
   @Cron('0 */15 * * * *')
@@ -294,7 +314,69 @@ export class WatchdogService {
       });
     }
 
-    // 5. Security anomalies (brute-force, privilege escalation) from the audit log.
+    // 5. CADENCE DRIFT: a campaign that IS publishing but far SLOWER than its configured
+    //    cron — e.g. every 2h when set to hourly. The silent check misses this (it does
+    //    publish), so this is the gap that hid the every-2-hours bug. Compare the median
+    //    real gap between recent sends to the expected cadence (cron interval, floored by
+    //    the group interval and multiplied for fair-share siblings). Night gaps (window
+    //    closed) are dropped so they don't masquerade as drift.
+    const driftHits: string[] = [];
+    for (const c of silent.slice(0, 40)) {
+      const expectedCron = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
+      if (!expectedCron) continue;
+
+      let groups: string[] = [];
+      try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+      const siblings = groups.length ? silent.filter((o) => o.id !== c.id).filter((o) => {
+        let og: string[] = []; try { og = JSON.parse(o.target_channels || '[]'); } catch { og = []; }
+        return og.some((g) => groups.includes(g));
+      }).length : 0;
+      const groupInterval = groups.length
+        ? ((await this.channels.getIntervalMinutes(c.user_id, groups[0]).catch(() => null)) ?? 60)
+        : 0;
+      // What the campaign SHOULD publish at: its cron, but never faster than the group's
+      // rate, times the fair-share divisor.
+      const expected = Math.max(expectedCron, groupInterval) * (siblings + 1);
+
+      // Recent sends (last 12h) — need a few to judge; gaps beyond 3× expected are night
+      // pauses / window closes, not drift, so drop them.
+      const sends = await this.posts.createQueryBuilder('p')
+        .select('p.sent_at', 'sent_at')
+        .where('p.campaign_id = :cid', { cid: c.id })
+        .andWhere("p.status = 'sent'")
+        .andWhere('p.sent_at > :since', { since: new Date(now - 12 * 3600_000) })
+        .orderBy('p.sent_at', 'DESC')
+        .limit(10)
+        .getRawMany()
+        .catch(() => []);
+      const times = sends.map((s) => new Date(s.sent_at).getTime()).sort((a, b) => b - a);
+      const gaps: number[] = [];
+      for (let i = 0; i < times.length - 1; i++) {
+        const g = (times[i] - times[i + 1]) / 60_000;
+        if (g <= expected * 3) gaps.push(g); // drop night/pause gaps
+      }
+      if (gaps.length < 2) continue; // not enough signal
+      gaps.sort((a, b) => a - b);
+      const median = gaps[Math.floor(gaps.length / 2)];
+      if (median > expected * 1.7) {
+        driftHits.push(`- "${c.name}" \`${c.id}\` · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'`);
+      }
+    }
+    if (driftHits.length) {
+      out.push({
+        key: `cadence_drift:${driftHits.length}:${new Date(now).toISOString().slice(0, 13)}`,
+        title: `${driftHits.length} קמפיינים מפרסמים לאט מהמוגדר`,
+        body: [
+          '**בדיקה:** קמפיין פעיל שמפרסם, אבל בקצב איטי משמעותית מהתזמון שהוגדר לו (פי 1.7 ומעלה).',
+          '',
+          ...driftHits,
+          '',
+          'כיווני חקירה: nextGroupSlot (groupBusy/grace על גבול המרווח), findDueScheduledPosts, over-subscription/fair-share, חלון השליחה.',
+        ].join('\n'),
+      });
+    }
+
+    // 6. Security anomalies (brute-force, privilege escalation) from the audit log.
     //    Reported through the same channels; the 6h throttle per key still applies so
     //    an ongoing attack alerts once, not every 15 minutes.
     const sec = await this.security.scan().catch(() => []);
