@@ -1055,8 +1055,14 @@ export class PostsService {
     if (!latestMs) return { slot: notBefore, skip: false };
     const slotMs = Math.max(latestMs + intervalMin * 60_000, notBefore.getTime());
 
-    // Group is BUSY when it already has a pending post, or it published within the interval.
-    const groupBusy = hasPending || (lastSentMs > 0 && now - lastSentMs < intervalMin * 60_000);
+    // Group is BUSY when it already has a pending post, or it published within the interval
+    // MINUS a small grace. The grace is essential: a campaign whose cron matches the group
+    // interval (hourly campaign + 60-min group) sends a few seconds SHY of a full interval
+    // before its next run, so a strict "< interval" check marked the group busy and skipped
+    // every OTHER run → the group posted every 2 hours instead of every hour. The grace
+    // (15% of the interval) absorbs that cron/send jitter.
+    const graceMs = intervalMin * 0.15 * 60_000;
+    const groupBusy = hasPending || (lastSentMs > 0 && now - lastSentMs < intervalMin * 60_000 - graceMs);
 
     // FAIR-SHARE: when several campaigns publish to one group, the group's single rate is
     // split between them — the MOST-BEHIND campaign (oldest last-post, or never posted) wins
