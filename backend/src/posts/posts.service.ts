@@ -1140,17 +1140,21 @@ export class PostsService {
         // Deep-walk PER KEYWORD: start on the page just past everything already posted
         // under this keyword, so a keyword that's been used a lot reaches genuinely new
         // products instead of re-scanning page 1's top items. A little jitter avoids
-        // lockstep; page 1 stays the fallback for sparse keywords below.
+        // lockstep. CAPPED at page 10 — AliExpress rejects out-of-range pages with a
+        // hard error, and (as the watchdog caught) a thrown deep-page search skipped the
+        // page-1 fallback and silenced the whole campaign. Page 1 is always the fallback.
         const postedForKw = postedPerKeyword.get(kw) || 0;
-        const basePage = Math.floor(postedForKw / pageSize) + 1;
-        const page = basePage + Math.floor(Math.random() * 3);
+        const basePage = Math.min(10, Math.floor(postedForKw / pageSize) + 1);
+        const page = basePage + Math.floor(Math.random() * 2);
         const query = {
           keyword: searched, category_id: campaign.category_id,
           min_price: campaign.min_price, max_price: campaign.max_price,
           min_discount: campaign.min_discount, limit: pageSize,
         };
-        let found = await this.searchProducts({ ...query, page }, creds);
-        if (found.length < needed && page !== 1) {
+        // A deep page can ERROR (out of range) — fall back to page 1 rather than failing
+        // the keyword, so an exhausted deep-walk never silences the campaign.
+        let found = page === 1 ? [] : await this.searchProducts({ ...query, page }, creds).catch(() => []);
+        if (found.length < needed) {
           found = await this.searchProducts({ ...query, page: 1 }, creds);
         }
         const qualified = found.filter((p) =>
