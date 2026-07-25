@@ -2217,6 +2217,7 @@ export class PostsService {
         { chat_id: channel, photo: image, caption: mediaCaption, parse_mode: 'HTML' },
         { timeout: 15000 },
       );
+      this.assertTelegramDelivered(res, 'photo');
       post.telegram_message_id = res.data?.result?.message_id;
       await sendOverflow();
     } catch (err: any) {
@@ -2231,6 +2232,7 @@ export class PostsService {
           { chat_id: channel, photo: image, caption: plain },
           { timeout: 15000 },
         );
+        this.assertTelegramDelivered(res, 'photo');
         post.telegram_message_id = res.data?.result?.message_id;
         await sendOverflow();
         return;
@@ -2244,18 +2246,37 @@ export class PostsService {
    * caption exceeds the 1024-cap photo limit. HTML with a plain-text fallback, mirroring
    * the photo path. Link preview is disabled so the follow-up sits tight under the image.
    */
+  /**
+   * A Telegram send "succeeded" ONLY when the API confirms it — `ok:true` with a real
+   * result/message_id. axios throws on 4xx/5xx, but a 200 body carrying `ok:false` (or an
+   * empty result) would otherwise resolve and mark the post 'sent' though nothing was
+   * delivered — a post shown as sent but missing from the group. Throw so it reads as
+   * failed and can be retried.
+   */
+  private assertTelegramDelivered(res: any, what: string): void {
+    const data = res?.data;
+    const result = data?.result;
+    const ok = data?.ok === true
+      && (Array.isArray(result) ? result.length > 0 && result[0]?.message_id : !!result?.message_id);
+    if (!ok) {
+      throw new Error(`טלגרם לא אישרה את השליחה (${what}): ${data?.description || 'no message_id'}`);
+    }
+  }
+
   private async sendTelegramText(token: string, channel: string, text: string) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     try {
-      await axios.post(url, {
+      const res = await axios.post(url, {
         chat_id: channel, text, parse_mode: 'HTML', disable_web_page_preview: true,
       }, { timeout: 15000 });
+      this.assertTelegramDelivered(res, 'text');
     } catch (err: any) {
       const desc: string = err?.response?.data?.description || '';
       if (err?.response?.status === 400 && /parse|entit|tag/i.test(desc)) {
-        await axios.post(url, {
+        const res = await axios.post(url, {
           chat_id: channel, text: text.replace(/<[^>]+>/g, ''), disable_web_page_preview: true,
         }, { timeout: 15000 });
+        this.assertTelegramDelivered(res, 'text');
         return;
       }
       throw err;
@@ -2272,6 +2293,7 @@ export class PostsService {
     }));
     try {
       const res = await axios.post(url, { chat_id: channel, media: build(true) }, { timeout: 20000 });
+      this.assertTelegramDelivered(res, 'album');
       post.telegram_message_id = res.data?.result?.[0]?.message_id;
     } catch (err: any) {
       const desc: string = err?.response?.data?.description || '';
@@ -2280,6 +2302,7 @@ export class PostsService {
         const plainCaption = caption.replace(/<[^>]+>/g, '');
         const media = images.map((img, i) => ({ type: 'photo', media: img, ...(i === 0 ? { caption: plainCaption } : {}) }));
         const res = await axios.post(url, { chat_id: channel, media }, { timeout: 20000 });
+        this.assertTelegramDelivered(res, 'album');
         post.telegram_message_id = res.data?.result?.[0]?.message_id;
         return;
       }
@@ -2310,11 +2333,13 @@ export class PostsService {
     };
     try {
       const res = await send(true);
+      this.assertTelegramDelivered(res, 'album-upload');
       post.telegram_message_id = res.data?.result?.[0]?.message_id;
     } catch (err: any) {
       const desc: string = err?.response?.data?.description || '';
       if (err?.response?.status === 400 && /parse|entit|tag/i.test(desc)) {
         const res = await send(false);
+        this.assertTelegramDelivered(res, 'album-upload');
         post.telegram_message_id = res.data?.result?.[0]?.message_id;
         return;
       }
@@ -2335,11 +2360,13 @@ export class PostsService {
     };
     try {
       const res = await send(true);
+      this.assertTelegramDelivered(res, 'photo-upload');
       post.telegram_message_id = res.data?.result?.message_id;
     } catch (err: any) {
       const desc: string = err?.response?.data?.description || '';
       if (err?.response?.status === 400 && /parse|entit|tag/i.test(desc)) {
         const res = await send(false);
+        this.assertTelegramDelivered(res, 'photo-upload');
         post.telegram_message_id = res.data?.result?.message_id;
         return;
       }
