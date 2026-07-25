@@ -1179,22 +1179,30 @@ export class PostsService {
           min_price: campaign.min_price, max_price: campaign.max_price,
           min_discount: campaign.min_discount, limit: pageSize,
         };
-        // A deep page can ERROR (out of range) — fall back to page 1 rather than failing
-        // the keyword, so an exhausted deep-walk never silences the campaign.
-        let found = page === 1 ? [] : await this.searchProducts({ ...query, page }, creds).catch(() => []);
-        if (found.length < needed) {
-          found = await this.searchProducts({ ...query, page: 1 }, creds);
+        // Gather a WIDE candidate set — the deep page (genuinely new items) MERGED with
+        // page 1 (the reliable base) — so there's the best possible chance of fresh
+        // products. A deep page can ERROR (out of range); that's caught, not fatal.
+        const seenIds = new Set<string>();
+        const found: any[] = [];
+        for (const pg of (page === 1 ? [1] : [page, 1])) {
+          const batch = await this.searchProducts({ ...query, page: pg }, creds).catch(() => []);
+          for (const p of batch) {
+            const id = String(p.product_id);
+            if (!seenIds.has(id)) { seenIds.add(id); found.push(p); }
+          }
         }
         const qualified = found.filter((p) =>
           (minRating <= 0 || (p.rating || 0) >= minRating) &&
           (minDiscount <= 0 || (p.discount_percent || 0) >= minDiscount),
         );
-        // Prefer never-posted products; repeat only when the whole pool was used
-        // (better a repeat than nothing) — but never fall back past the quality filters.
-        const freshOnly = qualified.filter((p) => !postedIds.has(String(p.product_id)));
-        const pool = freshOnly.length ? freshOnly : qualified;
+        // NEVER repeat a product: anything already posted by this campaign (durable memory)
+        // is excluded, full stop — no "reuse when exhausted" fallback. If that leaves the
+        // keyword with nothing, it sits out THIS run (its slot borrows from another keyword
+        // below, or is simply skipped) — the user asked for no reruns, so silence for one
+        // keyword beats re-showing a product followers already saw.
+        const pool = qualified.filter((p) => !postedIds.has(String(p.product_id)));
         if (!pool.length) {
-          kwErrors.push(`"${kw}": לא נמצאו מוצרים שעומדים בסינון`);
+          kwErrors.push(`"${kw}": אין מוצרים חדשים (כל התוצאות כבר פורסמו או מסוננות)`);
           continue;
         }
         poolBy.set(kw, pool);
