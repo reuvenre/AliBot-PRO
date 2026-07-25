@@ -1164,24 +1164,26 @@ export class PostsService {
         // products. A rotating page 1-6 walks DEEPER into the results over time —
         // AliExpress returns the same top items on page 1 every run but has thousands of
         // matches; page 1 is the fallback for sparse keywords.
-        const pageSize = Math.min(50, Math.max(20, needed * 10));
-        // Deep-walk PER KEYWORD: start on the page just past everything already posted
-        // under this keyword, so a keyword that's been used a lot reaches genuinely new
-        // products instead of re-scanning page 1's top items. A little jitter avoids
-        // lockstep. CAPPED at page 10 — AliExpress rejects out-of-range pages with a
-        // hard error, and (as the watchdog caught) a thrown deep-page search skipped the
-        // page-1 fallback and silenced the whole campaign. Page 1 is always the fallback.
+        const pageSize = Math.min(50, Math.max(30, needed * 20)); // widest net the API allows
+        // The affiliate API returns a MUCH smaller, best-seller-sorted slice than the
+        // consumer website — so a fixed sort keeps handing back the same top items even
+        // though the site shows thousands. Widen the reachable catalog by rotating BOTH
+        // the sort order AND the page as a keyword is used: each (sort, page) combo reveals
+        // a different slice. block = how many page-fulls already consumed under this keyword;
+        // it walks sort0/p1, sort1/p1, sort2/p1, sort0/p2, … (≈ 3×10 pages of unique items).
+        const SORTS = ['LAST_VOLUME_DESC', 'LAST_VOLUME_ASC', 'SALE_PRICE_DESC'];
         const postedForKw = postedPerKeyword.get(kw) || 0;
-        const basePage = Math.min(10, Math.floor(postedForKw / pageSize) + 1);
-        const page = basePage + Math.floor(Math.random() * 2);
+        const block = Math.floor(postedForKw / pageSize);
+        const sort = SORTS[block % SORTS.length];
+        const page = Math.min(10, Math.floor(block / SORTS.length) + 1);
         const query = {
           keyword: searched, category_id: campaign.category_id,
           min_price: campaign.min_price, max_price: campaign.max_price,
-          min_discount: campaign.min_discount, limit: pageSize,
+          min_discount: campaign.min_discount, limit: pageSize, sort,
         };
-        // Gather a WIDE candidate set — the deep page (genuinely new items) MERGED with
-        // page 1 (the reliable base) — so there's the best possible chance of fresh
-        // products. A deep page can ERROR (out of range); that's caught, not fatal.
+        // Gather from the rotated (sort, page) slice MERGED with that sort's page 1 (the
+        // reliable base), de-duplicated — best chance of fresh items. A deep page can ERROR
+        // (out of range); that's caught, not fatal.
         const seenIds = new Set<string>();
         const found: any[] = [];
         for (const pg of (page === 1 ? [1] : [page, 1])) {
@@ -2756,6 +2758,7 @@ export class PostsService {
     min_discount?: number;
     limit?: number;
     page?: number;
+    sort?: string;
   }, creds: DecryptedCredentials): Promise<any[]> {
     if (!creds?.aliexpress_app_key) {
       throw new BadRequestException('AliExpress affiliate credentials not configured');
@@ -2783,7 +2786,9 @@ export class PostsService {
           'discount,product_main_image_url,product_detail_url,evaluate_rate,first_level_category_name,lastest_volume',
         page_size: params.limit || 10,
         page_no: params.page && params.page > 0 ? params.page : undefined,
-        sort: 'LAST_VOLUME_DESC',
+        // Rotating sort widens the reachable catalog — a fixed sort keeps returning the
+        // same best-sellers though the site has thousands more. Default stays best-sellers.
+        sort: params.sort || 'LAST_VOLUME_DESC',
         tracking_id: creds.aliexpress_tracking_id,
       }, creds.aliexpress_app_secret);
 
