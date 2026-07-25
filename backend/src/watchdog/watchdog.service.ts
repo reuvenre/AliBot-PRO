@@ -239,17 +239,36 @@ export class WatchdogService {
         reasons.push(`שגיאת פוסט אחרונה: ${String(lastFail.error_message).slice(0, 160)}`);
       }
 
-      // (b) Over-subscription: another ACTIVE campaign shares a target group and published
-      //     more recently — the group's interval is being consumed by the sibling.
+      // (b) Over-subscription: another campaign shares a target group. Under fair-share the
+      //     group's rate is SPLIT, so each campaign publishing less often is EXPECTED, not a
+      //     fault — suppress the alert entirely when the GROUP itself is alive (a sibling
+      //     published within the shared cadence). Only a truly DEAD group is a real problem.
       let groups: string[] = [];
       try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+      let overSubscribed = false;
       if (groups.length) {
         const siblings = silent.filter((o) => o.id !== c.id).filter((o) => {
           let og: string[] = [];
           try { og = JSON.parse(o.target_channels || '[]'); } catch { og = []; }
           return og.some((g) => groups.includes(g));
         });
-        if (siblings.length) reasons.push(`חולק קבוצה עם ${siblings.length} קמפיינים אחרים (over-subscription — האינטרוול של הקבוצה נתפס)`);
+        if (siblings.length) {
+          overSubscribed = true;
+          // Did the GROUP publish recently (any campaign)? If so it's healthy fair-share
+          // rotation — this campaign just took a back seat this round. Don't cry wolf.
+          const grpRow = await this.posts.createQueryBuilder('p')
+            .select('MAX(p.sent_at)', 'max')
+            .where("p.status = 'sent'")
+            .andWhere(groups.map((_g, i) => `(p.channel_override = :g${i} OR p.channel_overrides LIKE :l${i})`).join(' OR '),
+              Object.fromEntries(groups.flatMap((g, i) => [[`g${i}`, g], [`l${i}`, `%"${g}"%`]])))
+            .getRawOne().catch(() => null);
+          const grpLastMs = grpRow?.max ? new Date(grpRow.max).getTime() : 0;
+          const perCampaignBudget = (siblings.length + 1) * 3 * 60 * 60_000; // expected quiet window
+          if (grpLastMs && now - grpLastMs < perCampaignBudget) {
+            continue; // group is alive → fair-share rotation, not a fault
+          }
+          reasons.push(`over-subscription: הקבוצה חולקה עם ${siblings.length} קמפיינים אך שקטה לגמרי`);
+        }
       }
 
       // (c) Pending posts waiting (scheduled but not going out).

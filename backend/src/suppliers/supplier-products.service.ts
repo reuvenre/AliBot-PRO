@@ -507,11 +507,11 @@ export class SupplierProductsService {
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
       try {
-        // Per-group pacing (same rule as AliExpress): place the post in the group's next free
-        // slot, spaced by the group's interval from any pending post to it. On a scheduled run,
-        // skip when the group is already booked this interval — so an AliExpress post and a
-        // FLYLINK post never land in the same group at the same time.
-        const { slot, skip } = await this.posts.nextGroupSlot(userId, targets[0], times[i]);
+        // Per-group pacing WITH fair-share (same rule as AliExpress): pass the campaign id so
+        // a group shared by this FLYLINK campaign and an AliExpress one ALTERNATES between
+        // them. Without the id, FLYLINK booked every interval and the AliExpress campaign
+        // (which does pass its id) always saw the group busy and was starved.
+        const { slot, skip } = await this.posts.nextGroupSlot(userId, targets[0], times[i], campaign.id);
         if (skip && opts?.fromScheduler) { skipped++; continue; }
 
         const productKey = String(p.sku || p.id);
