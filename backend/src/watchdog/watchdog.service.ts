@@ -140,6 +140,65 @@ export class WatchdogService {
     return lines.join('\n');
   }
 
+  // ── Window awareness ───────────────────────────────────────────────────────
+  // The scanner must NOT flag a campaign/post as broken when it is simply outside the
+  // send window (the night). Before this, every night produced a false "silent campaign"
+  // (and "stuck posts") alert at ~00–01:00 Israel time, because silence was measured in
+  // wall-clock hours instead of OPEN-window hours. These helpers measure only the time
+  // that actually fell inside the send window.
+
+  /** Current hour (0-23) in the given IANA timezone, DST-aware. */
+  private hourInZone(date: Date, tz: string): number {
+    try {
+      const h = new Intl.DateTimeFormat('en-US', { hour: '2-digit', hour12: false, timeZone: tz }).format(date);
+      const n = parseInt(h, 10);
+      return n === 24 ? 0 : n;
+    } catch { return date.getHours(); }
+  }
+
+  /** Minutes between `from` and `to` (ms) that fell INSIDE a [startHour, endHour) daily
+   *  window in `tz`. A 24h/misconfigured window counts the whole span. Stepped at 15-min
+   *  granularity (the tick cadence) — cheap and DST-safe. */
+  private openMinutesBetween(from: number, to: number, startHour: number, endHour: number, tz: string): number {
+    if (to <= from) return 0;
+    if (startHour >= endHour) return (to - from) / 60_000; // 24h window → all of it
+    const STEP = 15 * 60_000;
+    let open = 0;
+    for (let t = from; t < to; t += STEP) {
+      const h = this.hourInZone(new Date(t), tz);
+      if (h >= startHour && h < endHour) open += Math.min(STEP, to - t) / 60_000;
+    }
+    return open;
+  }
+
+  /** Resolve the send window for a destination: the group's window, else the account's,
+   *  else 9–22. Timezone is the scheduler default (group/account windows are in it). */
+  private async windowFor(userId: string, groupId: string | null): Promise<{ startHour: number; endHour: number; tz: string }> {
+    const tz = process.env.SCHEDULER_TZ || 'Asia/Jerusalem';
+    const win = groupId ? await this.channels.getScheduleWindow(userId, groupId).catch(() => null) : null;
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    return {
+      startHour: win?.startHour ?? creds?.schedule_start_hour ?? 9,
+      endHour: win?.endHour ?? creds?.schedule_end_hour ?? 22,
+      tz,
+    };
+  }
+
+  /** Resolve a CAMPAIGN's send window: its own override (with its own tz) first, else the
+   *  target group's / account's window. Mirrors PostsService window precedence. */
+  private async campaignWindowResolved(c: Campaign): Promise<{ startHour: number; endHour: number; tz: string }> {
+    if (c.window_start_hour != null || c.window_end_hour != null || c.window_tz) {
+      return {
+        startHour: c.window_start_hour ?? 9,
+        endHour: c.window_end_hour ?? 22,
+        tz: c.window_tz || process.env.SCHEDULER_TZ || 'Asia/Jerusalem',
+      };
+    }
+    let groups: string[] = [];
+    try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+    return this.windowFor(c.user_id, groups.length ? groups[0] : null);
+  }
+
   // ── Checks ────────────────────────────────────────────────────────────────
 
   private async scan(): Promise<Array<{ key: string; title: string; body: string }>> {
@@ -150,13 +209,23 @@ export class WatchdogService {
     //    delays a due post up to one group interval (usually 60m) — beyond that, the
     //    release pipeline is broken (this exact failure shipped once: the group clock
     //    was stamped by Instagram-only posts and Telegram posts sat on 'מתוזמן' all day).
-    const stuck = await this.posts.createQueryBuilder('p')
+    const stuckCandidates = await this.posts.createQueryBuilder('p')
       .select(['p.id', 'p.user_id', 'p.product_title', 'p.scheduled_at', 'p.channel_override', 'p.campaign_id'])
       .where("p.status = 'scheduled'")
       .andWhere('p.scheduled_at < :cutoff', { cutoff: new Date(now - 90 * 60_000) })
       .orderBy('p.scheduled_at', 'ASC')
-      .take(20)
+      .take(40)
       .getMany();
+    // A post whose scheduled_at is in the past but whose send window has been CLOSED since
+    // then (held overnight) is waiting correctly, not stuck. Measure the OPEN-window minutes
+    // since it came due; only >90 min of open-window silence is a real release-pipeline stall.
+    const stuck: typeof stuckCandidates = [];
+    for (const p of stuckCandidates) {
+      const w = await this.windowFor(p.user_id, p.channel_override || null);
+      const openMin = this.openMinutesBetween(new Date(p.scheduled_at).getTime(), now, w.startHour, w.endHour, w.tz);
+      if (openMin > 90) stuck.push(p);
+      if (stuck.length >= 20) break;
+    }
     if (stuck.length) {
       const oldest = new Date(stuck[0].scheduled_at).toISOString();
       out.push({
@@ -241,8 +310,13 @@ export class WatchdogService {
         .getRawOne()
         .catch(() => null);
       const lastMs = row?.max ? new Date(row.max).getTime() : 0;
-      if (!lastMs || now - lastMs <= 3 * 60 * 60_000) continue;
-      const hrs = Math.round((now - lastMs) / 3_600_000);
+      if (!lastMs) continue;
+      // Measure silence in OPEN-window time — a campaign quiet only because it's night
+      // (window closed) is behaving correctly, not silent. This kills the nightly false alarm.
+      const win = await this.campaignWindowResolved(c);
+      const openSilentMin = this.openMinutesBetween(lastMs, now, win.startHour, win.endHour, win.tz);
+      if (openSilentMin <= 3 * 60) continue;
+      const hrs = Math.round(openSilentMin / 60);
 
       // Self-diagnosis — say WHY it's silent instead of listing hypotheses:
       const reasons: string[] = [];
@@ -300,7 +374,7 @@ export class WatchdogService {
         reasons.push(`פילטרים מחמירים (דירוג≥${c.min_rating ?? 0}, הנחה≥${c.min_discount ?? 0}%)`);
       }
 
-      silentHits.push(`- "${c.name}" \`${c.id}\` · פרסום אחרון לפני ${hrs} שעות${reasons.length ? `\n   └ ${reasons.join('\n   └ ')}` : ''}`);
+      silentHits.push(`- "${c.name}" \`${c.id}\` · ${hrs} שעות פעילות (בתוך חלון השליחה) ללא פרסום${reasons.length ? `\n   └ ${reasons.join('\n   └ ')}` : ''}`);
     }
     if (silentHits.length) {
       out.push({
