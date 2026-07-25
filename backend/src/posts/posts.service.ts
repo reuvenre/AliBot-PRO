@@ -1016,35 +1016,63 @@ export class PostsService {
    * booked within the current interval, so two campaigns to one group never post together and
    * the group publishes at most once per its interval (the group's setting is the rate).
    */
-  async nextGroupSlot(userId: string, groupId: string, notBefore: Date): Promise<{ slot: Date; skip: boolean }> {
+  async nextGroupSlot(userId: string, groupId: string, notBefore: Date, campaignId?: string): Promise<{ slot: Date; skip: boolean }> {
     const intervalMin = (await this.channels.getIntervalMinutes(userId, groupId).catch(() => null)) ?? 60;
-    // Count pending posts AND posts SENT within the last interval. Pending-only left a
-    // hole: the moment the 06:00 post went out it stopped counting, so any other source
-    // (a second campaign, a queued post released at window-open) saw a "free" group and
-    // fired at 06:01 — two posts a minute apart instead of one per interval.
-    const recentSentCutoff = new Date(Date.now() - intervalMin * 60_000);
-    const row = await this.repo.createQueryBuilder('p')
-      .select('MAX(COALESCE(p.sent_at, p.scheduled_at))', 'max')
+    const now = Date.now();
+    const recentSentCutoff = new Date(now - intervalMin * 60_000);
+
+    // What already occupies the group's rate: the latest PENDING (scheduled/queued) post,
+    // and the last SENT time PER CAMPAIGN within the interval. Telegram-publishing posts
+    // only (an Instagram-only campaign shares the group id for targeting but never reaches
+    // the Telegram channel, so it must not consume the group's Telegram rate).
+    const rows = await this.repo.createQueryBuilder('p')
+      .select('p.campaign_id', 'campaign_id')
+      .addSelect("MAX(CASE WHEN p.status IN ('scheduled','queued') THEN p.scheduled_at END)", 'pending')
+      .addSelect("MAX(CASE WHEN p.status = 'sent' THEN p.sent_at END)", 'sent')
       .leftJoin(Campaign, 'c', 'c.id = p.campaign_id')
       .where('p.user_id = :userId', { userId })
       .andWhere("p.status IN ('scheduled','queued','sent')")
-      .andWhere("(p.status != 'sent' OR COALESCE(p.sent_at, p.scheduled_at) >= :recent)", { recent: recentSentCutoff })
-      // A post targets the group via channel_override (single) OR channel_overrides (JSON
-      // array of quoted ids) — match both. Quotes make the LIKE exact (no substring bleed).
+      .andWhere("(p.status != 'sent' OR p.sent_at >= :recent)", { recent: recentSentCutoff })
       .andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)', { g: groupId, like: `%"${groupId}"%` })
-      // A post whose campaign is platform-filtered AWAY from Telegram (e.g. Instagram-only)
-      // never reaches this Telegram group — it must not book the group's slot, or it starves
-      // real Telegram campaigns sharing the group down to a fraction of their cadence.
       .andWhere('(p.campaign_id IS NULL OR c.target_platforms IS NULL OR c.target_platforms LIKE :tg)', { tg: '%telegram%' })
-      .getRawOne();
-    const latestMs = row?.max ? new Date(row.max).getTime() : 0;
+      .groupBy('p.campaign_id')
+      .getRawMany();
+
+    let latestMs = 0;
+    let hasPending = false;
+    let lastSentMs = 0;
+    const lastSentByCampaign = new Map<string, number>();
+    for (const r of rows) {
+      const pend = r.pending ? new Date(r.pending).getTime() : 0;
+      const sent = r.sent ? new Date(r.sent).getTime() : 0;
+      if (pend) { hasPending = true; latestMs = Math.max(latestMs, pend); }
+      if (sent) { lastSentMs = Math.max(lastSentMs, sent); latestMs = Math.max(latestMs, sent); }
+      lastSentByCampaign.set(String(r.campaign_id ?? ''), Math.max(pend, sent));
+    }
+
     if (!latestMs) return { slot: notBefore, skip: false };
     const slotMs = Math.max(latestMs + intervalMin * 60_000, notBefore.getTime());
 
-    // Skip when the group is already booked: either the next slot is more than one interval
-    // out, OR it falls outside the group's send window (so a post never lands at night). The
-    // group's next in-window run creates it fresh instead.
-    const bookedAhead = slotMs > Date.now() + intervalMin * 60_000;
+    // Group is BUSY when it already has a pending post, or it published within the interval.
+    const groupBusy = hasPending || (lastSentMs > 0 && now - lastSentMs < intervalMin * 60_000);
+
+    // FAIR-SHARE: when several campaigns publish to one group, the group's single rate is
+    // split between them — the MOST-BEHIND campaign (oldest last-post, or never posted) wins
+    // the free slot; the rest skip this round. So two "מאמא" campaigns on one 1/hour group
+    // alternate (each ~every 2h) instead of the first one always starving the second. The
+    // decision keys off last-post time, not scheduler run order, so it's stable. Single-
+    // campaign groups: this campaign is trivially the winner → unchanged behaviour.
+    let notMyTurn = false;
+    if (campaignId && rows.length) {
+      const mine = lastSentByCampaign.get(campaignId) ?? 0;
+      // A sibling is "more behind" (older last-post, tie broken by id) → it gets the slot.
+      for (const [cid, last] of lastSentByCampaign) {
+        if (cid === campaignId) continue;
+        if (last < mine || (last === mine && cid < campaignId)) { notMyTurn = true; break; }
+      }
+    }
+
+    const bookedAhead = groupBusy || notMyTurn;
     const win = await this.channels.getScheduleWindow(userId, groupId).catch(() => null);
     const creds = await this.credentials.getRaw(userId).catch(() => null);
     const startHour = win?.startHour ?? creds?.schedule_start_hour ?? 9;
@@ -1266,7 +1294,7 @@ export class PostsService {
         // its own cron cadence.
         let scheduledAt = times[i];
         if (targets.length && (!platforms || platforms.has('telegram'))) {
-          const { slot, skip } = await this.nextGroupSlot(userId, targets[0], times[i]);
+          const { slot, skip } = await this.nextGroupSlot(userId, targets[0], times[i], campaign.id);
           if (skip && opts?.fromScheduler) { skipped++; continue; }
           scheduledAt = slot;
         }
