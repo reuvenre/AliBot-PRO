@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import axios from 'axios';
 import { Post } from '../posts/post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -61,6 +61,63 @@ export class WatchdogService {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Daily "good morning" digest to the owner's Telegram — sent 06:00 Israel time so
+   * the night's activity is summarized even when nothing broke (the real-time alerts
+   * only fire on anomalies; this is the all-clear + overnight numbers).
+   */
+  @Cron('0 6 * * *', { timeZone: 'Asia/Jerusalem' })
+  async dailyDigest(): Promise<void> {
+    try {
+      const text = await this.buildDailyDigest();
+      const sent = await this.sendTelegram(text);
+      if (!sent) this.logger.log('Daily digest skipped — Telegram not configured');
+    } catch (err: any) {
+      this.logger.error(`Daily digest failed: ${err?.message}`);
+    }
+  }
+
+  private async buildDailyDigest(): Promise<string> {
+    const since = new Date(Date.now() - 24 * 3600_000);
+    const [sent, failed, scheduled, anomalies, sec] = await Promise.all([
+      this.posts.count({ where: { status: 'sent', sent_at: MoreThan(since) } }).catch(() => 0),
+      this.posts.count({ where: { status: 'failed', created_at: MoreThan(since) } }).catch(() => 0),
+      this.posts.count({ where: { status: 'scheduled' } }).catch(() => 0),
+      this.scan().catch(() => []),
+      this.security.summarySince(since).catch(() => null),
+    ]);
+
+    const date = new Date().toLocaleDateString('he-IL', {
+      weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jerusalem',
+    });
+    const lines: string[] = [`☀️ בוקר טוב! דוח Nexlify — ${date}`, ''];
+
+    lines.push(anomalies.length
+      ? `⚠️ סטטוס: ${anomalies.length} תקלות פעילות דורשות טיפול`
+      : '🟢 סטטוס: הכל תקין — לילה שקט');
+    lines.push('');
+
+    lines.push('📊 24 השעות האחרונות:');
+    lines.push(`• ✅ ${sent} פוסטים פורסמו`);
+    if (failed) lines.push(`• ❌ ${failed} פוסטים נכשלו`);
+    lines.push(`• ⏳ ${scheduled} פוסטים ממתינים בתור`);
+
+    if (sec) {
+      const secLines: string[] = [];
+      if (sec.login_failed) secLines.push(`• 🔴 ${sec.login_failed} התחברויות כושלות`);
+      if (sec.role_changed || sec.admin_created) secLines.push(`• 👤 ${sec.role_changed + sec.admin_created} שינויי הרשאה`);
+      if (sec.password_reset_requested) secLines.push(`• 🔑 ${sec.password_reset_requested} בקשות איפוס סיסמה`);
+      if (secLines.length) { lines.push('', '🔐 אבטחה:', ...secLines); }
+    }
+
+    if (anomalies.length) {
+      lines.push('', '🔧 תקלות פעילות (Claude מטפל):');
+      for (const a of anomalies.slice(0, 5)) lines.push(`• ${a.title}`);
+    }
+
+    return lines.join('\n');
   }
 
   // ── Checks ────────────────────────────────────────────────────────────────

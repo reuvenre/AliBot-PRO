@@ -39,6 +39,17 @@ export class SecurityService {
     return this.repo.find({ where, order: { created_at: 'DESC' }, take: Math.min(limit, 500) });
   }
 
+  /** Per-type event counts since `since` — powers the daily digest. */
+  async summarySince(since: Date): Promise<Record<SecurityEventType, number>> {
+    const rows = await this.repo.find({ where: { created_at: MoreThan(since) }, take: 5000 });
+    const out = {
+      login_failed: 0, login_success: 0, password_reset_requested: 0,
+      role_changed: 0, admin_created: 0, decrypt_failed: 0,
+    } as Record<SecurityEventType, number>;
+    for (const r of rows) if (r.type in out) out[r.type]++;
+    return out;
+  }
+
   // ── Detections (consumed by the watchdog) ─────────────────────────────────
 
   /**
