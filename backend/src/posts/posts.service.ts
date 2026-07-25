@@ -805,9 +805,8 @@ export class PostsService {
     const creds = await this.credentials.getRaw(userId).catch(() => null);
     const startHour = win?.startHour ?? creds?.schedule_start_hour ?? 9;
     const endHour = win?.endHour ?? creds?.schedule_end_hour ?? 22;
-    if (startHour >= endHour) return true; // 24h / misconfigured → never block
-    const h = this.hourInZone(new Date(), process.env.SCHEDULER_TZ || 'Asia/Jerusalem');
-    return h >= startHour && h < endHour;
+    const tz = process.env.SCHEDULER_TZ || 'Asia/Jerusalem';
+    return this.isWithinWindow(new Date(), tz, startHour, endHour);
   }
 
   async findDueScheduledPosts(): Promise<Post[]> {
@@ -920,6 +919,30 @@ export class PostsService {
     } catch { return date.getHours(); }
   }
 
+  /** Current minute (0-59) in the given IANA timezone. */
+  private minuteInZone(date: Date, tz: string): number {
+    try {
+      const m = new Intl.DateTimeFormat('en-US', { minute: '2-digit', timeZone: tz }).format(date);
+      return parseInt(m, 10) || 0;
+    } catch { return date.getMinutes(); }
+  }
+
+  /**
+   * Is `date` inside the send window [startHour:00 .. endHour:00]? The end is INCLUSIVE of
+   * the TOP of endHour only: a window of 06:00–23:00 allows a post at exactly 23:00 (the
+   * user's configured last slot) but nothing at 23:01+. The old check used an exclusive end
+   * (h < endHour), which silently dropped the entire 23:00 hour — so the last daily post was
+   * never created, clamped, or released. This keeps the "no posts at 00:24" guarantee (an
+   * overdue backlog reaching the release path at 23:07 is still blocked).
+   */
+  private isWithinWindow(date: Date, tz: string, startHour: number, endHour: number): boolean {
+    if (startHour >= endHour) return true; // 24h / misconfigured → never block
+    const h = this.hourInZone(date, tz);
+    if (h < startHour) return false;
+    if (h < endHour) return true;
+    return h === endHour && this.minuteInZone(date, tz) === 0;
+  }
+
   /**
    * Publish times for ONE campaign run of `count` posts. The campaign's own cron is the
    * cadence, so the run's posts go out starting NOW — NOT re-paced by the global queue
@@ -945,10 +968,10 @@ export class PostsService {
 
     let first = new Date();
     if (startHour < endHour) {
-      // Walk forward hour by hour (DST-safe) until we land inside the window.
+      // Walk forward hour by hour (DST-safe) until we land inside the window. The window
+      // includes the top of endHour (23:00 sharp) so a campaign firing at 23:00 still posts.
       for (let i = 0; i < 24; i++) {
-        const h = this.hourInZone(first, tz);
-        if (h >= startHour && h < endHour) break;
+        if (this.isWithinWindow(first, tz, startHour, endHour)) break;
         first = new Date(first.getTime() + 60 * 60_000);
       }
     }
@@ -1003,10 +1026,8 @@ export class PostsService {
       : null);
     const startHour = window?.startHour ?? c?.schedule_start_hour ?? 9;
     const endHour = window?.endHour ?? c?.schedule_end_hour ?? 22;
-    if (startHour >= endHour) return true; // 24h / misconfigured window → never block
     const tz = (own?.tz) || process.env.SCHEDULER_TZ || 'Asia/Jerusalem';
-    const h = this.hourInZone(new Date(), tz);
-    return h >= startHour && h < endHour;
+    return this.isWithinWindow(new Date(), tz, startHour, endHour);
   }
 
   /**

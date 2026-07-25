@@ -160,10 +160,14 @@ export class CampaignSchedulerService {
     // time. Compute the current hour in the configured timezone so a 9–22 window means
     // 9am–10pm for the user, not UTC. Intl handles DST automatically.
     const nowHour = this.hourInZone(now, process.env.SCHEDULER_TZ || 'Asia/Jerusalem');
+    const nowMinute = this.minuteInZone(now, process.env.SCHEDULER_TZ || 'Asia/Jerusalem');
 
-    /** Window + interval gate shared by every bucket. */
+    /** Window + interval gate shared by every bucket. The end hour is INCLUSIVE of its top
+     *  (a 06:00–23:00 window still sends at 23:00 sharp) but blocks anything past 23:00 — the
+     *  old `nowHour >= endHour` dropped the whole final hour, so the last daily post vanished. */
     const due = (startHour: number, endHour: number, interval: number, lastSentAt: Date | null) => {
-      if (nowHour < startHour || nowHour >= endHour) return false;
+      if (nowHour < startHour) return false;
+      if (nowHour >= endHour && !(nowHour === endHour && nowMinute === 0)) return false;
       if (!lastSentAt) return true;
       return (now.getTime() - new Date(lastSentAt).getTime()) / 60_000 >= interval;
     };
@@ -233,6 +237,16 @@ export class CampaignSchedulerService {
       return n === 24 ? 0 : n; // some environments render midnight as "24"
     } catch {
       return date.getHours(); // invalid tz → fall back to server local
+    }
+  }
+
+  /** Current minute (0-59) in the given IANA timezone. */
+  private minuteInZone(date: Date, tz: string): number {
+    try {
+      const m = new Intl.DateTimeFormat('en-US', { minute: '2-digit', timeZone: tz }).format(date);
+      return parseInt(m, 10) || 0;
+    } catch {
+      return date.getMinutes();
     }
   }
 
