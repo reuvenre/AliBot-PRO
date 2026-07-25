@@ -40,6 +40,14 @@ export class CampaignsController {
     return seasonalOverview();
   }
 
+  /** Translate every campaign's Hebrew/Arabic keywords to English in place, so AliExpress
+   *  searches match the site. Declared BEFORE ':id'. */
+  @Post('translate-keywords')
+  @HttpCode(200)
+  translateKeywords(@Req() req: Request) {
+    return this.posts.translateCampaignKeywordsToEnglish(this.uid(req));
+  }
+
   @Get(':id')
   get(@Req() req: Request, @Param('id') id: string) {
     return this.svc.getPublic(this.uid(req), id); // target_channels as an array for the UI

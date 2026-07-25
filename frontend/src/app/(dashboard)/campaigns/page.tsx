@@ -2,13 +2,33 @@
 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Megaphone, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Megaphone, Loader2, Languages } from 'lucide-react';
 import { CampaignCard } from '@/components/campaigns/CampaignCard';
 import { useCampaigns } from '@/lib/hooks/useCampaigns';
+import { campaignsApi } from '@/lib/api-client';
 
 export default function CampaignsPage() {
   const router = useRouter();
   const { campaigns, total, isLoading, error, toggle, runNow, remove } = useCampaigns();
+
+  const [translating, setTranslating] = useState(false);
+  const [translateMsg, setTranslateMsg] = useState<string | null>(null);
+  const translateKeywords = async () => {
+    if (!confirm('לתרגם את כל מילות המפתח בכל הקמפיינים מעברית לאנגלית? הפעולה מעדכנת את הקמפיינים.')) return;
+    setTranslating(true); setTranslateMsg(null);
+    try {
+      const r = await campaignsApi.translateKeywords();
+      setTranslateMsg(r.translations.length
+        ? `✓ עודכנו ${r.campaigns_updated} קמפיינים · ${r.translations.length} מילות מפתח תורגמו: ${r.translations.slice(0, 8).map((t) => `${t.before}→${t.after}`).join(' · ')}${r.translations.length > 8 ? ' …' : ''}`
+        : '✓ כל מילות המפתח כבר באנגלית — לא נדרש שינוי.');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setTranslateMsg(`⚠️ ${err?.response?.data?.message || 'התרגום נכשל'}`);
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   return (
     <div>
@@ -24,14 +44,33 @@ export default function CampaignsPage() {
             <p className="text-sm text-white/40 mt-1">{total} טייסים אוטומטיים סה״כ</p>
           )}
         </div>
-        <Link
-          href="/campaigns/new"
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all"
-        >
-          <Plus size={15} />
-          טייס אוטומטי חדש
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={translateKeywords}
+            disabled={translating}
+            title="תרגם את מילות המפתח בכל הקמפיינים מעברית לאנגלית — כדי שהחיפוש ב-AliExpress יתאים לאתר"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all"
+          >
+            {translating ? <Loader2 size={15} className="animate-spin" /> : <Languages size={15} />}
+            תרגם מילות מפתח לאנגלית
+          </button>
+          <Link
+            href="/campaigns/new"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all"
+          >
+            <Plus size={15} />
+            טייס אוטומטי חדש
+          </Link>
+        </div>
       </div>
+
+      {translateMsg && (
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${translateMsg.startsWith('✓')
+          ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+          : 'bg-red-500/10 border-red-500/25 text-red-300'}`}>
+          {translateMsg}
+        </div>
+      )}
 
       {/* Loading */}
       {isLoading && (

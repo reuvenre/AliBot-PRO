@@ -406,6 +406,12 @@ export const campaignsApi = {
   list: (params?: { page?: number; limit?: number; status?: string }) =>
     http.get<PaginatedResponse<Campaign>>('/campaigns', { params }).then(extract),
 
+  /** Translate all campaigns' Hebrew keywords to English in place. */
+  translateKeywords: () =>
+    http.post<{ campaigns_updated: number; translations: Array<{ campaign: string; before: string; after: string }> }>(
+      '/campaigns/translate-keywords', {}, { timeout: 120_000 },
+    ).then(extract),
+
   get: (id: string) => http.get<Campaign>(`/campaigns/${id}`).then(extract),
 
   create: (data: CampaignInput) =>

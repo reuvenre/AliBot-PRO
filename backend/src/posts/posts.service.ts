@@ -1404,6 +1404,46 @@ export class PostsService {
     }
   }
 
+  /**
+   * Bulk-translate every campaign's Hebrew/Arabic keywords to the English phrase
+   * AliExpress actually indexes — IN PLACE — so searches match the site instead of
+   * relying on per-search translation. Already-English keywords are left untouched, and
+   * a keyword that can't be translated keeps its original (never worse). Returns the diff.
+   */
+  async translateCampaignKeywordsToEnglish(userId: string): Promise<{
+    campaigns_updated: number;
+    translations: Array<{ campaign: string; before: string; after: string }>;
+  }> {
+    const creds = await this.credentials.getRaw(userId);
+    if (!creds) throw new BadRequestException('חסרים פרטי חיבור — הגדר אותם בהגדרות');
+    if (!this.ai.hasAnyKey(creds)) {
+      throw new BadRequestException('נדרש מפתח AI פעיל לתרגום — הגדר אותו בהגדרות ← שווקים');
+    }
+
+    const campaigns = await this.campaignRepo.find({ where: { user_id: userId } });
+    const translations: Array<{ campaign: string; before: string; after: string }> = [];
+    let updated = 0;
+
+    for (const c of campaigns) {
+      const src = (c.keywords || []).map((k) => (k || '').trim()).filter(Boolean);
+      if (!src.length) continue;
+      const out: string[] = [];
+      let changed = false;
+      for (const kw of src) {
+        if (!NON_LATIN_RE.test(kw)) { out.push(kw); continue; }
+        const en = await this.searchKeyword(kw, creds);
+        if (en && en !== kw) { translations.push({ campaign: c.name, before: kw, after: en }); changed = true; }
+        out.push(en || kw);
+      }
+      if (changed) {
+        c.keywords = Array.from(new Set(out)); // de-dup, keep order
+        await this.campaignRepo.save(c);
+        updated++;
+      }
+    }
+    return { campaigns_updated: updated, translations };
+  }
+
   // ── Agent post creation (called by OrchestratorAgent) ───────────────────
 
   async createAgentPost(
