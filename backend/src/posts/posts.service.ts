@@ -7,6 +7,7 @@ import axios from 'axios';
 // constructor` trap under this tsconfig (no esModuleInterop). See collage.service.ts.
 import FormData = require('form-data');
 import { Post } from './post.entity';
+import { PostedProduct } from './posted-product.entity';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsService, DecryptedCredentials, GRAPH_VERSION } from '../credentials/credentials.service';
@@ -129,6 +130,8 @@ export class PostsService {
     private readonly templateRepo: Repository<Template>,
     @InjectRepository(Campaign)
     private readonly campaignRepo: Repository<Campaign>,
+    @InjectRepository(PostedProduct)
+    private readonly postedRepo: Repository<PostedProduct>,
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
     private readonly ai: AiService,
@@ -1097,14 +1100,21 @@ export class PostsService {
     for (let i = 0; i < perPost; i++) slotKeywords.push(kwList[(baseCursor + i) % kwList.length]);
     const distinctKeywords = Array.from(new Set(slotKeywords));
 
-    // Products this campaign already posted — the search returns the same top-by-volume
-    // items every run, so without this the campaign kept re-posting them.
-    const postedIds = new Set(
-      (await this.repo.createQueryBuilder('p')
-        .select('DISTINCT p.product_id', 'product_id')
-        .where('p.campaign_id = :cid', { cid: campaign.id })
-        .getRawMany()).map((r) => String(r.product_id)),
-    );
+    // Products this campaign already posted — from the DURABLE de-dup table (survives
+    // post deletion; the old posts-table query lost history whenever posts were deleted,
+    // so cleared/expired products came straight back). Also tally posts PER KEYWORD so
+    // each keyword can walk DEEPER into AliExpress results the more it's used, surfacing
+    // fresh products instead of the same top-by-volume page every run.
+    const postedRows = await this.postedRepo.find({
+      where: { campaign_id: campaign.id },
+      select: ['product_id', 'keyword'],
+    }).catch(() => [] as PostedProduct[]);
+    const postedIds = new Set(postedRows.map((r) => String(r.product_id)));
+    const postedPerKeyword = new Map<string, number>();
+    for (const r of postedRows) {
+      const k = (r.keyword || '').trim();
+      if (k) postedPerKeyword.set(k, (postedPerKeyword.get(k) || 0) + 1);
+    }
 
     // Quality filters enforced HERE, not by the API: product.query has no rating param,
     // and (as discovered) its min_discount param is a no-op — so both are applied to the
@@ -1127,7 +1137,13 @@ export class PostsService {
         // AliExpress returns the same top items on page 1 every run but has thousands of
         // matches; page 1 is the fallback for sparse keywords.
         const pageSize = Math.min(50, Math.max(20, needed * 10));
-        const page = 1 + Math.floor(Math.random() * 6);
+        // Deep-walk PER KEYWORD: start on the page just past everything already posted
+        // under this keyword, so a keyword that's been used a lot reaches genuinely new
+        // products instead of re-scanning page 1's top items. A little jitter avoids
+        // lockstep; page 1 stays the fallback for sparse keywords below.
+        const postedForKw = postedPerKeyword.get(kw) || 0;
+        const basePage = Math.floor(postedForKw / pageSize) + 1;
+        const page = basePage + Math.floor(Math.random() * 3);
         const query = {
           keyword: searched, category_id: campaign.category_id,
           min_price: campaign.min_price, max_price: campaign.max_price,
@@ -1286,6 +1302,12 @@ export class PostsService {
 
         await this.repo.save(post);
         result.queued++;
+        // Durable de-dup memory: record the product NOW so it's never re-posted even if
+        // this post is later deleted. Ignore the unique-conflict (already recorded).
+        await this.postedRepo.createQueryBuilder()
+          .insert().values({ campaign_id: campaign.id, product_id: String(product.product_id), keyword: slotKeyword })
+          .orIgnore().execute()
+          .catch(() => {});
         // posts_count drives the "N פוסטים" figure on the campaign screen. Nothing ever
         // incremented it, so it read 0 forever. Count at enqueue time — the post is now
         // committed to go out.

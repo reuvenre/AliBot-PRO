@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LinksModule } from '../links/links.module';
 import { ProductsModule } from '../products/products.module';
 import { Post } from './post.entity';
+import { PostedProduct } from './posted-product.entity';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { PostsService } from './posts.service';
@@ -20,7 +21,7 @@ import { CollageModule } from '../collage/collage.module';
     // Campaign is registered as a REPOSITORY (not CampaignsService) on purpose:
     // CampaignsModule already imports PostsModule, so injecting the service back
     // would close a circular dependency.
-    TypeOrmModule.forFeature([Post, Template, Campaign]),
+    TypeOrmModule.forFeature([Post, PostedProduct, Template, Campaign]),
     CredentialsModule,
     CouponsModule,
     LinksModule,
