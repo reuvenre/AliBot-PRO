@@ -208,7 +208,6 @@ export class WatchdogService {
     //    still moves. A single skipped hour is below the threshold (cadence is unknown),
     //    but a sustained silence is caught.
     const silent = await this.campaigns.createQueryBuilder('c')
-      .select(['c.id', 'c.name', 'c.user_id'])
       .where("c.status = 'active'")
       .andWhere('c.posts_count > 0')
       .getMany()
@@ -222,10 +221,47 @@ export class WatchdogService {
         .getRawOne()
         .catch(() => null);
       const lastMs = row?.max ? new Date(row.max).getTime() : 0;
-      if (lastMs && now - lastMs > 3 * 60 * 60_000) {
-        const hrs = Math.round((now - lastMs) / 3_600_000);
-        silentHits.push(`- "${c.name}" \`${c.id}\` · פרסום אחרון לפני ${hrs} שעות`);
+      if (!lastMs || now - lastMs <= 3 * 60 * 60_000) continue;
+      const hrs = Math.round((now - lastMs) / 3_600_000);
+
+      // Self-diagnosis — say WHY it's silent instead of listing hypotheses:
+      const reasons: string[] = [];
+
+      // (a) Last failed post's error — the campaign ran but every product failed.
+      const lastFail = await this.posts.createQueryBuilder('p')
+        .select(['p.error_message', 'p.created_at'])
+        .where('p.campaign_id = :cid', { cid: c.id })
+        .andWhere("p.status = 'failed'")
+        .orderBy('p.created_at', 'DESC')
+        .getOne()
+        .catch(() => null);
+      if (lastFail?.error_message && now - new Date(lastFail.created_at).getTime() < 6 * 3600_000) {
+        reasons.push(`שגיאת פוסט אחרונה: ${String(lastFail.error_message).slice(0, 160)}`);
       }
+
+      // (b) Over-subscription: another ACTIVE campaign shares a target group and published
+      //     more recently — the group's interval is being consumed by the sibling.
+      let groups: string[] = [];
+      try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+      if (groups.length) {
+        const siblings = silent.filter((o) => o.id !== c.id).filter((o) => {
+          let og: string[] = [];
+          try { og = JSON.parse(o.target_channels || '[]'); } catch { og = []; }
+          return og.some((g) => groups.includes(g));
+        });
+        if (siblings.length) reasons.push(`חולק קבוצה עם ${siblings.length} קמפיינים אחרים (over-subscription — האינטרוול של הקבוצה נתפס)`);
+      }
+
+      // (c) Pending posts waiting (scheduled but not going out).
+      const pending = await this.posts.count({ where: { campaign_id: c.id, status: 'scheduled' } }).catch(() => 0);
+      if (pending) reasons.push(`${pending} פוסטים ממתינים בסטטוס scheduled`);
+
+      // (d) Strict filters that may reject every product.
+      if ((c.min_rating ?? 0) >= 4.5 || (c.min_discount ?? 0) >= 40) {
+        reasons.push(`פילטרים מחמירים (דירוג≥${c.min_rating ?? 0}, הנחה≥${c.min_discount ?? 0}%)`);
+      }
+
+      silentHits.push(`- "${c.name}" \`${c.id}\` · פרסום אחרון לפני ${hrs} שעות${reasons.length ? `\n   └ ${reasons.join('\n   └ ')}` : ''}`);
     }
     if (silentHits.length) {
       out.push({
@@ -235,8 +271,6 @@ export class WatchdogService {
           '**בדיקה:** קמפיין active שפרסם בעבר אך הפוסט האחרון שיצא ממנו בן 3+ שעות — רץ אבל לא מפרסם.',
           '',
           ...silentHits,
-          '',
-          'כיווני חקירה: nextGroupSlot (skip תמידי? over-subscription?), פילטרים (min_rating/discount שמסננים הכל), findDueScheduledPosts (פוסטים נגנבים בין פלטפורמות).',
         ].join('\n'),
       });
     }
