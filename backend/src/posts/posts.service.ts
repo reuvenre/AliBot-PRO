@@ -829,7 +829,28 @@ export class PostsService {
     const headTaken = new Set<string>();
     const backlog = new Map<string, Post[]>();
     const windowOpen = new Map<string, boolean>();
+    const tgCache = new Map<string, boolean>(); // campaign_id → publishes to Telegram
+
+    // Does this post actually publish to the group's Telegram channel? A campaign
+    // filtered to Instagram/Pinterest carries channel_override only for targeting —
+    // it must NOT compete for the group's one-per-interval Telegram slot.
+    const publishesTelegram = async (p: Post): Promise<boolean> => {
+      if (!p.campaign_id) return true;
+      if (!tgCache.has(p.campaign_id)) {
+        const only = await this.postPlatformFilter(p).catch(() => null);
+        tgCache.set(p.campaign_id, !only || only.has('telegram'));
+      }
+      return tgCache.get(p.campaign_id)!;
+    };
+
     for (const p of due) {
+      // Non-Telegram posts (e.g. Instagram-only) send straight through — they don't
+      // share the Telegram group's pacing, so they can't steal a Telegram slot or be
+      // re-spaced by it. This is what made a group publish at 06:00 & 08:00 instead of
+      // every hour: an Instagram post grabbed the 07:00 head and pushed the Telegram
+      // post to 08:00.
+      if (!(await publishesTelegram(p))) { picked.push(p); continue; }
+
       const key = `${p.user_id}::${p.channel_override || 'default'}`;
       if (!windowOpen.has(key)) {
         windowOpen.set(key, await this.isSendWindowOpen(p.user_id, p.channel_override || null).catch(() => true));

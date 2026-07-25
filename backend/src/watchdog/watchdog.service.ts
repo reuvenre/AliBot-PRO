@@ -201,7 +201,47 @@ export class WatchdogService {
       });
     }
 
-    // 4. Security anomalies (brute-force, privilege escalation) from the audit log.
+    // 4. Silent campaign: active, published before, but its most recent SENT post is
+    //    over 3h old. Catches a campaign that RUNS (next_run_at keeps advancing) yet
+    //    stops actually publishing — e.g. its slots getting stolen, or every run failing
+    //    a filter. The "dead campaign" check above can't see this because next_run_at
+    //    still moves. A single skipped hour is below the threshold (cadence is unknown),
+    //    but a sustained silence is caught.
+    const silent = await this.campaigns.createQueryBuilder('c')
+      .select(['c.id', 'c.name', 'c.user_id'])
+      .where("c.status = 'active'")
+      .andWhere('c.posts_count > 0')
+      .getMany()
+      .catch(() => []);
+    const silentHits: string[] = [];
+    for (const c of silent.slice(0, 40)) {
+      const row = await this.posts.createQueryBuilder('p')
+        .select('MAX(p.sent_at)', 'max')
+        .where('p.campaign_id = :cid', { cid: c.id })
+        .andWhere("p.status = 'sent'")
+        .getRawOne()
+        .catch(() => null);
+      const lastMs = row?.max ? new Date(row.max).getTime() : 0;
+      if (lastMs && now - lastMs > 3 * 60 * 60_000) {
+        const hrs = Math.round((now - lastMs) / 3_600_000);
+        silentHits.push(`- "${c.name}" \`${c.id}\` · פרסום אחרון לפני ${hrs} שעות`);
+      }
+    }
+    if (silentHits.length) {
+      out.push({
+        key: `silent_campaigns:${silentHits.length}:${new Date(now).toISOString().slice(0, 13)}`,
+        title: `${silentHits.length} קמפיינים פעילים שהפסיקו לפרסם (מעל 3 שעות)`,
+        body: [
+          '**בדיקה:** קמפיין active שפרסם בעבר אך הפוסט האחרון שיצא ממנו בן 3+ שעות — רץ אבל לא מפרסם.',
+          '',
+          ...silentHits,
+          '',
+          'כיווני חקירה: nextGroupSlot (skip תמידי? over-subscription?), פילטרים (min_rating/discount שמסננים הכל), findDueScheduledPosts (פוסטים נגנבים בין פלטפורמות).',
+        ].join('\n'),
+      });
+    }
+
+    // 5. Security anomalies (brute-force, privilege escalation) from the audit log.
     //    Reported through the same channels; the 6h throttle per key still applies so
     //    an ongoing attack alerts once, not every 15 minutes.
     const sec = await this.security.scan().catch(() => []);
