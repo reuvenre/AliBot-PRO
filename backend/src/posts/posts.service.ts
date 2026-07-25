@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
 import axios from 'axios';
 // CommonJS module (no .default) — import-require avoids the `.default is not a
 // constructor` trap under this tsconfig (no esModuleInterop). See collage.service.ts.
@@ -51,6 +51,8 @@ export interface CampaignRunResult {
  * returns actual belts. Keywords matching this are translated before the query.
  */
 const NON_LATIN_RE = /[\u0590-\u05FF\u0600-\u06FF]/;
+/** A product may repeat in a campaign, but not within this many days (cooldown). */
+const PRODUCT_REPEAT_COOLDOWN_DAYS = 14;
 
 /**
  * Convert Markdown bold (**x** / __x__) to Telegram HTML (<b>x</b>). Models often
@@ -1132,9 +1134,16 @@ export class PostsService {
     // post deletion; the old posts-table query lost history whenever posts were deleted,
     // so cleared/expired products came straight back). Also tally posts PER KEYWORD so
     // each keyword can walk DEEPER into AliExpress results the more it's used, surfacing
-    // fresh products instead of the same top-by-volume page every run.
+    // fresh products before recycling old ones.
+    //
+    // REPEAT COOLDOWN: a product may be re-posted, but only after PRODUCT_REPEAT_COOLDOWN_DAYS
+    // — so followers never see the same item day after day, yet a keyword that exhausted its
+    // fresh stock recycles proven products instead of going silent. Only products posted
+    // WITHIN the cooldown are blocked; older ones are eligible again (and the deep-paging
+    // count also uses only recent posts, so it walks back toward page 1 as the window clears).
+    const cooldownCutoff = new Date(Date.now() - PRODUCT_REPEAT_COOLDOWN_DAYS * 86_400_000);
     const postedRows = await this.postedRepo.find({
-      where: { campaign_id: campaign.id },
+      where: { campaign_id: campaign.id, created_at: MoreThan(cooldownCutoff) },
       select: ['product_id', 'keyword'],
     }).catch(() => [] as PostedProduct[]);
     const postedIds = new Set(postedRows.map((r) => String(r.product_id)));
@@ -1197,14 +1206,13 @@ export class PostsService {
           (minRating <= 0 || (p.rating || 0) >= minRating) &&
           (minDiscount <= 0 || (p.discount_percent || 0) >= minDiscount),
         );
-        // NEVER repeat a product: anything already posted by this campaign (durable memory)
-        // is excluded, full stop — no "reuse when exhausted" fallback. If that leaves the
-        // keyword with nothing, it sits out THIS run (its slot borrows from another keyword
-        // below, or is simply skipped) — the user asked for no reruns, so silence for one
-        // keyword beats re-showing a product followers already saw.
+        // Exclude only products still in their repeat-cooldown (postedIds = posted within the
+        // last PRODUCT_REPEAT_COOLDOWN_DAYS). Fresh products are always preferred; a product
+        // posted long ago is eligible again, so a keyword recycles proven items after the
+        // cooldown instead of going silent — but never the same item day after day.
         const pool = qualified.filter((p) => !postedIds.has(String(p.product_id)));
         if (!pool.length) {
-          kwErrors.push(`"${kw}": אין מוצרים חדשים (כל התוצאות כבר פורסמו או מסוננות)`);
+          kwErrors.push(`"${kw}": אין מוצרים זמינים (הכול בתקופת צינון או מסונן)`);
           continue;
         }
         poolBy.set(kw, pool);
@@ -1344,12 +1352,16 @@ export class PostsService {
 
         await this.repo.save(post);
         result.queued++;
-        // Durable de-dup memory: record the product NOW so it's never re-posted even if
-        // this post is later deleted. Ignore the unique-conflict (already recorded).
-        await this.postedRepo.createQueryBuilder()
-          .insert().values({ campaign_id: campaign.id, product_id: String(product.product_id), keyword: slotKeyword })
-          .orIgnore().execute()
-          .catch(() => {});
+        // Durable de-dup memory (survives post deletion). On a re-post after the cooldown,
+        // REFRESH created_at so the cooldown restarts from now — otherwise a recycled product
+        // would keep its old timestamp and become postable again on the very next run.
+        await this.postedRepo.query(
+          `INSERT INTO campaign_posted_products (campaign_id, product_id, keyword, created_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (campaign_id, product_id)
+           DO UPDATE SET created_at = now(), keyword = EXCLUDED.keyword`,
+          [campaign.id, String(product.product_id), slotKeyword],
+        ).catch(() => {});
         // posts_count drives the "N פוסטים" figure on the campaign screen. Nothing ever
         // incremented it, so it read 0 forever. Count at enqueue time — the post is now
         // committed to go out.
