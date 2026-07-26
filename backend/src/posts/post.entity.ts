@@ -93,6 +93,24 @@ export class Post {
   @Column({ default: false })
   is_repost_source: boolean;
 
+  /** Marks a limited-time PROMOTION post: it carries deal urgency copy and auto-removes
+   *  itself from Telegram once promo_ends_at passes. */
+  @Column({ default: false })
+  is_promo: boolean;
+
+  /** When the promotion ends. After this, the auto-removal cron deletes the Telegram
+   *  message (or, if past Telegram's 48h delete window, edits it to "המבצע הסתיים"). */
+  @Column({ nullable: true })
+  promo_ends_at: Date;
+
+  /** The deal discount % the user set for this promo — surfaced in the AI copy. */
+  @Column({ nullable: true, type: 'int' })
+  promo_discount: number | null;
+
+  /** Set once auto-removal has handled the expired promo, so the cron never reprocesses it. */
+  @Column({ default: false })
+  promo_expired: boolean;
+
   @Column({ default: 'pending' })
   status: PostStatus;
 

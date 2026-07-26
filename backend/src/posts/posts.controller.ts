@@ -32,8 +32,9 @@ export class PostsController {
     @Body('language') language?: string,
     @Body('custom_product') customProduct?: any,
     @Body('template') template?: string,
+    @Body('promo') promo?: { discount?: number | null; ends_at?: string | null },
   ) {
-    return this.svc.preview(this.uid(req), productId, language, customProduct, template);
+    return this.svc.preview(this.uid(req), productId, language, customProduct, template, undefined, undefined, false, promo);
   }
 
   @Post('schedule')
@@ -47,10 +48,11 @@ export class PostsController {
     @Body('affiliate_url') affiliateUrlOverride?: string,
     @Body('product') product?: any,
     @Body('channels') channels?: string[],
+    @Body('promo') promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null },
   ) {
     return this.svc.schedulePost(
       this.uid(req), productId, new Date(scheduledAt),
-      text, channelOverride, productImage, affiliateUrlOverride, product, channels,
+      text, channelOverride, productImage, affiliateUrlOverride, product, channels, promo,
     );
   }
 
@@ -64,9 +66,10 @@ export class PostsController {
     @Body('affiliate_url') affiliateUrlOverride?: string,
     @Body('product') product?: any,
     @Body('channels') channels?: string[],
+    @Body('promo') promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null },
   ) {
     return this.svc.quickPost(
-      this.uid(req), productId, text, channelOverride, productImage, affiliateUrlOverride, product, channels,
+      this.uid(req), productId, text, channelOverride, productImage, affiliateUrlOverride, product, channels, promo,
     );
   }
 

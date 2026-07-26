@@ -21,6 +21,7 @@ export class CampaignSchedulerService {
   private processingQueue = false;
   private syncingSuppliers = false;
   private syncingEarnings = false;
+  private expiringPromos = false;
 
   constructor(
     private readonly campaigns: CampaignsService,
@@ -100,6 +101,25 @@ export class CampaignSchedulerService {
       await axios.get(`${base.replace(/\/$/, '')}/health`, { timeout: 8000 });
     } catch (err: any) {
       this.logger.warn(`keep-alive ping failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Runs every minute — takes down limited-time PROMO posts whose deadline has passed
+   * (deletes the Telegram message, or edits it to "ended" past the 48h delete window).
+   * Guarded against overlap; a slow Telegram call must not stack ticks.
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async expirePromos() {
+    if (this.expiringPromos) return;
+    this.expiringPromos = true;
+    try {
+      const n = await this.posts.expireDuePromos();
+      if (n) this.logger.log(`Promo auto-removal: took down ${n} expired promo post(s)`);
+    } catch (err: any) {
+      this.logger.error(`Promo expiry tick failed: ${err.message}`);
+    } finally {
+      this.expiringPromos = false;
     }
   }
 

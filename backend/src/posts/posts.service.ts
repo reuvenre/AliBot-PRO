@@ -306,7 +306,7 @@ export class PostsService {
 
   // ── Preview ───────────────────────────────────────────────────────────────
 
-  async preview(userId: string, productId: string, language = 'he', customProduct?: any, template?: string, images?: GenerateImage[], hint?: string, forceVision = false) {
+  async preview(userId: string, productId: string, language = 'he', customProduct?: any, template?: string, images?: GenerateImage[], hint?: string, forceVision = false, promo?: { discount?: number | null; ends_at?: string | null }) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
     const product = customProduct || await this.searchProduct(productId, creds);
@@ -316,6 +316,12 @@ export class PostsService {
       ? product.sale_price
       : +(product.sale_price * rate).toFixed(2);
 
+    // Limited-time promo copy: pass the deal % and a human deadline label so the AI writes
+    // urgency copy with the exact end time the auto-removal cron will act on.
+    const promoOpt = promo
+      ? { promo: { discount: promo.discount ?? null, endsLabel: this.promoEndsLabel(promo.ends_at) } }
+      : undefined;
+
     const text = await this.generateText(
       product, language, rate, creds,
       template || undefined,
@@ -323,6 +329,7 @@ export class PostsService {
       images,
       hint,
       forceVision,
+      promoOpt,
     );
 
     // The coupon line the send path WOULD append, so the composer shows what actually
@@ -348,6 +355,119 @@ export class PostsService {
     };
   }
 
+  // ── Limited-time promotions ───────────────────────────────────────────────
+
+  /** Human, timezone-aware deadline label for promo copy — e.g. "26/07 בשעה 23:59". */
+  private promoEndsLabel(endsAt?: string | null): string | null {
+    if (!endsAt) return null;
+    const d = new Date(endsAt);
+    if (isNaN(d.getTime())) return null;
+    const tz = process.env.SCHEDULER_TZ || 'Asia/Jerusalem';
+    try {
+      const date = new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', timeZone: tz }).format(d);
+      const time = new Intl.DateTimeFormat('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(d);
+      return `${date} בשעה ${time}`;
+    } catch {
+      return d.toISOString();
+    }
+  }
+
+  /** Normalize the incoming promo fields into a persistable shape. Returns null when the
+   *  post isn't a promo (or has no valid end time — a promo with no deadline is rejected). */
+  private normalizePromo(promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null }):
+    { ends_at: Date; discount: number | null } | null {
+    if (!promo?.is_promo) return null;
+    const ends = promo.ends_at ? new Date(promo.ends_at) : null;
+    if (!ends || isNaN(ends.getTime())) {
+      throw new BadRequestException('מבצע לזמן מוגבל חייב מועד סיום תקין');
+    }
+    if (ends.getTime() <= Date.now()) {
+      throw new BadRequestException('מועד סיום המבצע חייב להיות בעתיד');
+    }
+    const discount = promo.discount != null && Number.isFinite(Number(promo.discount))
+      ? Math.round(Number(promo.discount)) : null;
+    return { ends_at: ends, discount };
+  }
+
+  /** Resolve the bot token + chat id a promo post was published to — mirrors the send path
+   *  (a saved group carries its own token; otherwise the account default). */
+  private async resolvePromoTarget(post: Post): Promise<{ token?: string; chat?: string }> {
+    const creds = await this.credentials.getRaw(post.user_id).catch(() => null);
+    let token = creds?.telegram_bot_token;
+    let chat = normalizeTelegramChatId(creds?.telegram_channel_id);
+    const override = post.channel_override || this.resolveTargets(post).find((t): t is string => !!t);
+    if (override) {
+      const target = await this.channels.resolveSendTarget(post.user_id, override).catch(() => null);
+      if (target) { chat = target.chatId; if (target.token) token = target.token; }
+    }
+    return { token, chat };
+  }
+
+  /** Remove one expired promo from Telegram: delete the message (works ≤48h after send);
+   *  past that window Telegram blocks deletion, so edit it to an "ended" notice instead. */
+  private async removePromoMessage(post: Post): Promise<void> {
+    const { token, chat } = await this.resolvePromoTarget(post);
+    if (!token || !chat || !post.telegram_message_id) return;
+    try {
+      await axios.post(
+        `https://api.telegram.org/bot${token}/deleteMessage`,
+        { chat_id: chat, message_id: post.telegram_message_id },
+        { timeout: 12000 },
+      );
+    } catch {
+      // Past the 48h delete window (or already gone) → mark the message as ended instead.
+      // Promo posts carry a product photo, so the caption edit is the right call; fall back
+      // to a text edit for the rare text-only promo.
+      const ended = '🔚 <b>המבצע הסתיים</b>';
+      await axios.post(
+        `https://api.telegram.org/bot${token}/editMessageCaption`,
+        { chat_id: chat, message_id: post.telegram_message_id, caption: ended, parse_mode: 'HTML' },
+        { timeout: 12000 },
+      ).catch(async () => {
+        await axios.post(
+          `https://api.telegram.org/bot${token}/editMessageText`,
+          { chat_id: chat, message_id: post.telegram_message_id, text: ended, parse_mode: 'HTML' },
+          { timeout: 12000 },
+        ).catch(() => {});
+      });
+    }
+  }
+
+  /**
+   * Auto-removal sweep (called every minute by the scheduler): find SENT promo posts whose
+   * deadline has passed and take them down, then flag them so they're never reprocessed.
+   * Returns how many were handled.
+   */
+  async expireDuePromos(): Promise<number> {
+    const now = new Date();
+    const due = await this.repo.createQueryBuilder('p')
+      .where('p.is_promo = true')
+      .andWhere('p.promo_expired = false')
+      .andWhere("p.status = 'sent'")
+      .andWhere('p.promo_ends_at IS NOT NULL')
+      .andWhere('p.promo_ends_at <= :now', { now })
+      .andWhere('p.telegram_message_id IS NOT NULL')
+      .orderBy('p.promo_ends_at', 'ASC')
+      .take(50)
+      .getMany();
+
+    let handled = 0;
+    for (const post of due) {
+      try {
+        await this.removePromoMessage(post);
+      } catch (err: any) {
+        this.logger.warn(`promo removal failed for post ${post.id}: ${err?.message}`);
+      }
+      // Flag regardless: a promo whose window closed must not keep retrying forever, and the
+      // message is either gone or marked "ended". A genuinely transient Telegram blip is an
+      // acceptable rare miss versus an every-minute retry loop.
+      post.promo_expired = true;
+      await this.repo.save(post).catch(() => {});
+      handled++;
+    }
+    return handled;
+  }
+
   // ── Quick post ────────────────────────────────────────────────────────────
 
   async quickPost(
@@ -359,9 +479,11 @@ export class PostsService {
     affiliateUrlOverride?: string,   // affiliate link already fetched by frontend
     productData?: Parameters<PostsService['productFromData']>[0], // price/title from the frontend
     channels?: string[],             // target group(s) — fan out to several at once (1 credit)
+    promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null },
   ) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
+    const promoNorm = this.normalizePromo(promo);
 
     // Prefer the price/title the frontend already has; otherwise fetch (only when no
     // image was supplied). This keeps the real price instead of a ₪0 / empty-title post.
@@ -374,7 +496,8 @@ export class PostsService {
     const parts = this.priceParts(product, rate);
     const text = textOverride || await this.generateText(
       product || { title: productId, sale_price: 0, original_price: 0, discount_percent: 0, orders_count: 0, rating: 0, currency: 'USD' },
-      'he', rate, creds, undefined, parts.localOverride,
+      'he', rate, creds, undefined, parts.localOverride, undefined, undefined, false,
+      promoNorm ? { promo: { discount: promoNorm.discount, endsLabel: this.promoEndsLabel(promo?.ends_at) } } : undefined,
     );
 
     const post = this.repo.create({
@@ -388,6 +511,9 @@ export class PostsService {
       price_ils: product ? parts.priceIls : 0,
       generated_text: text,
       status: 'pending',
+      is_promo: !!promoNorm,
+      promo_ends_at: promoNorm?.ends_at,
+      promo_discount: promoNorm?.discount ?? null,
     });
     this.applyChannels(post, channels, channelOverride);
 
@@ -408,9 +534,16 @@ export class PostsService {
     affiliateUrlOverride?: string,
     productData?: Parameters<PostsService['productFromData']>[0],
     channels?: string[],             // target group(s) — fan out to several at once (1 credit)
+    promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null },
   ) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
+    const promoNorm = this.normalizePromo(promo);
+    // A scheduled promo whose deadline is at/before its publish time would auto-remove the
+    // instant it goes out — reject it up front so the user picks a sane window.
+    if (promoNorm && promoNorm.ends_at.getTime() <= scheduledAt.getTime()) {
+      throw new BadRequestException('מועד סיום המבצע חייב להיות אחרי מועד הפרסום המתוזמן');
+    }
 
     const product = this.productFromData(productData)
       || (productImageOverride ? null : await this.searchProduct(productId, creds));
@@ -421,7 +554,8 @@ export class PostsService {
     const parts = this.priceParts(product, rate);
     const text = textOverride || await this.generateText(
       product || { title: productId, sale_price: 0, original_price: 0, discount_percent: 0, orders_count: 0, rating: 0, currency: 'USD' },
-      'he', rate, creds, undefined, parts.localOverride,
+      'he', rate, creds, undefined, parts.localOverride, undefined, undefined, false,
+      promoNorm ? { promo: { discount: promoNorm.discount, endsLabel: this.promoEndsLabel(promo?.ends_at) } } : undefined,
     );
 
     const post = this.repo.create({
@@ -436,6 +570,9 @@ export class PostsService {
       generated_text: text,
       status: 'scheduled',
       scheduled_at: scheduledAt,
+      is_promo: !!promoNorm,
+      promo_ends_at: promoNorm?.ends_at,
+      promo_discount: promoNorm?.discount ?? null,
     });
     this.applyChannels(post, channels, channelOverride);
 
@@ -2988,7 +3125,7 @@ export class PostsService {
 
   // ── OpenAI text generation ────────────────────────────────────────────────
 
-  private async generateText(product: any, language: string, rate: number, creds: DecryptedCredentials, template?: string, priceLocalOverride?: number, images?: GenerateImage[], hint?: string, forceVision = false, opts?: { currencyPair?: string; style?: 'pinterest'; seasonHint?: string | null }): Promise<string> {
+  private async generateText(product: any, language: string, rate: number, creds: DecryptedCredentials, template?: string, priceLocalOverride?: number, images?: GenerateImage[], hint?: string, forceVision = false, opts?: { currencyPair?: string; style?: 'pinterest'; seasonHint?: string | null; promo?: { discount?: number | null; endsLabel?: string | null } }): Promise<string> {
     // Use direct local price if already converted, otherwise multiply by rate
     const priceLocal = priceLocalOverride !== undefined
       ? priceLocalOverride.toFixed(0)
@@ -3045,6 +3182,23 @@ export class PostsService {
     // so it doesn't fight the template's fixed lines.
     if (opts?.seasonHint) {
       systemPrompt += `\n\n${opts.seasonHint}`;
+    }
+
+    // Limited-time PROMOTION context: turn the copy into a one-time, time-boxed deal with
+    // real urgency and an explicit deadline. Layered as context (not structure) so it works
+    // for template posts too. The deadline label is written literally so the reader sees
+    // exactly when it ends (Telegram can't render a live countdown — the auto-removal cron
+    // deletes the post when it expires).
+    if (opts?.promo) {
+      const endsLabel = opts.promo.endsLabel?.trim();
+      const promoPct = opts.promo.discount && opts.promo.discount > 0 ? opts.promo.discount : null;
+      if (language === 'he') {
+        systemPrompt += `\n\nמצב מבצע חד-פעמי לזמן מוגבל: זהו דיל בלעדי שנגמר בקרוב. כתוב/כתבי עם דחיפות אמיתית (⏳🔥), הדגש/י שהמבצע לזמן מוגבל בלבד ושהמלאי/הזמן אוזל.${promoPct ? ` ציין/י את ההנחה המיוחדת (${promoPct}%) כהצעה בלעדית לזמן המבצע.` : ''}${endsLabel ? ` כלול/י בבירור את מועד הסיום: "עד ${endsLabel}".` : ''} אל תמציא/י מועד סיום אחר מזה שצוין.`;
+      } else if (language === 'ar') {
+        systemPrompt += `\n\nوضع عرض لفترة محدودة: هذه صفقة حصرية تنتهي قريباً. اكتب بإلحاح حقيقي (⏳🔥) وأكّد أن العرض لفترة محدودة وأن الكمية/الوقت ينفد.${promoPct ? ` اذكر الخصم الخاص (${promoPct}%) كعرض حصري خلال فترة العرض.` : ''}${endsLabel ? ` اذكر بوضوح موعد الانتهاء: "حتى ${endsLabel}".` : ''}`;
+      } else {
+        systemPrompt += `\n\nLimited-time PROMO mode: this is an exclusive one-time deal ending soon. Write with genuine urgency (⏳🔥), stress that the offer is time-limited and that stock/time is running out.${promoPct ? ` Call out the special discount (${promoPct}%) as an exclusive offer for the promo window.` : ''}${endsLabel ? ` Clearly include the deadline: "until ${endsLabel}".` : ''} Do not invent a different end time than the one given.`;
+      }
     }
 
     // Vision grounds the copy in what's actually in the photo. Normally it's for free-form
