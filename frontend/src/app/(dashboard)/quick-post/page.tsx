@@ -11,7 +11,7 @@ import { ProductCard } from '@/components/products/ProductCard';
 import { PostPreview } from '@/components/products/PostPreview';
 import { ProductEditPanel } from '@/components/products/ProductEditPanel';
 import { TemplatePanel } from '@/components/templates/TemplatePanel';
-import { productsApi, postsApi, templatesApi, credentialsApi, catalogApi, channelsApi, suppliersApi } from '@/lib/api-client';
+import { productsApi, postsApi, templatesApi, credentialsApi, catalogApi, channelsApi, suppliersApi, yupooImg } from '@/lib/api-client';
 import { GroupMultiSelect } from '@/components/GroupMultiSelect';
 import type { AliProduct, AliCategory, PostPreview as PostPreviewType, PostTemplate, CatalogProduct, Channel, SupplierProduct } from '@/types';
 
@@ -44,7 +44,9 @@ function supplierToAli(s: SupplierProduct): AliProduct {
     original_price: price,
     sale_price: price,
     discount_percent: 0,
-    image_url: s.image_url || '',
+    // FLYLINK/Yupoo images hotlink-block direct loads — route through the backend proxy so
+    // the thumbnail renders AND Telegram can fetch it at send time (the proxy is public).
+    image_url: yupooImg(s.image_url),
     product_url: s.flylink_url || s.yupoo_url || '',
     affiliate_url: s.flylink_url || '',
     category: '',
