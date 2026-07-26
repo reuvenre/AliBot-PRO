@@ -76,10 +76,56 @@ export class WatchdogService {
         await this.reportTelegram(a).catch((err) => this.logger.warn(`watchdog telegram failed: ${err?.message}`));
         await this.reportEmail(a).catch(() => {});
       }
+      // Close the loop the other way: tell the owner on Telegram when a fault was RESOLVED
+      // (a '[watchdog]' issue Claude fixed and closed), not just when one was detected.
+      await this.notifyResolved().catch((err) => this.logger.warn(`watchdog resolved-notify failed: ${err?.message}`));
     } catch (err: any) {
       this.logger.error(`Watchdog tick failed: ${err?.message}`);
     } finally {
       this.running = false;
+    }
+  }
+
+  /** Issue numbers already announced as resolved — one Telegram notice per issue per process. */
+  private readonly resolvedNotified = new Set<number>();
+
+  /**
+   * Telegram confirmation when a watchdog issue is RESOLVED. The owner already gets a
+   * "תקלה זוהתה" alert when it opens; this sends the matching "✅ טופל" when Claude fixes
+   * and closes it (state_reason = completed — duplicates / not-planned are skipped). Only
+   * issues closed within the last 30 min are considered (ticks run every 15 min), so a
+   * backend restart never replays an old backlog of closed issues.
+   */
+  private async notifyResolved(): Promise<void> {
+    const token = process.env.GITHUB_WATCHDOG_TOKEN;
+    if (!token) return;
+    if (!process.env.WATCHDOG_TELEGRAM_CHAT_ID) return; // Telegram not configured → nothing to send
+    const repo = process.env.GITHUB_WATCHDOG_REPO || 'reuvenre/Nexlify';
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    };
+    const res = await axios.get(
+      `https://api.github.com/repos/${repo}/issues?state=closed&per_page=30&sort=updated&direction=desc`,
+      { headers, timeout: 15000 },
+    );
+    const cutoff = Date.now() - 30 * 60_000;
+    for (const i of res.data || []) {
+      if (typeof i.title !== 'string' || !i.title.startsWith('[watchdog]')) continue;
+      if (i.state_reason && i.state_reason !== 'completed') continue; // skip duplicate / not-planned
+      const closedMs = new Date(i.closed_at || i.updated_at).getTime();
+      if (!Number.isFinite(closedMs) || closedMs < cutoff) continue;
+      if (this.resolvedNotified.has(i.number)) continue;
+      this.resolvedNotified.add(i.number);
+      const clean = i.title.replace(/^\[watchdog\]\s*/, '').trim();
+      await this.sendTelegram([
+        '✅ Nexlify Watchdog — התקלה טופלה:',
+        '',
+        clean,
+        '',
+        `Claude תיקן, בנה, בדק ודחף. Issue #${i.number} נסגר.`,
+      ].join('\n')).catch(() => {});
     }
   }
 
@@ -517,7 +563,7 @@ export class WatchdogService {
       ``,
       `${a.title}`,
       ``,
-      `נפתח Issue אוטומטי ב-GitHub — Claude יטפל בבדיקה הקרובה (כל 4 שעות) ויעדכן בשיחה.`,
+      `נפתח Issue אוטומטי ב-GitHub — Claude יטפל בבדיקה הקרובה, ותקבל כאן אישור "✅ טופל" כשזה ייסגר.`,
     ].join('\n');
     await this.sendTelegram(text);
   }
