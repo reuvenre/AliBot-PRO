@@ -3193,11 +3193,11 @@ export class PostsService {
       const endsLabel = opts.promo.endsLabel?.trim();
       const promoPct = opts.promo.discount && opts.promo.discount > 0 ? opts.promo.discount : null;
       if (language === 'he') {
-        systemPrompt += `\n\nמצב מבצע חד-פעמי לזמן מוגבל: זהו דיל בלעדי שנגמר בקרוב. כתוב/כתבי עם דחיפות אמיתית (⏳🔥), הדגש/י שהמבצע לזמן מוגבל בלבד ושהמלאי/הזמן אוזל.${promoPct ? ` ציין/י את ההנחה המיוחדת (${promoPct}%) כהצעה בלעדית לזמן המבצע.` : ''}${endsLabel ? ` כלול/י בבירור את מועד הסיום: "עד ${endsLabel}".` : ''} אל תמציא/י מועד סיום אחר מזה שצוין.`;
+        systemPrompt += `\n\nמצב מבצע חד-פעמי לזמן מוגבל — כתוב/כתבי פוסט קצר, ישיר וחד (חשוב: התעלם/י מהנחיית האורך הקודמת). מבנה קבוע: (1) שורת פתיחה מושכת עם אימוג'י מבצע (⏳🔥); (2) משפט אחד קצר שמתאר את המוצר; (3) שורת מחיר${promoPct ? ` עם ההנחה (${promoPct}%)` : ''}; (4) משפט מחץ אחד לסיום שקורא לפעולה מיידית (למשל "⏰ מהרו להזמין — לפני שייגמר!"). עד ~45 מילים, 3–5 שורות קצרות בלבד, בלי פסקאות ארוכות ובלי מילוי מיותר.${endsLabel ? ` ציין/י בקצרה את מועד הסיום: "עד ${endsLabel}".` : ''} אל תמציא/י מועד סיום אחר.`;
       } else if (language === 'ar') {
-        systemPrompt += `\n\nوضع عرض لفترة محدودة: هذه صفقة حصرية تنتهي قريباً. اكتب بإلحاح حقيقي (⏳🔥) وأكّد أن العرض لفترة محدودة وأن الكمية/الوقت ينفد.${promoPct ? ` اذكر الخصم الخاص (${promoPct}%) كعرض حصري خلال فترة العرض.` : ''}${endsLabel ? ` اذكر بوضوح موعد الانتهاء: "حتى ${endsLabel}".` : ''}`;
+        systemPrompt += `\n\nوضع عرض لفترة محدودة — اكتب منشوراً قصيراً ومباشراً وحاداً (تجاهل قاعدة الطول السابقة). البنية: (1) سطر افتتاحي جذاب مع إيموجي عرض (⏳🔥)؛ (2) جملة قصيرة تصف المنتج؛ (3) سطر السعر${promoPct ? ` مع الخصم (${promoPct}%)` : ''}؛ (4) جملة ختامية قوية تدعو للطلب فوراً ("⏰ سارعوا بالطلب قبل النفاد!"). بحد أقصى ~45 كلمة، 3–5 أسطر قصيرة فقط.${endsLabel ? ` اذكر باختصار موعد الانتهاء: "حتى ${endsLabel}".` : ''}`;
       } else {
-        systemPrompt += `\n\nLimited-time PROMO mode: this is an exclusive one-time deal ending soon. Write with genuine urgency (⏳🔥), stress that the offer is time-limited and that stock/time is running out.${promoPct ? ` Call out the special discount (${promoPct}%) as an exclusive offer for the promo window.` : ''}${endsLabel ? ` Clearly include the deadline: "until ${endsLabel}".` : ''} Do not invent a different end time than the one given.`;
+        systemPrompt += `\n\nLimited-time PROMO mode — write a SHORT, direct, punchy post (ignore the earlier length rule). Structure: (1) a hook line with a deal emoji (⏳🔥); (2) one short sentence describing the product; (3) a price line${promoPct ? ` with the ${promoPct}% discount` : ''}; (4) one punchy closing CTA that pushes immediate action ("⏰ Hurry — order before it's gone!"). Max ~45 words, 3–5 short lines only, no long paragraphs or filler.${endsLabel ? ` Briefly state the deadline: "until ${endsLabel}".` : ''} Do not invent a different end time.`;
       }
     }
 
