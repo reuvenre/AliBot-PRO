@@ -51,16 +51,20 @@ jobs:
           done
           health_body=$(tr -d '\r\n' < /tmp/health.txt | cut -c1-400)
 
-          # A DB-backed request: login with junk creds. A healthy backend returns
-          # 401 (it reached the DB, found no user). A 500 means the DB/app path is
-          # broken even if the process answers — the exact symptom of this outage.
+          # A DB-backed request: login with junk creds that PASS DTO validation
+          # (email format + password >= 8 chars) so the request actually reaches
+          # findByEmail and touches the DB. A healthy backend returns 401 (reached
+          # the DB, no such user). A 500 / gateway code means the DB/app path is
+          # broken even if the process answers /health — the exact symptom of this
+          # outage. (A too-short password would be rejected 400 by validation
+          # BEFORE any DB call, so it could never detect a DB-down state.)
           login_code=$(curl -s -m 30 -o /dev/null -w '%{http_code}' \
             -X POST "$base/auth/login" -H 'Content-Type: application/json' \
-            -d '{"email":"uptime-probe@invalid.test","password":"x"}')
+            -d '{"email":"uptime-probe@invalid.test","password":"uptime-probe-not-a-real-pw"}')
 
           ok=1
           [ "$health_code" != "200" ] && ok=0
-          { [ "$login_code" = "500" ] || [ "$login_code" = "000" ]; } && ok=0
+          case "$login_code" in 500|502|503|504|000) ok=0 ;; esac
 
           {
             echo "ok=$ok"
