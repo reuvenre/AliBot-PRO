@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import { AuthProvider } from '@/lib/hooks/useAuth';
 import { ThemeProvider } from '@/lib/hooks/useTheme';
 import { PwaRegister } from '@/components/PwaRegister';
@@ -8,6 +9,9 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://nexlify.win-solutions.co.il';
+
+/** Google Analytics 4 measurement ID. Overridable per-environment; falls back to the production tag. */
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_ID || 'G-T2ZQPV5QCT';
 
 /** The company behind the product — surfaced in metadata, schema.org and the UI. */
 const VENDOR = { name: 'Win Solutions', url: 'https://win-solutions.co.il' };
@@ -79,6 +83,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(ORG_JSONLD) }}
         />
+        {GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="gtag-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_MEASUREMENT_ID}');
+              `}
+            </Script>
+          </>
+        )}
         <PwaRegister />
         <ThemeProvider>
           <AuthProvider>
