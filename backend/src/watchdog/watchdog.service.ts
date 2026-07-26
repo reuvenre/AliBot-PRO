@@ -378,7 +378,7 @@ export class WatchdogService {
     }
     if (silentHits.length) {
       out.push({
-        key: `silent_campaigns:${silentHits.length}:${new Date(now).toISOString().slice(0, 13)}`,
+        key: `silent_campaigns:${silentHits.length}`,
         title: `${silentHits.length} קמפיינים פעילים שהפסיקו לפרסם (מעל 3 שעות)`,
         body: [
           '**בדיקה:** קמפיין active שפרסם בעבר אך הפוסט האחרון שיצא ממנו בן 3+ שעות — רץ אבל לא מפרסם.',
@@ -438,7 +438,7 @@ export class WatchdogService {
     }
     if (driftHits.length) {
       out.push({
-        key: `cadence_drift:${driftHits.length}:${new Date(now).toISOString().slice(0, 13)}`,
+        key: `cadence_drift:${driftHits.length}`,
         title: `${driftHits.length} קמפיינים מפרסמים לאט מהמוגדר`,
         body: [
           '**בדיקה:** קמפיין פעיל שמפרסם, אבל בקצב איטי משמעותית מהתזמון שהוגדר לו (פי 1.7 ומעלה).',
@@ -473,12 +473,20 @@ export class WatchdogService {
     };
     const title = `[watchdog] ${a.title}`;
 
-    // Dedupe: an open watchdog issue with the same title means it's already being handled.
-    const open = await axios.get(
-      `https://api.github.com/repos/${repo}/issues?state=open&per_page=50`,
+    // Dedupe against recent issues by title. An OPEN same-title issue is already being
+    // handled. A CLOSED same-title issue updated within the throttle window was JUST fixed
+    // (and closed) — don't immediately reopen it: the in-memory throttle that normally
+    // suppresses this is wiped on every Render restart/deploy, and a persisting condition
+    // (e.g. waiting for the fix to deploy) would otherwise spawn a fresh issue on each boot.
+    const recent = await axios.get(
+      `https://api.github.com/repos/${repo}/issues?state=all&per_page=50&sort=updated&direction=desc`,
       { headers, timeout: 15000 },
     );
-    if ((open.data || []).some((i: any) => i.title === title)) return;
+    const throttleCutoff = Date.now() - WatchdogService.THROTTLE_MS;
+    const dup = (recent.data || []).some((i: any) =>
+      i.title === title && (i.state === 'open' || new Date(i.updated_at).getTime() > throttleCutoff),
+    );
+    if (dup) return;
 
     await axios.post(
       `https://api.github.com/repos/${repo}/issues`,
