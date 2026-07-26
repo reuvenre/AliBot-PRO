@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
 import { CronTime } from 'cron';
@@ -44,7 +45,7 @@ function cronBaseIntervalMin(expr: string): number | null {
  * and the GitHub reporter also dedupes against open '[watchdog]' issues.
  */
 @Injectable()
-export class WatchdogService {
+export class WatchdogService implements OnModuleInit {
   private readonly logger = new Logger(WatchdogService.name);
   private running = false;
   /** anomaly key → last-reported ms; suppresses repeats for THROTTLE_MS. */
@@ -650,6 +651,108 @@ export class WatchdogService {
     await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
       chat_id: chatId, text,
     }, { timeout: 12000 });
+    return true;
+  }
+
+  // ── Two-way status bot (owner asks "/status", the bot replies) ─────────────
+
+  /** On boot, register the Telegram webhook so the owner can DM the bot for a status. */
+  async onModuleInit(): Promise<void> {
+    this.setupTelegramWebhook().catch((err) => this.logger.warn(`telegram webhook setup skipped: ${err?.message}`));
+  }
+
+  /** Shared secret Telegram echoes back in a header, so only Telegram can call our webhook.
+   *  Derived from JWT_SECRET → no extra env needed, stable across restarts. */
+  telegramWebhookSecret(): string {
+    return crypto.createHash('sha256').update(`tg-webhook:${process.env.JWT_SECRET || 'nexlify'}`).digest('hex').slice(0, 40);
+  }
+
+  /** Point the watchdog bot at our /telegram/webhook so incoming DMs reach handleTelegramUpdate.
+   *  No-op unless the status chat + a public backend URL + a bot token all exist. Never
+   *  clobbers a webhook that belongs to a different integration. */
+  private async setupTelegramWebhook(): Promise<void> {
+    if (!process.env.WATCHDOG_TELEGRAM_CHAT_ID) return; // status chat not configured → feature off
+    const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+    if (!base || /localhost|127\.0\.0\.1/.test(base)) return;
+    const token = await this.telegramToken();
+    if (!token) return;
+    const url = `${base}/telegram/webhook`;
+    try {
+      const info = await axios.get(`https://api.telegram.org/bot${token}/getWebhookInfo`, { timeout: 10000 });
+      const current = info.data?.result?.url || '';
+      if (current === url) return; // already ours
+      if (current) { this.logger.warn(`telegram bot already has a webhook (${current}) — not overwriting`); return; }
+    } catch { /* proceed to set */ }
+    await axios.post(`https://api.telegram.org/bot${token}/setWebhook`, {
+      url,
+      secret_token: this.telegramWebhookSecret(),
+      allowed_updates: ['message'],
+    }, { timeout: 10000 });
+    this.logger.log('Telegram status webhook registered');
+  }
+
+  /** Handle one incoming Telegram update. Only the configured owner chat may query; a
+   *  status keyword returns the live report, anything else a short hint. */
+  async handleTelegramUpdate(update: any): Promise<void> {
+    const msg = update?.message;
+    const text = String(msg?.text || '').trim();
+    const chatId = String(msg?.chat?.id ?? '');
+    if (!text || !chatId) return;
+    if (chatId !== String(process.env.WATCHDOG_TELEGRAM_CHAT_ID || '')) return; // owner-only
+
+    const isStatus = /^\/?(status|health)\b/i.test(text)
+      || /סטטוס|תקלות|מה\s*המצב|מה\s*קורה/.test(text);
+    if (isStatus) {
+      const report = await this.statusReport().catch((err) => `שגיאה בהפקת הסטטוס: ${err?.message}`);
+      await this.sendTelegramTo(chatId, report).catch(() => {});
+    } else {
+      await this.sendTelegramTo(chatId, 'שלח /status (או "סטטוס") כדי לקבל את מצב התקלות בזמן אמת.').catch(() => {});
+    }
+  }
+
+  /** Build the on-demand status text: open '[watchdog]' issues + a live scan. */
+  async statusReport(): Promise<string> {
+    const lines: string[] = ['📊 סטטוס Nexlify Watchdog', ''];
+
+    // Open '[watchdog]' GitHub issues — what's tracked/being handled right now.
+    const token = process.env.GITHUB_WATCHDOG_TOKEN;
+    if (token) {
+      const repo = process.env.GITHUB_WATCHDOG_REPO || 'reuvenre/Nexlify';
+      try {
+        const res = await axios.get(
+          `https://api.github.com/repos/${repo}/issues?state=open&per_page=30`,
+          { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, timeout: 12000 },
+        );
+        const open = (res.data || []).filter((i: any) => typeof i.title === 'string' && i.title.startsWith('[watchdog]') && !i.pull_request);
+        if (open.length) {
+          lines.push(`🔴 ${open.length} תקלות פתוחות (בטיפול):`);
+          for (const i of open.slice(0, 8)) lines.push(`• #${i.number} ${String(i.title).replace(/^\[watchdog\]\s*/, '')}`);
+        } else {
+          lines.push('🟢 אין תקלות פתוחות.');
+        }
+      } catch {
+        lines.push('⚠️ לא ניתן לקרוא issues מ-GitHub כרגע.');
+      }
+      lines.push('');
+    }
+
+    // Live scan — anomalies right now (may precede an issue being opened).
+    const anomalies = await this.scan().catch(() => []);
+    if (anomalies.length) {
+      lines.push(`⚠️ סריקה חיה: ${anomalies.length} ממצאים כרגע:`);
+      for (const a of anomalies.slice(0, 6)) lines.push(`• ${a.title}`);
+    } else {
+      lines.push('🟢 סריקה חיה: הכל תקין כרגע.');
+    }
+    return lines.join('\n');
+  }
+
+  /** Send a message to a specific chat (the one that asked) — sibling of sendTelegram,
+   *  which always targets the fixed owner chat. */
+  private async sendTelegramTo(chatId: string, text: string): Promise<boolean> {
+    const token = await this.telegramToken();
+    if (!token) return false;
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: chatId, text }, { timeout: 12000 });
     return true;
   }
 
