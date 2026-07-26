@@ -202,6 +202,16 @@ export class WatchdogService {
     } catch { return date.getHours(); }
   }
 
+  /** Is NOW inside the [startHour, endHour) window in `tz`? Used to SUPPRESS "silent
+   *  campaign" / "stuck post" alerts during the closed hours (e.g. 23:00–06:00): nothing
+   *  publishes then, so a missing post is expected — the alert would only be night noise the
+   *  owner can't act on. A genuine daytime silence re-surfaces the moment the window reopens. */
+  private nowInWindow(win: { startHour: number; endHour: number; tz: string }): boolean {
+    if (win.startHour >= win.endHour) return true; // 24h / misconfigured → always "open"
+    const h = this.hourInZone(new Date(), win.tz);
+    return h >= win.startHour && h < win.endHour;
+  }
+
   /** Minutes between `from` and `to` (ms) that fell INSIDE a [startHour, endHour) daily
    *  window in `tz`. A 24h/misconfigured window counts the whole span. Stepped at 15-min
    *  granularity (the tick cadence) — cheap and DST-safe. */
@@ -268,6 +278,7 @@ export class WatchdogService {
     const stuck: typeof stuckCandidates = [];
     for (const p of stuckCandidates) {
       const w = await this.windowFor(p.user_id, p.channel_override || null);
+      if (!this.nowInWindow(w)) continue; // window closed now (night) → not expected to send
       const openMin = this.openMinutesBetween(new Date(p.scheduled_at).getTime(), now, w.startHour, w.endHour, w.tz);
       if (openMin > 90) stuck.push(p);
       if (stuck.length >= 20) break;
@@ -357,9 +368,12 @@ export class WatchdogService {
         .catch(() => null);
       const lastMs = row?.max ? new Date(row.max).getTime() : 0;
       if (!lastMs) continue;
-      // Measure silence in OPEN-window time — a campaign quiet only because it's night
-      // (window closed) is behaving correctly, not silent. This kills the nightly false alarm.
       const win = await this.campaignWindowResolved(c);
+      // NIGHT SUPPRESSION: don't alert while the campaign's window is closed (e.g. 23:00–06:00).
+      // Nothing publishes then, so a missing post is expected, not a fault — alerting at 04:00
+      // is noise the owner can't act on. A real daytime silence re-fires once the window reopens.
+      if (!this.nowInWindow(win)) continue;
+      // And measure silence in OPEN-window time only — night hours never count toward it.
       const openSilentMin = this.openMinutesBetween(lastMs, now, win.startHour, win.endHour, win.tz);
       if (openSilentMin <= 3 * 60) continue;
       const hrs = Math.round(openSilentMin / 60);
@@ -444,6 +458,8 @@ export class WatchdogService {
     for (const c of silent.slice(0, 40)) {
       const expectedCron = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
       if (!expectedCron) continue;
+      // Same night suppression: don't report slow cadence while the window is closed.
+      if (!this.nowInWindow(await this.campaignWindowResolved(c))) continue;
 
       let groups: string[] = [];
       try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
