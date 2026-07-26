@@ -484,11 +484,16 @@ type QuickPostProduct = {
   discount_percent?: number; orders_count?: number; rating?: number;
 };
 
-export const postsApi = {
-  preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string) =>
-    http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template }, { timeout: AI_TIMEOUT }).then(extract),
+/** Limited-time promo params sent to the AI copy generator (preview). */
+export interface PromoPreview { discount?: number | null; ends_at?: string | null }
+/** Limited-time promo params persisted with a quick/scheduled post. */
+export interface PromoInput { is_promo: boolean; ends_at?: string | null; discount?: number | null }
 
-  quickPost: (data: { product_id: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct }) =>
+export const postsApi = {
+  preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string, promo?: PromoPreview) =>
+    http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template, promo }, { timeout: AI_TIMEOUT }).then(extract),
+
+  quickPost: (data: { product_id: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
     http.post<Post>('/posts/quick', data, { timeout: AI_TIMEOUT }).then(extract),
 
   list: (params?: { page?: number; limit?: number; status?: string; campaign_id?: string; source?: 'aliexpress' | 'flylink' }) =>
@@ -520,7 +525,7 @@ export const postsApi = {
   /** Delete any post (queued/scheduled/sent/failed). */
   remove: (id: string) => http.delete(`/posts/${id}`).then(extract),
 
-  schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct }) =>
+  schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
     http.post<Post>('/posts/schedule', data, { timeout: AI_TIMEOUT }).then(extract),
 
   // ── Queue ──
