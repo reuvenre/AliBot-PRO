@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { Post } from '../posts/post.entity';
 import { LinkClick } from './link-click.entity';
+import { LinkTarget } from './link-target.entity';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // no 0/O/1/l/I
 const CODE_LENGTH = 8;
@@ -20,7 +21,25 @@ export class LinksService {
   constructor(
     @InjectRepository(Post) private readonly posts: Repository<Post>,
     @InjectRepository(LinkClick) private readonly clicks: Repository<LinkClick>,
+    @InjectRepository(LinkTarget) private readonly targets: Repository<LinkTarget>,
   ) {}
+
+  /**
+   * Persist a code→URL mapping that outlives the post. A /r/<code> link is printed into
+   * permanent public posts (Facebook ads, Telegram messages); if the post is later
+   * deleted, this durable row keeps the link redirecting to the product instead of the
+   * app homepage. Best-effort — never block publishing.
+   */
+  async recordTarget(code: string, url: string | null | undefined, userId?: string | null): Promise<void> {
+    const clean = (code || '').trim();
+    const dest = (url || '').trim();
+    if (!clean || !dest) return;
+    try {
+      await this.targets.upsert({ code: clean, url: dest, user_id: userId ?? null }, ['code']);
+    } catch (err: any) {
+      this.logger.warn(`recordTarget failed for ${clean}: ${err.message}`);
+    }
+  }
 
   /** The public base for short links — the frontend domain serves /r/<code>. */
   shortUrl(code: string): string {
@@ -54,7 +73,13 @@ export class LinksService {
     const clean = (code || '').trim();
     if (!clean || clean.length > 16) return null;
     const post = await this.posts.findOne({ where: { short_code: clean } });
-    if (!post?.affiliate_url) return null;
+    if (!post?.affiliate_url) {
+      // Post gone (deleted) or code not on a post → fall back to the durable target so a
+      // link already printed into a public ad still reaches the product. No click row to
+      // record here (link_clicks needs a post_id), just redirect.
+      const target = await this.targets.findOne({ where: { code: clean } }).catch(() => null);
+      return target?.url || null;
+    }
 
     void (async () => {
       try {

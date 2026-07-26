@@ -1868,7 +1868,12 @@ export class PostsService {
     let link = post.affiliate_url;
     try {
       const code = await this.links.ensureCode(post);
-      if (code) link = this.links.shortUrl(code);
+      if (code) {
+        link = this.links.shortUrl(code);
+        // Persist a durable code→URL mapping so this link keeps resolving to the product
+        // even if the post is later deleted (the link lives forever in the published ad).
+        void this.links.recordTarget(code, post.affiliate_url, post.user_id);
+      }
     } catch { /* fall back to the raw affiliate link */ }
 
     const linkAlreadyInText = post.affiliate_url && post.generated_text.includes(post.affiliate_url);
