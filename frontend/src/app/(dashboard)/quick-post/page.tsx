@@ -5,15 +5,15 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Search, Loader2, Zap, ChevronDown, TrendingUp,
   Percent, Globe, Languages, Tag, ArrowRight,
-  ExternalLink, Copy, Check, RefreshCw, Package, Boxes, Clock,
+  ExternalLink, Copy, Check, RefreshCw, Package,
 } from 'lucide-react';
 import { ProductCard } from '@/components/products/ProductCard';
 import { PostPreview } from '@/components/products/PostPreview';
 import { ProductEditPanel } from '@/components/products/ProductEditPanel';
 import { TemplatePanel } from '@/components/templates/TemplatePanel';
-import { productsApi, postsApi, templatesApi, credentialsApi, catalogApi, channelsApi, suppliersApi, yupooImg } from '@/lib/api-client';
+import { productsApi, postsApi, templatesApi, credentialsApi, catalogApi, channelsApi } from '@/lib/api-client';
 import { GroupMultiSelect } from '@/components/GroupMultiSelect';
-import type { AliProduct, AliCategory, PostPreview as PostPreviewType, PostTemplate, CatalogProduct, Channel, SupplierProduct } from '@/types';
+import type { AliProduct, AliCategory, PostPreview as PostPreviewType, PostTemplate, CatalogProduct, Channel } from '@/types';
 
 /** The quick-post grid renders AliProduct — adapt a catalog row to that shape. */
 function catalogToAli(c: CatalogProduct): AliProduct {
@@ -30,29 +30,6 @@ function catalogToAli(c: CatalogProduct): AliProduct {
     orders_count: c.orders_count,
     rating: c.rating,
     currency: c.currency,
-  };
-}
-
-/** FLYLINK supplier products render in the same grid — adapt one to AliProduct. The
- *  affiliate link IS the FLYLINK url (already the buyer link), and prices come pre-converted
- *  to the user's currency from the list endpoint. */
-function supplierToAli(s: SupplierProduct): AliProduct {
-  const price = s.price_ils ?? s.price;
-  return {
-    product_id: s.id,
-    title: s.title,
-    original_price: price,
-    sale_price: price,
-    discount_percent: 0,
-    // FLYLINK/Yupoo images hotlink-block direct loads — route through the backend proxy so
-    // the thumbnail renders AND Telegram can fetch it at send time (the proxy is public).
-    image_url: yupooImg(s.image_url),
-    product_url: s.flylink_url || s.yupoo_url || '',
-    affiliate_url: s.flylink_url || '',
-    category: '',
-    orders_count: 0,
-    rating: 0,
-    currency: s.display_currency || s.currency || 'ILS',
   };
 }
 
@@ -105,7 +82,7 @@ export default function QuickPostPage() {
   // ── Product source: the user's own catalog (instant, reliable, searchable) is
   // the DEFAULT; live AliExpress browsing is the secondary mode. This unifies the
   // flow with discovery: scan → catalog → quick-post from the catalog.
-  const [source, setSource] = useState<'catalog' | 'live' | 'flylink'>('catalog');
+  const [source, setSource] = useState<'catalog' | 'live'>('catalog');
 
   // ── Product list state
   const [products, setProducts] = useState<AliProduct[]>([]);
@@ -146,27 +123,6 @@ export default function QuickPostPage() {
   const [fromCatalog, setFromCatalog] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelIds, setChannelIds] = useState<string[]>([]); // target groups (empty = default channel)
-
-  // ── Limited-time promo state (review view). When on, the AI writes urgency copy and the
-  // post auto-removes itself from Telegram at promoEndsAt.
-  const [promoOn, setPromoOn] = useState(false);
-  const [promoDiscount, setPromoDiscount] = useState('');
-  const [promoEndsAt, setPromoEndsAt] = useState(''); // <input type="datetime-local"> value (local time)
-
-  /** ISO end time for the promo, or undefined when promo is off / not fully set. */
-  const promoEndsIso = () => (promoOn && promoEndsAt ? new Date(promoEndsAt).toISOString() : undefined);
-  /** Promo params for the AI copy (preview). undefined when promo is off. */
-  const promoForPreview = () => {
-    const ends_at = promoEndsIso();
-    if (!ends_at) return undefined;
-    return { ends_at, discount: promoDiscount ? Number(promoDiscount) : null };
-  };
-  /** Promo params persisted with the post (quick/schedule). undefined when promo is off. */
-  const promoForPost = () => {
-    const ends_at = promoEndsIso();
-    if (!ends_at) return undefined;
-    return { is_promo: true, ends_at, discount: promoDiscount ? Number(promoDiscount) : null };
-  };
 
   // ── Infinite scroll
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -241,25 +197,6 @@ export default function QuickPostPage() {
     }
   }, []);
 
-  // ── Load the user's FLYLINK supplier products (single page — the list is small and
-  //    already scoped to the user's linked catalogs).
-  const loadSuppliers = useCallback(async () => {
-    setLoadingInitial(true);
-    try {
-      const rows = await suppliersApi.listProducts();
-      const mapped = rows.filter((r) => r.flylink_url).map(supplierToAli);
-      setProducts(mapped);
-      setTotal(mapped.length);
-      setHasMore(false);
-      setPage(1);
-    } catch {
-      setProducts([]);
-      setHasMore(false);
-    } finally {
-      setLoadingInitial(false);
-    }
-  }, []);
-
   // ── Load featured products
   const loadFeatured = useCallback(async (nextPage: number, append: boolean) => {
     if (nextPage === 1 && !append) setLoadingInitial(true);
@@ -282,11 +219,10 @@ export default function QuickPostPage() {
   }, [selectedCategory, sortMode]);
 
   useEffect(() => {
-    if (source === 'flylink') { loadSuppliers(); return; }
     if (source === 'catalog') { loadCatalog(1, false, isSearchMode ? query : undefined); return; }
     if (!isSearchMode) loadFeatured(1, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, isSearchMode, loadFeatured, loadCatalog, loadSuppliers]);
+  }, [source, isSearchMode, loadFeatured, loadCatalog]);
 
   // ── Run search
   const runSearch = useCallback(async (nextPage: number, append: boolean, keyword: string) => {
@@ -330,28 +266,6 @@ export default function QuickPostPage() {
     e.preventDefault();
     if (!query.trim()) return;
 
-    // FLYLINK is a small pre-loaded list — filter it client-side, no remote search.
-    if (source === 'flylink') {
-      setIsSearchMode(true);
-      const q = query.trim().toLowerCase();
-      setLoadingInitial(true);
-      try {
-        const rows = await suppliersApi.listProducts();
-        const mapped = rows
-          .filter((r) => r.flylink_url && (r.title || '').toLowerCase().includes(q))
-          .map(supplierToAli);
-        setProducts(mapped);
-        setTotal(mapped.length);
-        setHasMore(false);
-        setPage(1);
-      } catch {
-        setProducts([]);
-      } finally {
-        setLoadingInitial(false);
-      }
-      return;
-    }
-
     // Catalog search runs against our own DB — instant, no translation needed.
     if (source === 'catalog') {
       setIsSearchMode(true);
@@ -372,10 +286,9 @@ export default function QuickPostPage() {
     setTranslatedQuery('');
     setIsSearchMode(false);
     if (source === 'catalog') loadCatalog(1, false);
-    else if (source === 'flylink') loadSuppliers();
   };
 
-  const handleSourceChange = (s: 'catalog' | 'live' | 'flylink') => {
+  const handleSourceChange = (s: 'catalog' | 'live') => {
     if (s === source) return;
     autoSwitchedRef.current = true; // an explicit choice — never auto-bounce again
     setSource(s);
@@ -409,14 +322,6 @@ export default function QuickPostPage() {
     setSelected(product);
     setPreview(null);
     setView('review');
-
-    // FLYLINK products already carry the buyer link in affiliate_url — there is no AliExpress
-    // affiliate link to mint, so use it directly (calling link.generate would fail).
-    if (source === 'flylink') {
-      setAffiliateUrl(product.affiliate_url || product.product_url || '');
-      setAffiliateLoading(false);
-      return;
-    }
 
     // Generate the SHORT affiliate link (s.click.aliexpress.com/e/_xxx) via
     // link.generate. The product's inline promotion_link is the long /s/ form,
@@ -462,7 +367,7 @@ export default function QuickPostPage() {
     setIsLoadingPreview(true);
     setPreviewError(null);
     try {
-      const p = await postsApi.preview(editedProduct.product_id, postLang, editedProduct, selectedTemplate.content || undefined, promoForPreview());
+      const p = await postsApi.preview(editedProduct.product_id, postLang, editedProduct, selectedTemplate.content || undefined);
       // Append affiliate link if available and not already in text
       if (affiliateUrl && !p.generated_text.includes(affiliateUrl)) {
         p.generated_text = p.generated_text + '\n\n🔗 ' + affiliateUrl;
@@ -483,7 +388,7 @@ export default function QuickPostPage() {
   useEffect(() => {
     if (!selected || !preview) return;
     setIsLoadingPreview(true);
-    postsApi.preview(selected.product_id, postLang, preview.product as any, selectedTemplate.content || undefined, promoForPreview())
+    postsApi.preview(selected.product_id, postLang, preview.product as any, selectedTemplate.content || undefined)
       .then(setPreview)
       .catch(() => {})
       .finally(() => setIsLoadingPreview(false));
@@ -498,7 +403,6 @@ export default function QuickPostPage() {
       await postsApi.quickPost({
         product_id: selected.product_id,
         text,
-        promo: promoForPost(),
         channels: channelIds.length ? channelIds : undefined,
         // Pass the image and affiliate link so the backend uses the correct product image
         // instead of re-fetching via searchProduct (which returns wrong results)
@@ -536,7 +440,6 @@ export default function QuickPostPage() {
         product_id: selected.product_id,
         text,
         scheduled_at: scheduledAt,
-        promo: promoForPost(),
         channels: channelIds.length ? channelIds : undefined,
         product_image: preview?.product?.image_url || selected.image_url || undefined,
         affiliate_url: affiliateUrl || undefined,
@@ -580,7 +483,7 @@ export default function QuickPostPage() {
     if (!selected) return;
     setIsRegenerating(true);
     try {
-      const p = await postsApi.preview(selected.product_id, postLang, preview?.product as any, selectedTemplate.content || undefined, promoForPreview());
+      const p = await postsApi.preview(selected.product_id, postLang, preview?.product as any, selectedTemplate.content || undefined);
       if (affiliateUrl && !p.generated_text.includes(affiliateUrl)) {
         p.generated_text = p.generated_text + '\n\n🔗 ' + affiliateUrl;
       }
@@ -722,55 +625,6 @@ export default function QuickPostPage() {
               </div>
             </div>
 
-            {/* Limited-time promo */}
-            <div className="bg-surface-secondary border border-edge rounded-xl p-3">
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <span className="flex items-center gap-2 text-sm text-white/80">
-                  <Clock size={14} className="text-amber-400" />
-                  מבצע לזמן מוגבל
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={promoOn}
-                  onClick={() => setPromoOn((v) => !v)}
-                  className={`relative w-10 h-6 rounded-full transition-colors ${promoOn ? 'bg-amber-500' : 'bg-white/15'}`}
-                >
-                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${promoOn ? 'right-0.5' : 'left-0.5'}`} />
-                </button>
-              </label>
-              {promoOn && (
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-2xs text-white/40 mb-1">אחוז הנחה (לא חובה)</label>
-                    <div className="relative">
-                      <input
-                        type="number" min={0} max={99}
-                        value={promoDiscount}
-                        onChange={(e) => setPromoDiscount(e.target.value)}
-                        placeholder="לדוגמה 40"
-                        className="w-full bg-white/5 border border-edge rounded-lg pl-7 pr-3 py-2 text-sm text-white outline-none focus:border-amber-500/50"
-                      />
-                      <Percent size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-2xs text-white/40 mb-1">מסתיים ב-</label>
-                    <input
-                      type="datetime-local"
-                      value={promoEndsAt}
-                      onChange={(e) => setPromoEndsAt(e.target.value)}
-                      className="w-full bg-white/5 border border-edge rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500/50"
-                    />
-                  </div>
-                  <p className="sm:col-span-2 text-2xs text-amber-400/70 leading-relaxed">
-                    ⏳ ה-AI יכתוב קופי דחיפות עם מועד הסיום, והפוסט יימחק אוטומטית מטלגרם כשהמבצע נגמר.
-                    אחרי שינוי כאן — לחצ/י "צור מחדש" כדי לעדכן את הטקסט.
-                  </p>
-                </div>
-              )}
-            </div>
-
             {/* Edit panel */}
             <ProductEditPanel
               product={selected}
@@ -857,14 +711,6 @@ export default function QuickPostPage() {
         >
           <Globe size={13} />
           חיפוש חי ב-AliExpress
-        </button>
-        <button
-          onClick={() => handleSourceChange('flylink')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all
-            ${source === 'flylink' ? 'bg-purple-600/20 text-purple-400' : 'text-white/40 hover:text-white/70'}`}
-        >
-          <Boxes size={13} />
-          FLYLINK
         </button>
       </div>
 
@@ -954,14 +800,6 @@ export default function QuickPostPage() {
             <Package size={13} className="text-blue-400" />
             <span className="text-xs text-white/40">
               המוצרים מהקטלוג שלך
-              {products.length > 0 && ` — ${products.length} מוצרים`}
-            </span>
-          </>
-        ) : source === 'flylink' ? (
-          <>
-            <Boxes size={13} className="text-purple-400" />
-            <span className="text-xs text-white/40">
-              מוצרי FLYLINK שלך
               {products.length > 0 && ` — ${products.length} מוצרים`}
             </span>
           </>

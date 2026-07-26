@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { CalendarClock, Loader2, Trash2, Power, Plus, Save, X, Repeat, Send } from 'lucide-react';
+import { CalendarClock, Loader2, Trash2, Power, Plus, Save, X, Repeat, Send, Clock, FileText } from 'lucide-react';
 import { customPostsApi, channelsApi } from '@/lib/api-client';
 import { GroupMultiSelect, type GroupOption } from '@/components/GroupMultiSelect';
+import { PromoComposer } from '@/components/PromoComposer';
 import type { CustomPost, CustomPostRepeat } from '@/types';
 
 /** ISO → <input type="datetime-local"> value (local tz); default = now + 1h. */
@@ -31,6 +32,8 @@ export default function ScheduledPostsPage() {
   const [form, setForm] = useState(EMPTY());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /** Composer mode: a plain free-text scheduled post, or a product limited-time promo. */
+  const [mode, setMode] = useState<'text' | 'promo'>('text');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +100,23 @@ export default function ScheduledPostsPage() {
       <section className="bg-surface-secondary border border-edge rounded-2xl p-5 mb-6 space-y-4">
         <h2 className="text-sm font-semibold text-white">{form.id ? 'עריכת פוסט מתוזמן' : 'פוסט מתוזמן חדש'}</h2>
 
+        {!form.id && (
+          <div className="flex bg-white/5 border border-edge-hover rounded-xl p-1 gap-1 w-fit">
+            <button onClick={() => setMode('text')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'text' ? 'bg-blue-600/20 text-blue-300' : 'text-white/40 hover:text-white/70'}`}>
+              <FileText size={13} /> טקסט חופשי
+            </button>
+            <button onClick={() => setMode('promo')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'promo' ? 'bg-amber-600/20 text-amber-300' : 'text-white/40 hover:text-white/70'}`}>
+              <Clock size={13} /> מבצע מוצר לזמן מוגבל
+            </button>
+          </div>
+        )}
+
+        {mode === 'promo' && !form.id ? (
+          <PromoComposer channels={channels} onScheduled={load} />
+        ) : (
+        <>
         <div>
           <label className="block text-xs text-white/50 mb-1.5">שם (לזיהוי בלבד)</label>
           <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -151,6 +171,8 @@ export default function ScheduledPostsPage() {
             </button>
           )}
         </div>
+        </>
+        )}
       </section>
 
       {/* ── List ── */}
