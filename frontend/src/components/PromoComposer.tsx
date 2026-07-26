@@ -33,6 +33,16 @@ function supplierToAli(s: SupplierProduct): AliProduct {
   };
 }
 
+/** All of a supplier product's images (colors/variants), routed through the Yupoo proxy so
+ *  Telegram can fetch them. Falls back to the single main image. */
+function supplierGallery(s: SupplierProduct): string[] {
+  let arr: string[] = [];
+  try { arr = JSON.parse(s.gallery_json || '[]'); } catch { arr = []; }
+  const urls = (arr.length ? arr : [s.image_url]).filter(Boolean).map((u) => yupooImg(u));
+  // de-dupe while preserving order
+  return Array.from(new Set(urls));
+}
+
 /** A raw catalog album from browse() — not yet linked (no FLYLINK buyer link). */
 interface BrowseAlbum { code: string; price: number; currency?: string; description: string; album_url: string; thumb?: string }
 function albumToAli(a: BrowseAlbum): AliProduct {
@@ -80,6 +90,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
   const [catalogs, setCatalogs] = useState<SupplierCatalog[]>([]);
   const [flylinkSel, setFlylinkSel] = useState<string>(LINKED); // LINKED or a catalog id
   const [linkedByCode, setLinkedByCode] = useState<Record<string, SupplierProduct>>({});
+  const [supplierById, setSupplierById] = useState<Record<string, SupplierProduct>>({}); // linked products by id (for gallery)
   const [albumsRaw, setAlbumsRaw] = useState<Record<string, BrowseAlbum>>({});
   const [pendingAlbum, setPendingAlbum] = useState<BrowseAlbum | null>(null);
   const [flylinkInput, setFlylinkInput] = useState('');
@@ -90,6 +101,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
   const [affiliateUrl, setAffiliateUrl] = useState('');
   const [text, setText] = useState('');
   const [hint, setHint] = useState(''); // product description → authoritative for the AI when vision/title misleads
+  const [imagesText, setImagesText] = useState(''); // one image URL per line → gallery/album
   const [generating, setGenerating] = useState(false);
 
   const [discount, setDiscount] = useState('');
@@ -112,7 +124,11 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
         if (flylinkSel === LINKED) {
           const rows = await suppliersApi.listProducts();
           const q = (search || '').trim().toLowerCase();
-          setProducts(rows.filter((r) => r.flylink_url && (!q || (r.title || '').toLowerCase().includes(q))).map(supplierToAli));
+          const filtered = rows.filter((r) => r.flylink_url && (!q || (r.title || '').toLowerCase().includes(q)));
+          const byId: Record<string, SupplierProduct> = {};
+          for (const r of filtered) byId[r.id] = r;
+          setSupplierById(byId);
+          setProducts(filtered.map(supplierToAli));
         } else {
           // Browse a full catalog. Map linked products by code so an album we already have a
           // buyer link for skips the paste step.
@@ -150,11 +166,15 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
   const promoPreview = () => ({ ends_at: new Date(endsAt).toISOString(), discount: discount ? Number(discount) : null });
 
   // ── Move a resolved product into the review flow: resolve link + generate copy ──
-  const pickProduct = async (p: AliProduct, knownAffiliate?: string) => {
+  const pickProduct = async (p: AliProduct, knownAffiliate?: string, gallery?: string[]) => {
     setSelected(p);
     setText('');
     setError('');
     setPendingAlbum(null);
+    // Pre-fill the gallery: a FLYLINK product carries all its color/variant images; others
+    // start with the single main image. The user can add/remove URLs.
+    const imgs = (gallery && gallery.length ? gallery : [p.image_url]).filter(Boolean);
+    setImagesText(imgs.join('\n'));
     let aff = knownAffiliate ?? (p.affiliate_url || p.product_url || '');
     if (!knownAffiliate && source === 'live') {
       try { aff = (await productsApi.affiliateLink(p.product_id)).url; } catch { /* keep fallback */ }
@@ -169,10 +189,15 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
   const onCardSelect = async (p: AliProduct) => {
     if (source === 'flylink' && flylinkSel !== LINKED) {
       const linked = linkedByCode[p.product_id];
-      if (linked?.flylink_url) { await pickProduct(supplierToAli(linked), linked.flylink_url); return; }
+      if (linked?.flylink_url) { await pickProduct(supplierToAli(linked), linked.flylink_url, supplierGallery(linked)); return; }
       // Not linked yet → ask for the FLYLINK buyer link.
       setPendingAlbum(albumsRaw[p.product_id] || null);
       setFlylinkInput('');
+      return;
+    }
+    if (source === 'flylink' && flylinkSel === LINKED) {
+      const sp = supplierById[p.product_id];
+      await pickProduct(p, p.affiliate_url, sp ? supplierGallery(sp) : undefined);
       return;
     }
     await pickProduct(p);
@@ -188,7 +213,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
       const saved = await suppliersApi.link({
         catalogId: flylinkSel, yupooUrl: pendingAlbum.album_url, flylinkUrl: url, code: pendingAlbum.code,
       });
-      await pickProduct(supplierToAli(saved), saved.flylink_url || url);
+      await pickProduct(supplierToAli(saved), saved.flylink_url || url, supplierGallery(saved));
     } catch (e: any) {
       setError(e?.response?.data?.message || 'קישור המוצר נכשל — בדוק את הקישור');
     } finally {
@@ -212,7 +237,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
     }
   };
 
-  const reset = () => { setSelected(null); setText(''); setHint(''); setAffiliateUrl(''); setDiscount(''); setPendingAlbum(null); };
+  const reset = () => { setSelected(null); setText(''); setHint(''); setImagesText(''); setAffiliateUrl(''); setDiscount(''); setPendingAlbum(null); };
 
   const schedule = async () => {
     if (!selected) return;
@@ -223,12 +248,14 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
     setScheduling(true);
     setError('');
     try {
+      const images = imagesText.split('\n').map((s) => s.trim()).filter(Boolean);
       await postsApi.schedulePost({
         product_id: selected.product_id,
         scheduled_at: new Date(sendAt).toISOString(),
         text,
         channels: channelIds,
-        product_image: selected.image_url,
+        product_image: images[0] || selected.image_url,
+        images: images.length > 1 ? images : undefined,
         affiliate_url: affiliateUrl || undefined,
         product: {
           title: selected.title, sale_price: selected.sale_price, original_price: selected.original_price,
@@ -311,6 +338,15 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
                 <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8}
                   className="w-full bg-white/5 border border-edge rounded-lg px-3 py-2.5 text-sm text-white/85 outline-none focus:border-amber-500/50 resize-y" />
               )}
+            </div>
+
+            {/* Gallery — one image URL per line; more than one is sent as a swipeable album */}
+            <div>
+              <label className="block text-2xs text-white/40 mb-1">תמונות (אחת בכל שורה — כמה תמונות = אלבום)</label>
+              <textarea value={imagesText} onChange={(e) => setImagesText(e.target.value)} rows={3} dir="ltr"
+                placeholder="https://...jpg"
+                className="w-full bg-white/5 border border-edge rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-amber-500/50 font-mono resize-y" />
+              <p className="text-2xs text-white/30 mt-1">{imagesText.split('\n').filter((s) => s.trim()).length} תמונות · עד 10 (מוצרי FLYLINK מגיעים עם כל הצבעים).</p>
             </div>
 
             <div>

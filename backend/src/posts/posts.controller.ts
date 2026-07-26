@@ -50,10 +50,11 @@ export class PostsController {
     @Body('product') product?: any,
     @Body('channels') channels?: string[],
     @Body('promo') promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null },
+    @Body('images') images?: string[],
   ) {
     return this.svc.schedulePost(
       this.uid(req), productId, new Date(scheduledAt),
-      text, channelOverride, productImage, affiliateUrlOverride, product, channels, promo,
+      text, channelOverride, productImage, affiliateUrlOverride, product, channels, promo, images,
     );
   }
 

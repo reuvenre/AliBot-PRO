@@ -535,6 +535,7 @@ export class PostsService {
     productData?: Parameters<PostsService['productFromData']>[0],
     channels?: string[],             // target group(s) — fan out to several at once (1 credit)
     promo?: { is_promo?: boolean; ends_at?: string | null; discount?: number | null },
+    images?: string[],               // gallery: >1 image → sent as a Telegram album
   ) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
@@ -544,6 +545,8 @@ export class PostsService {
     if (promoNorm && promoNorm.ends_at.getTime() <= scheduledAt.getTime()) {
       throw new BadRequestException('מועד סיום המבצע חייב להיות אחרי מועד הפרסום המתוזמן');
     }
+
+    const gallery = (images || []).map((s) => (s || '').trim()).filter(Boolean);
 
     const product = this.productFromData(productData)
       || (productImageOverride ? null : await this.searchProduct(productId, creds));
@@ -562,7 +565,7 @@ export class PostsService {
       user_id: userId,
       product_id: productId,
       product_title: product?.title || '',
-      product_image: productImageOverride || product?.image_url || '',
+      product_image: productImageOverride || gallery[0] || product?.image_url || '',
       affiliate_url: affiliateUrl,
       original_price_usd: parts.origUsd,
       sale_price_usd: parts.saleUsd,
@@ -570,6 +573,8 @@ export class PostsService {
       generated_text: text,
       status: 'scheduled',
       scheduled_at: scheduledAt,
+      // >1 image → a Telegram media-group album (variants/colors). Capped at 10 (TG limit).
+      gallery_json: gallery.length > 1 ? JSON.stringify(gallery.slice(0, 10)) : null,
       is_promo: !!promoNorm,
       promo_ends_at: promoNorm?.ends_at,
       promo_discount: promoNorm?.discount ?? null,

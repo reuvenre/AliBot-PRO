@@ -525,7 +525,7 @@ export const postsApi = {
   /** Delete any post (queued/scheduled/sent/failed). */
   remove: (id: string) => http.delete(`/posts/${id}`).then(extract),
 
-  schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
+  schedulePost: (data: { product_id: string; scheduled_at: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput; images?: string[] }) =>
     http.post<Post>('/posts/schedule', data, { timeout: AI_TIMEOUT }).then(extract),
 
   // ── Queue ──
