@@ -512,7 +512,53 @@ export class WatchdogService {
       });
     }
 
-    // 6. Security anomalies (brute-force, privilege escalation) from the audit log.
+    // 6. CADENCE CONFIG MISMATCH: an active campaign whose cron is FASTER than its target
+    //    group's publish interval — the group throttles it, so it publishes far slower than
+    //    the user configured (e.g. autopilot "every hour" but the group is capped at every
+    //    2h → posts every 2h). This is the exact blind spot the drift/silent checks miss:
+    //    the cadence MATCHES the (mis)configured group rate, so nothing looks "off" — yet it
+    //    contradicts what the user set on the campaign. Only a real config change fixes it,
+    //    so this is a "user action required" alert, not something Claude patches in code.
+    const activeCampaigns = await this.campaigns.createQueryBuilder('c')
+      .where("c.status = 'active'")
+      .getMany()
+      .catch(() => []);
+    const mismatchHits: string[] = [];
+    const seenMismatch = new Set<string>();
+    for (const c of activeCampaigns) {
+      const cronMin = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
+      if (!cronMin) continue;
+      // Only Telegram-publishing campaigns are bound by the group's Telegram interval —
+      // an Instagram/Pinterest-only campaign never competes for the group's Telegram slot.
+      if (c.target_platforms && !/telegram/i.test(c.target_platforms)) continue;
+      let groups: string[] = [];
+      try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+      if (!groups.length) continue;
+      const groupId = groups[0];
+      const groupMin = await this.channels.getIntervalMinutes(c.user_id, groupId).catch(() => null);
+      // The group is meaningfully SLOWER than the campaign's cron (≥30 min) → it caps the rate.
+      if (groupMin == null || groupMin - cronMin < 30) continue;
+      const dedupKey = `${groupId}:${cronMin}:${groupMin}`;
+      if (seenMismatch.has(dedupKey)) continue;
+      seenMismatch.add(dedupKey);
+      const groupName = (await this.channels.getName(c.user_id, groupId).catch(() => null)) || groupId;
+      mismatchHits.push(`- "${c.name}" \`${c.id}\` · הטייס מוגדר ל-~${cronMin} דק' בין פוסטים, אך מרווח הקבוצה "${groupName}" הוא ${groupMin} דק' → בפועל מפרסם כל ~${groupMin} דק'`);
+    }
+    if (mismatchHits.length) {
+      out.push({
+        key: `cadence_config_mismatch:${mismatchHits.map((h) => h).sort().join('|').slice(0, 80)}`,
+        title: `${mismatchHits.length} קמפיינים שמרווח קבוצת היעד איטי מהתזמון שהוגדר בטייס`,
+        body: [
+          '**בדיקה:** קמפיין פעיל שה-cron שלו מהיר ממרווח הפרסום של קבוצת היעד — הקבוצה מגבילה אותו, אז הוא מפרסם לאט מכפי שהוגדר בטייס האוטומטי.',
+          '',
+          ...mismatchHits,
+          '',
+          '**נדרשת פעולת משתמש:** הגדרות ← קבוצות ← בחר את הקבוצה ← שנה את "מרווח בין פוסטים" כך שיתאים ל-cron של הקמפיין (או להיפך). זו תקלת תצורה שלא ניתן לתקן בקוד.',
+        ].join('\n'),
+      });
+    }
+
+    // 7. Security anomalies (brute-force, privilege escalation) from the audit log.
     //    Reported through the same channels; the 6h throttle per key still applies so
     //    an ongoing attack alerts once, not every 15 minutes.
     const sec = await this.security.scan().catch(() => []);
