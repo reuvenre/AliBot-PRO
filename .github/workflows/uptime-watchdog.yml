@@ -31,7 +31,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe backend (health + a DB-backed path)
+      - name: Probe backend health (deep — verifies the DB)
         id: probe
         env:
           # Override via a repo Variable (Settings → Secrets and variables →
@@ -41,8 +41,11 @@ jobs:
           set +e
           base="${BASE%/}"
 
-          # /health is a DEEP check (503 when the DB is unreachable). Retry to ride
-          # out a free-tier cold start (~50s) so a spin-down is not a false alarm.
+          # /health is a DEEP check: it runs `SELECT 1` and returns 503 when the DB
+          # is unreachable — so this single request distinguishes "healthy" from
+          # "process up but DB-disconnected" (the exact outage this guards against),
+          # with no side effects (unlike hitting a write path). Retry to ride out a
+          # free-tier cold start (~50s) so a spin-down is not a false alarm.
           health_code=000
           for attempt in 1 2 3 4; do
             health_code=$(curl -s -m 30 -o /tmp/health.txt -w '%{http_code}' "$base/health")
@@ -51,37 +54,25 @@ jobs:
           done
           health_body=$(tr -d '\r\n' < /tmp/health.txt | cut -c1-400)
 
-          # A DB-backed request: login with junk creds that PASS DTO validation
-          # (email format + password >= 8 chars) so the request actually reaches
-          # findByEmail and touches the DB. A healthy backend returns 401 (reached
-          # the DB, no such user). A 500 / gateway code means the DB/app path is
-          # broken even if the process answers /health — the exact symptom of this
-          # outage. (A too-short password would be rejected 400 by validation
-          # BEFORE any DB call, so it could never detect a DB-down state.)
-          login_code=$(curl -s -m 30 -o /dev/null -w '%{http_code}' \
-            -X POST "$base/auth/login" -H 'Content-Type: application/json' \
-            -d '{"email":"uptime-probe@invalid.test","password":"uptime-probe-not-a-real-pw"}')
-
+          # Down on anything that is not a clean 200: 503 (DB unreachable, deep
+          # check), gateway errors, or 000 (timeout / host unreachable).
           ok=1
           [ "$health_code" != "200" ] && ok=0
-          case "$login_code" in 500|502|503|504|000) ok=0 ;; esac
 
           {
             echo "ok=$ok"
             echo "health_code=$health_code"
-            echo "login_code=$login_code"
             echo "health_body=$health_body"
             echo "base=$base"
           } >> "$GITHUB_OUTPUT"
 
-          echo "health=$health_code login=$login_code ok=$ok"
+          echo "health=$health_code ok=$ok body=$health_body"
 
       - name: Open a [watchdog] issue when down
         if: steps.probe.outputs.ok == '0'
         uses: actions/github-script@v7
         env:
           HEALTH_CODE: ${{ steps.probe.outputs.health_code }}
-          LOGIN_CODE: ${{ steps.probe.outputs.login_code }}
           HEALTH_BODY: ${{ steps.probe.outputs.health_body }}
           BASE: ${{ steps.probe.outputs.base }}
         with:
@@ -103,8 +94,7 @@ jobs:
               '',
               '| בדיקה | תוצאה |',
               '| --- | --- |',
-              `| GET /health | \`${process.env.HEALTH_CODE}\` (200 = תקין; 503 = ה-DB לא נגיש; 000 = timeout) |`,
-              `| POST /auth/login (junk) | \`${process.env.LOGIN_CODE}\` (401 = תקין; 500 = נתיב ה-DB שבור) |`,
+              `| GET /health (deep) | \`${process.env.HEALTH_CODE}\` (200 = תקין; 503 = ה-DB לא נגיש; 000/50x = השרת לא עונה) |`,
               `| /health body | \`${process.env.HEALTH_BODY || '(ריק)'}\` |`,
               `| Backend | ${process.env.BASE} |`,
               '',
