@@ -1,0 +1,139 @@
+name: Uptime Watchdog
+
+# External, backend-independent liveness monitor.
+#
+# WHY THIS EXISTS: the in-app WatchdogService (backend/src/watchdog) runs INSIDE
+# the backend process and reaches the DB through TypeORM. When the backend is
+# down or disconnected from Postgres, that watchdog is blind — its scan throws on
+# the first query, and its alert channels (Telegram token, admin emails) live in
+# the same unreachable DB. So the one failure it can never report is "the backend
+# itself is down / can't reach its database".
+#
+# This job runs on GitHub's infrastructure, completely outside Render, and probes
+# the public backend from the outside. On failure it opens a deduped '[watchdog]'
+# issue — the same channel the in-app watchdog uses — so the existing scheduled
+# Claude watchdog session picks it up, diagnoses, and (for infra/env faults it
+# can't fix directly) writes the owner precise instructions.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # every ~10 min (GitHub may delay under load)
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+concurrency:
+  group: uptime-watchdog
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe backend (health + a DB-backed path)
+        id: probe
+        env:
+          # Override via a repo Variable (Settings → Secrets and variables →
+          # Actions → Variables) named BACKEND_URL if the host ever changes.
+          BASE: ${{ vars.BACKEND_URL || 'https://nexus-backend-wb5h.onrender.com' }}
+        run: |
+          set +e
+          base="${BASE%/}"
+
+          # /health is a DEEP check (503 when the DB is unreachable). Retry to ride
+          # out a free-tier cold start (~50s) so a spin-down is not a false alarm.
+          health_code=000
+          for attempt in 1 2 3 4; do
+            health_code=$(curl -s -m 30 -o /tmp/health.txt -w '%{http_code}' "$base/health")
+            [ "$health_code" = "200" ] && break
+            sleep 25
+          done
+          health_body=$(tr -d '\r\n' < /tmp/health.txt | cut -c1-400)
+
+          # A DB-backed request: login with junk creds. A healthy backend returns
+          # 401 (it reached the DB, found no user). A 500 means the DB/app path is
+          # broken even if the process answers — the exact symptom of this outage.
+          login_code=$(curl -s -m 30 -o /dev/null -w '%{http_code}' \
+            -X POST "$base/auth/login" -H 'Content-Type: application/json' \
+            -d '{"email":"uptime-probe@invalid.test","password":"x"}')
+
+          ok=1
+          [ "$health_code" != "200" ] && ok=0
+          { [ "$login_code" = "500" ] || [ "$login_code" = "000" ]; } && ok=0
+
+          {
+            echo "ok=$ok"
+            echo "health_code=$health_code"
+            echo "login_code=$login_code"
+            echo "health_body=$health_body"
+            echo "base=$base"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "health=$health_code login=$login_code ok=$ok"
+
+      - name: Open a [watchdog] issue when down
+        if: steps.probe.outputs.ok == '0'
+        uses: actions/github-script@v7
+        env:
+          HEALTH_CODE: ${{ steps.probe.outputs.health_code }}
+          LOGIN_CODE: ${{ steps.probe.outputs.login_code }}
+          HEALTH_BODY: ${{ steps.probe.outputs.health_body }}
+          BASE: ${{ steps.probe.outputs.base }}
+        script: |
+          const title = '[watchdog] Backend/DB לא זמין — בדיקת uptime חיצונית נכשלה';
+          const { owner, repo } = context.repo;
+
+          // Dedupe: if an open issue with this title already exists, the loop is
+          // already aware — add a heartbeat comment at most, don't spawn a new one.
+          const open = await github.rest.issues.listForRepo({
+            owner, repo, state: 'open', per_page: 100,
+          });
+          const existing = open.data.find((i) => i.title === title);
+
+          const body = [
+            '**בדיקת uptime חיצונית (GitHub Actions) זיהתה שה-backend לא בריא.**',
+            'הבדיקה רצה מחוץ ל-Render, ולכן היא תופסת גם מצב שבו ה-backend עצמו מנותק מה-DB —',
+            'בדיוק המצב שה-Watchdog הפנימי (שרץ בתוך אותו backend) לא יכול לדווח עליו.',
+            '',
+            '| בדיקה | תוצאה |',
+            '| --- | --- |',
+            `| GET /health | \`${process.env.HEALTH_CODE}\` (200 = תקין; 503 = ה-DB לא נגיש; 000 = timeout) |`,
+            `| POST /auth/login (junk) | \`${process.env.LOGIN_CODE}\` (401 = תקין; 500 = נתיב ה-DB שבור) |`,
+            `| /health body | \`${process.env.HEALTH_BODY || '(ריק)'}\` |`,
+            `| Backend | ${process.env.BASE} |`,
+            '',
+            'כיווני חקירה: חיבור ה-backend ל-Supabase (Direct הוא IPv6-בלבד — עבור ל-Session pooler שנותן IPv4),',
+            'משתני סביבה ב-Render (DATABASE_URL / JWT_SECRET), ומצב ה-deploy האחרון ב-Render.',
+            '',
+            '---',
+            '_נפתח אוטומטית על ידי Uptime Watchdog (GitHub Actions). ייסגר כשהבדיקה תחזור לירוק._',
+          ].join('\n');
+
+          if (existing) {
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: existing.number,
+              body: `עדיין לא זמין · health=\`${process.env.HEALTH_CODE}\` login=\`${process.env.LOGIN_CODE}\` · ${new Date().toISOString()}`,
+            });
+            core.warning(`Backend still down — commented on existing issue #${existing.number}`);
+          } else {
+            const created = await github.rest.issues.create({ owner, repo, title, body });
+            core.warning(`Backend down — opened issue #${created.data.number}`);
+          }
+
+      - name: Close the [watchdog] issue when healthy again
+        if: steps.probe.outputs.ok == '1'
+        uses: actions/github-script@v7
+        script: |
+          const title = '[watchdog] Backend/DB לא זמין — בדיקת uptime חיצונית נכשלה';
+          const { owner, repo } = context.repo;
+          const open = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 100 });
+          const existing = open.data.find((i) => i.title === title);
+          if (existing) {
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: existing.number,
+              body: `✅ ה-backend חזר להיות זמין · ${new Date().toISOString()}`,
+            });
+            await github.rest.issues.update({ owner, repo, issue_number: existing.number, state: 'closed' });
+            core.notice(`Backend recovered — closed issue #${existing.number}`);
+          }
