@@ -1171,9 +1171,17 @@ export class PostsService {
     const cooldownCutoff = new Date(Date.now() - PRODUCT_REPEAT_COOLDOWN_DAYS * 86_400_000);
     const postedRows = await this.postedRepo.find({
       where: { campaign_id: campaign.id, created_at: MoreThan(cooldownCutoff) },
-      select: ['product_id', 'keyword'],
+      select: ['product_id', 'keyword', 'created_at'],
     }).catch(() => [] as PostedProduct[]);
     const postedIds = new Set(postedRows.map((r) => String(r.product_id)));
+    // product_id → last-posted ms, so a fallback recycle can pick the product posted
+    // LONGEST ago (never the same item two days running).
+    const postedAtMs = new Map<string, number>();
+    for (const r of postedRows) {
+      const ms = r.created_at ? new Date(r.created_at).getTime() : 0;
+      const id = String(r.product_id);
+      if (ms > (postedAtMs.get(id) ?? 0)) postedAtMs.set(id, ms);
+    }
     const postedPerKeyword = new Map<string, number>();
     for (const r of postedRows) {
       const k = (r.keyword || '').trim();
@@ -1233,14 +1241,35 @@ export class PostsService {
           (minRating <= 0 || (p.rating || 0) >= minRating) &&
           (minDiscount <= 0 || (p.discount_percent || 0) >= minDiscount),
         );
-        // Exclude only products still in their repeat-cooldown (postedIds = posted within the
-        // last PRODUCT_REPEAT_COOLDOWN_DAYS). Fresh products are always preferred; a product
-        // posted long ago is eligible again, so a keyword recycles proven items after the
-        // cooldown instead of going silent — but never the same item day after day.
-        const pool = qualified.filter((p) => !postedIds.has(String(p.product_id)));
+        // Self-healing, tiered selection — a campaign must NOT go silent while its keyword
+        // still returns products. Tiers are tried top-down; each is used only when the one
+        // above is empty. Recycled/relaxed picks are ordered OLDEST-posted-first so the same
+        // item is never posted two days running (respects the repeat cooldown's INTENT even
+        // when the pool is exhausted). This is what kept a strict campaign (rating≥4.5) alive
+        // once its on-spec fresh stock aged into the 14-day cooldown mid-day.
+        //   T1: on-spec + fresh (novel, meets filters)          — the ideal
+        //   T2: on-spec, recycle oldest (meets filters, repeat)  — quality over novelty
+        //   T3: relax filters, fresh (novel, lower rating)       — novelty over strictness
+        //   T4: relax filters, recycle oldest (anything at all)  — last resort, never silent
+        const fresh = (arr: any[]) => arr.filter((p) => !postedIds.has(String(p.product_id)));
+        const oldestFirst = (arr: any[]) => [...arr].sort(
+          (a, b) => (postedAtMs.get(String(a.product_id)) ?? 0) - (postedAtMs.get(String(b.product_id)) ?? 0),
+        );
+        let pool = fresh(qualified);
+        let tier = 1;
+        if (!pool.length && qualified.length) { pool = oldestFirst(qualified); tier = 2; }
         if (!pool.length) {
-          kwErrors.push(`"${kw}": אין מוצרים זמינים (הכול בתקופת צינון או מסונן)`);
+          const novel = fresh(found);
+          if (novel.length) { pool = novel; tier = 3; }
+          else if (found.length) { pool = oldestFirst(found); tier = 4; }
+        }
+        if (!pool.length) {
+          kwErrors.push(`"${kw}": החיפוש לא החזיר מוצרים כלל`);
           continue;
+        }
+        if (tier > 1) {
+          this.logger.warn(`campaign ${campaign.id} kw "${kw}": pool via fallback tier ${tier} `
+            + `(rating≥${minRating}, discount≥${minDiscount}%, ${PRODUCT_REPEAT_COOLDOWN_DAYS}d cooldown exhausted) — staying live instead of silent`);
         }
         poolBy.set(kw, pool);
       } catch (err: any) {
