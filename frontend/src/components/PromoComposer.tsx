@@ -89,6 +89,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
   const [selected, setSelected] = useState<AliProduct | null>(null);
   const [affiliateUrl, setAffiliateUrl] = useState('');
   const [text, setText] = useState('');
+  const [hint, setHint] = useState(''); // product description → authoritative for the AI when vision/title misleads
   const [generating, setGenerating] = useState(false);
 
   const [discount, setDiscount] = useState('');
@@ -200,7 +201,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
     setGenerating(true);
     setError('');
     try {
-      const res = await postsApi.preview(p.product_id, 'he', p, undefined, promoPreview());
+      const res = await postsApi.preview(p.product_id, 'he', p, undefined, promoPreview(), hint.trim() || undefined);
       let t = res.generated_text;
       if (aff && !t.includes(aff)) t += '\n\n🔗 ' + aff;
       setText(t);
@@ -211,7 +212,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
     }
   };
 
-  const reset = () => { setSelected(null); setText(''); setAffiliateUrl(''); setDiscount(''); setPendingAlbum(null); };
+  const reset = () => { setSelected(null); setText(''); setHint(''); setAffiliateUrl(''); setDiscount(''); setPendingAlbum(null); };
 
   const schedule = async () => {
     if (!selected) return;
@@ -286,6 +287,14 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
                 <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)}
                   className="w-full bg-white/5 border border-edge rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500/50" />
               </div>
+            </div>
+
+            {/* Product description → the AI writes about THIS even when the image/title misleads */}
+            <div>
+              <label className="block text-2xs text-white/40 mb-1">תיאור המוצר (אם ה-AI לא זיהה נכון מהתמונה)</label>
+              <input value={hint} onChange={(e) => setHint(e.target.value)} placeholder="לדוגמה: חולצת פולו לקוסט כותנה, שרוול קצר"
+                className="w-full bg-white/5 border border-edge rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500/50" />
+              <p className="text-2xs text-white/30 mt-1">כתוב מה המוצר ולחץ "צור מחדש" — ה-AI יכתוב לפי התיאור הזה כמקור אמת.</p>
             </div>
 
             <div>

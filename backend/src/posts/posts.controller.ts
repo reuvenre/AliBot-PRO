@@ -33,8 +33,9 @@ export class PostsController {
     @Body('custom_product') customProduct?: any,
     @Body('template') template?: string,
     @Body('promo') promo?: { discount?: number | null; ends_at?: string | null },
+    @Body('hint') hint?: string,
   ) {
-    return this.svc.preview(this.uid(req), productId, language, customProduct, template, undefined, undefined, false, promo);
+    return this.svc.preview(this.uid(req), productId, language, customProduct, template, undefined, hint, false, promo);
   }
 
   @Post('schedule')

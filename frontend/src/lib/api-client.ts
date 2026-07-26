@@ -490,8 +490,8 @@ export interface PromoPreview { discount?: number | null; ends_at?: string | nul
 export interface PromoInput { is_promo: boolean; ends_at?: string | null; discount?: number | null }
 
 export const postsApi = {
-  preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string, promo?: PromoPreview) =>
-    http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template, promo }, { timeout: AI_TIMEOUT }).then(extract),
+  preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string, promo?: PromoPreview, hint?: string) =>
+    http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template, promo, hint }, { timeout: AI_TIMEOUT }).then(extract),
 
   quickPost: (data: { product_id: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
     http.post<Post>('/posts/quick', data, { timeout: AI_TIMEOUT }).then(extract),
