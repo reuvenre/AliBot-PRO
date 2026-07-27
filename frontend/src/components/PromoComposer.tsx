@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Loader2, Search, Package, Globe, Boxes, Clock, Percent,
-  ArrowRight, RefreshCw, CalendarClock, Link2, X,
+  ArrowRight, RefreshCw, CalendarClock, Link2, X, Plus,
+  ChevronLeft, ChevronRight, ImagePlus,
 } from 'lucide-react';
 import { ProductCard } from '@/components/products/ProductCard';
 import { GroupMultiSelect, type GroupOption } from '@/components/GroupMultiSelect';
@@ -101,7 +102,9 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
   const [affiliateUrl, setAffiliateUrl] = useState('');
   const [text, setText] = useState('');
   const [hint, setHint] = useState(''); // product description → authoritative for the AI when vision/title misleads
-  const [imagesText, setImagesText] = useState(''); // one image URL per line → gallery/album
+  const [imagesText, setImagesText] = useState(''); // one image URL per line → gallery/album (canonical store)
+  const [imagePool, setImagePool] = useState<string[]>([]); // all available images for the product (for the visual picker)
+  const [addUrl, setAddUrl] = useState(''); // manual "add image by URL" input
   const [generating, setGenerating] = useState(false);
 
   const [discount, setDiscount] = useState('');
@@ -175,6 +178,8 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
     // start with the single main image. The user can add/remove URLs.
     const imgs = (gallery && gallery.length ? gallery : [p.image_url]).filter(Boolean);
     setImagesText(imgs.join('\n'));
+    setImagePool(Array.from(new Set(imgs))); // the full pool the visual picker can re-add from
+    setAddUrl('');
     let aff = knownAffiliate ?? (p.affiliate_url || p.product_url || '');
     if (!knownAffiliate && source === 'live') {
       try { aff = (await productsApi.affiliateLink(p.product_id)).url; } catch { /* keep fallback */ }
@@ -237,7 +242,21 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
     }
   };
 
-  const reset = () => { setSelected(null); setText(''); setHint(''); setImagesText(''); setAffiliateUrl(''); setDiscount(''); setPendingAlbum(null); };
+  const reset = () => { setSelected(null); setText(''); setHint(''); setImagesText(''); setImagePool([]); setAddUrl(''); setAffiliateUrl(''); setDiscount(''); setPendingAlbum(null); };
+
+  // ── Visual gallery editor (operates on imagesText as the canonical store) ──
+  const imagesArr = imagesText.split('\n').map((s) => s.trim()).filter(Boolean);
+  const setImages = (arr: string[]) => setImagesText(Array.from(new Set(arr)).slice(0, 10).join('\n'));
+  const removeImage = (url: string) => setImages(imagesArr.filter((u) => u !== url));
+  const addImage = (url: string) => { if (url && !imagesArr.includes(url)) setImages([...imagesArr, url]); };
+  const moveImage = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= imagesArr.length) return;
+    const next = [...imagesArr];
+    [next[i], next[j]] = [next[j], next[i]];
+    setImages(next);
+  };
+  const unusedPool = imagePool.filter((u) => !imagesArr.includes(u));
 
   const schedule = async () => {
     if (!selected) return;
@@ -340,13 +359,72 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
               )}
             </div>
 
-            {/* Gallery — one image URL per line; more than one is sent as a swipeable album */}
+            {/* Gallery — visual picker. Tap ✕ to remove, ‹ › to reorder, + to add back / add by URL.
+                More than one image is sent as a swipeable Telegram album. */}
             <div>
-              <label className="block text-2xs text-white/40 mb-1">תמונות (אחת בכל שורה — כמה תמונות = אלבום)</label>
-              <textarea value={imagesText} onChange={(e) => setImagesText(e.target.value)} rows={3} dir="ltr"
-                placeholder="https://...jpg"
-                className="w-full bg-white/5 border border-edge rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-amber-500/50 font-mono resize-y" />
-              <p className="text-2xs text-white/30 mt-1">{imagesText.split('\n').filter((s) => s.trim()).length} תמונות · עד 10 (מוצרי FLYLINK מגיעים עם כל הצבעים).</p>
+              <label className="block text-2xs text-white/40 mb-1.5">
+                תמונות · <span className={imagesArr.length ? 'text-amber-400/80' : 'text-red-400/80'}>{imagesArr.length}</span>/10 נבחרו
+                {imagesArr.length > 1 && <span className="text-white/30"> · יישלח כאלבום</span>}
+              </label>
+
+              {imagesArr.length === 0 ? (
+                <p className="text-2xs text-red-400/70 mb-2">אין תמונות — בחר לפחות אחת מהאפשרויות למטה.</p>
+              ) : (
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 mb-2">
+                  {imagesArr.map((url, i) => (
+                    <div key={url} className="relative group aspect-square rounded-lg overflow-hidden border border-edge bg-white/5">
+                      <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      {/* order badge */}
+                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/70 text-white text-[9px] flex items-center justify-center font-medium">{i + 1}</span>
+                      {/* remove */}
+                      <button type="button" onClick={() => removeImage(url)} title="הסר תמונה"
+                        className="absolute top-1 left-1 w-4 h-4 rounded-full bg-red-500/90 hover:bg-red-500 text-white flex items-center justify-center">
+                        <X size={10} />
+                      </button>
+                      {/* reorder */}
+                      <div className="absolute bottom-0 inset-x-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button type="button" onClick={() => moveImage(i, -1)} disabled={i === 0} title="הקדם"
+                          className="flex-1 bg-black/60 hover:bg-black/80 text-white py-0.5 flex justify-center disabled:opacity-30"><ChevronRight size={12} /></button>
+                        <button type="button" onClick={() => moveImage(i, 1)} disabled={i === imagesArr.length - 1} title="אחר"
+                          className="flex-1 bg-black/60 hover:bg-black/80 text-white py-0.5 flex justify-center disabled:opacity-30"><ChevronLeft size={12} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Re-add images removed from the product's own set */}
+              {unusedPool.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-2xs text-white/30 mb-1">תמונות נוספות של המוצר — הקש להוספה:</p>
+                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                    {unusedPool.map((url) => (
+                      <button key={url} type="button" onClick={() => addImage(url)} disabled={imagesArr.length >= 10} title="הוסף"
+                        className="relative aspect-square rounded-md overflow-hidden border border-edge bg-white/5 hover:border-amber-500/60 disabled:opacity-40 group">
+                        <img src={url} alt="" className="w-full h-full object-cover opacity-60 group-hover:opacity-100" loading="lazy" />
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/10">
+                          <Plus size={14} className="text-white" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add a custom image by URL */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <ImagePlus size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+                  <input value={addUrl} onChange={(e) => setAddUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addImage(addUrl.trim()); setAddUrl(''); } }}
+                    placeholder="הדבק כתובת תמונה (https://...)" dir="ltr"
+                    className="w-full bg-white/5 border border-edge rounded-lg pr-8 pl-3 py-2 text-xs text-white/80 outline-none focus:border-amber-500/50 font-mono" />
+                </div>
+                <button type="button" onClick={() => { addImage(addUrl.trim()); setAddUrl(''); }}
+                  disabled={!addUrl.trim() || imagesArr.length >= 10}
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-edge rounded-lg text-2xs text-white/70 disabled:opacity-40 shrink-0">הוסף</button>
+              </div>
+              <p className="text-2xs text-white/30 mt-1">עד 10 תמונות · מוצרי FLYLINK מגיעים עם כל הצבעים/וריאציות.</p>
             </div>
 
             <div>
