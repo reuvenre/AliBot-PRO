@@ -63,17 +63,27 @@ export class RecoveryService {
     const boostToday = await this.posts.count({ where: { user_id: u.userId, is_boost: true, created_at: MoreThan(startOfDay) } });
     if (boostToday >= u.postsPerDay) return;
 
-    // 3) Target groups = the union of the participating active campaigns' target channels.
-    //    An explicit campaignIds selection narrows it; empty = every active campaign.
+    // 3) Target groups + their topic keywords. Each group inherits the keywords of the
+    //    campaign(s) that publish to it, so a boost can be matched to the group's niche
+    //    (a tactical group must never get a random best-seller). An explicit campaignIds
+    //    selection narrows the set; empty = every active campaign.
     const active = await this.campaigns.find({ where: { user_id: u.userId, status: 'active' as any } });
     const selected = u.campaignIds.length
       ? active.filter((c) => u.campaignIds.includes(String(c.id)))
       : active;
-    const groups = new Set<string>();
+    const groupKeywords = new Map<string, Set<string>>();
     for (const c of selected) {
-      try { for (const g of JSON.parse(c.target_channels || '[]')) if (g) groups.add(String(g)); } catch { /* ignore */ }
+      let chans: string[] = [];
+      try { chans = JSON.parse(c.target_channels || '[]'); } catch { /* ignore */ }
+      const kws = Array.isArray(c.keywords) ? c.keywords : [];
+      for (const g of chans) {
+        if (!g) continue;
+        const key = String(g);
+        if (!groupKeywords.has(key)) groupKeywords.set(key, new Set());
+        for (const k of kws) if (k) groupKeywords.get(key)!.add(String(k));
+      }
     }
-    const groupList = [...groups];
+    const groupList = [...groupKeywords.keys()];
     if (!groupList.length) return; // nowhere to publish
 
     // 4) Products we've already posted (any status) — never re-push these.
@@ -83,14 +93,24 @@ export class RecoveryService {
       .getRawMany();
     const posted = new Set(postedRows.map((r) => String(r.product_id)));
 
-    // 5) Pick a fresh product — alternate the two sources by the daily counter.
-    const product = (boostToday % 2 === 0)
-      ? (await this.pickBoughtNotPosted(u.userId, posted)) || (await this.pickBestSeller(u.userId, posted))
-      : (await this.pickBestSeller(u.userId, posted)) || (await this.pickBoughtNotPosted(u.userId, posted));
-    if (!product) { this.logger.log(`recovery ${u.userId}: no fresh product found`); return; }
-
-    // 6) Target group (rotate across the campaigns' groups).
+    // 5) Target group (rotate across the groups) and its keywords.
     const group = groupList[boostToday % groupList.length];
+    const keywords = [...(groupKeywords.get(group) || [])];
+
+    // 6) Pick a fresh product MATCHED to the group's niche. When the group has keywords,
+    //    prefer a bought-but-unposted product whose title matches one, else a keyword-
+    //    searched best-seller — both guaranteed on-topic. Only a keyword-less group
+    //    (e.g. a brand/FLYLINK channel) falls back to a generic best-seller.
+    let product: any = null;
+    if (keywords.length) {
+      product = (await this.pickBoughtMatching(u.userId, posted, keywords))
+        || (await this.pickKeywordBestSeller(u.userId, posted, keywords, boostToday));
+    } else {
+      product = (boostToday % 2 === 0)
+        ? (await this.pickBoughtNotPosted(u.userId, posted)) || (await this.pickBestSeller(u.userId, posted))
+        : (await this.pickBestSeller(u.userId, posted)) || (await this.pickBoughtNotPosted(u.userId, posted));
+    }
+    if (!product) { this.logger.log(`recovery ${u.userId}: no fresh on-topic product for group ${group}`); return; }
 
     // 7) Publish as a SCHEDULED post (paced per group by the scheduler, independent of the
     //    manual queue toggle), then flag it so it counts toward the daily cap.
@@ -116,6 +136,43 @@ export class RecoveryService {
       await this.posts.save(saved).catch(() => {});
       this.logger.log(`recovery ${u.userId}: pushed product ${product.product_id} → group ${group} (orders=${orders}<${u.minOrders})`);
     }
+  }
+
+  /** A best-seller that MATCHES the group's niche — searched with one of the campaign's
+   *  keywords (rotated by the daily counter), sorted by sales. Guarantees on-topic boosts. */
+  private async pickKeywordBestSeller(userId: string, posted: Set<string>, keywords: string[], seed: number): Promise<any | null> {
+    // Try a couple of keywords (rotating) so a niche/empty result doesn't block recovery.
+    for (let i = 0; i < Math.min(keywords.length, 4); i++) {
+      const keyword = keywords[(seed + i) % keywords.length];
+      try {
+        const res: any = await this.products.search(userId, { keyword, sort: 'LAST_VOLUME_DESC', page: 1, limit: 40 });
+        const items: any[] = res?.data || [];
+        const hit = items.find((p) => p?.product_id && !posted.has(String(p.product_id)) && p.title && Number(p.sale_price) > 0);
+        if (hit) return hit;
+      } catch { /* try next keyword */ }
+    }
+    return null;
+  }
+
+  /** A bought-but-unposted product whose title matches one of the group's keywords —
+   *  proven demand AND on-topic. Returns null when nothing matches (caller falls back). */
+  private async pickBoughtMatching(userId: string, posted: Set<string>, keywords: string[]): Promise<any | null> {
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const rows = await this.earnings.createQueryBuilder('e')
+      .select('DISTINCT e.product_id', 'product_id')
+      .where('e.user_id = :uid', { uid: userId })
+      .andWhere('e.order_date > :since', { since })
+      .getRawMany()
+      .catch(() => []);
+    const terms = keywords.map((k) => k.toLowerCase()).filter(Boolean);
+    const candidates = rows.map((r) => String(r.product_id)).filter((id) => id && !posted.has(id)).slice(0, 8);
+    for (const id of candidates) {
+      const p = await this.products.refreshPrice(userId, id).catch(() => null);
+      if (!p || String(p.product_id) !== id || !p.title || !(Number(p.sale_price) > 0)) continue;
+      const title = String(p.title).toLowerCase();
+      if (terms.some((t) => title.includes(t) || t.split(/\s+/).some((w) => w.length > 3 && title.includes(w)))) return p;
+    }
+    return null;
   }
 
   /** A top AliExpress best-seller we haven't posted yet. */
