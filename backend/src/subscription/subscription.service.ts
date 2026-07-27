@@ -27,6 +27,8 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   token_tracking: 'מעקב טוקנים ותקציב AI',
   image_enhancer: 'משפר תמונות AI',
   english_campaigns: 'קמפיין באנגלית לקהל ארה"ב',
+  sales_recovery: 'התאוששות מכירות אוטומטית',
+  paid_boost: 'קידום ממומן אוטומטי (Meta Ads)',
 };
 
 export interface SubscriptionStatus {
@@ -161,10 +163,16 @@ export class SubscriptionService {
     const plan = PLANS[planId as PlanId];
     if (!plan) throw new BadRequestException('תוכנית לא מוכרת');
     if (billing !== 'monthly' && billing !== 'annual') billing = 'monthly';
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('User not found');
+    // Never hard-overwrite the balance: an upgrade must top the user UP to at least the
+    // new plan's quota (not double-grant), and a downgrade must NOT wipe credits the
+    // user already has or bought via a pack. Keep the higher of the two.
+    const credits = Math.max(user.credits_remaining ?? 0, plan.monthly_credits);
     await this.users.update(userId, {
       subscription_plan: plan.id,
       plan_billing: billing,
-      credits_remaining: plan.monthly_credits,
+      credits_remaining: credits,
       plan_renews_at: firstOfNextMonth(),
     });
     return this.getStatus(userId);
@@ -181,8 +189,15 @@ export class SubscriptionService {
    *  is requireFeature (throws) used at user-facing entry points.
    *  Admins (the platform owners) bypass all feature gates. */
   async allows(userId: string, feature: FeatureKey): Promise<boolean> {
-    const user = await this.users.findOne({ where: { id: userId } }).catch(() => null);
-    if (!user) return true;
+    let user: User | null;
+    try {
+      user = await this.users.findOne({ where: { id: userId } });
+    } catch (err: any) {
+      // A transient DB error must NOT hand out a paid feature — fail CLOSED.
+      this.logger.warn(`allows(${feature}) DB error → denying: ${err?.message}`);
+      return false;
+    }
+    if (!user) return true; // genuinely-absent user: preserve internal/system-flow contract
     if (user.role === 'admin') return true;
     return planAllows(user.subscription_plan, feature);
   }
@@ -253,6 +268,20 @@ export class SubscriptionService {
     await this.users.increment({ id: userId }, 'credits_remaining', n);
     const user = await this.users.findOne({ where: { id: userId } });
     return { ok: true, credits_remaining: user?.credits_remaining ?? null };
+  }
+
+  /**
+   * Return credits that were consumed but produced nothing — e.g. a publish that failed
+   * on every channel. No-op for admins (who never actually consume) and for non-positive
+   * amounts, so it can be called unconditionally on the failure path.
+   */
+  async refund(userId: string, amount: number, reason: string): Promise<void> {
+    const n = Math.floor(amount);
+    if (!userId || !Number.isFinite(n) || n <= 0) return;
+    const user = await this.users.findOne({ where: { id: userId } }).catch(() => null);
+    if (!user || user.role === 'admin') return;
+    await this.users.increment({ id: userId }, 'credits_remaining', n).catch(() => {});
+    this.logger.log(`Refunded ${n} credits to ${userId} (${reason})`);
   }
 
   /** Consume credits or throw the standard Hebrew upgrade message. */

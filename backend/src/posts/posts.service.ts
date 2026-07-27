@@ -2404,6 +2404,11 @@ export class PostsService {
     } else {
       post.status = 'failed';
       post.error_message = errors.join(' | ') || 'No channel enabled';
+      // Nothing was published — the publish credit consumed above bought nothing, so
+      // refund it. Otherwise a lapsed token / outage silently drains paid credits.
+      if (post.user_id) {
+        await this.subscription.refund(post.user_id, this.subscription.costs.publish, 'publish-failed');
+      }
     }
     await this.repo.save(post);
   }
@@ -2427,7 +2432,10 @@ export class PostsService {
 
     // Auto image enhancement: fetch the photo(s), run the "studio" pass, upload the enhanced
     // bytes. Best-effort — if it yields nothing, fall through to the URL-based send.
-    if (creds?.image_enhance_enabled && !post.collage_cells) {
+    // Gated: image enhancement is a Growth+ feature, so a lower plan that flipped the
+    // toggle doesn't get it for free.
+    if (creds?.image_enhance_enabled && !post.collage_cells
+        && await this.subscription.allows(post.user_id, 'image_enhancer')) {
       const src = gallery.length ? gallery.slice(0, 10) : (post.product_image ? [post.product_image] : []);
       if (src.length) {
         const buffers = await this.collage.enhance(src).catch(() => [] as Buffer[]);

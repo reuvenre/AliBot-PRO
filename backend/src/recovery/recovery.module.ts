@@ -6,6 +6,7 @@ import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { PostsModule } from '../posts/posts.module';
 import { ProductsModule } from '../products/products.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 import { RecoveryService } from './recovery.service';
 
 @Module({
@@ -14,6 +15,7 @@ import { RecoveryService } from './recovery.service';
     CredentialsModule,
     PostsModule,
     ProductsModule,
+    SubscriptionModule,
   ],
   providers: [RecoveryService],
 })

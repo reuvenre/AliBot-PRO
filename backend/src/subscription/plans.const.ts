@@ -4,7 +4,7 @@
  * numbers in the UI. Prices are in ILS (₪) per month.
  */
 
-export type PlanId = 'starter' | 'growth' | 'autopilot' | 'scale';
+export type PlanId = 'free' | 'starter' | 'growth' | 'autopilot' | 'scale';
 export type BillingCycle = 'monthly' | 'annual';
 
 export interface PlanDef {
@@ -23,6 +23,14 @@ export interface PlanDef {
 // Annual price is the effective monthly cost when billed yearly — a ~20% discount off the
 // monthly price, rounded to the nearest shekel.
 export const PLANS: Record<PlanId, PlanDef> = {
+  free: {
+    id: 'free', name: 'חינם',
+    price_monthly: 0, price_annual: 0,
+    // A genuine free tier: try the product on Telegram with AliExpress, capped low so it
+    // converts to paid. Tune the numbers as needed — this is the "no paid tier for free"
+    // fix, not a final pricing decision.
+    monthly_credits: 100, max_groups: 1, popular: false,
+  },
   starter: {
     id: 'starter', name: 'Starter',
     price_monthly: 69, price_annual: 55,
@@ -45,10 +53,10 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
 };
 
-export const DEFAULT_PLAN: PlanId = 'starter';
+export const DEFAULT_PLAN: PlanId = 'free';
 
 /** Ordered tiers for "plan X and above" checks. */
-export const PLAN_ORDER: PlanId[] = ['starter', 'growth', 'autopilot', 'scale'];
+export const PLAN_ORDER: PlanId[] = ['free', 'starter', 'growth', 'autopilot', 'scale'];
 
 /**
  * Feature gating — the MINIMAL plan tier each feature unlocks at. This is the single
@@ -59,8 +67,8 @@ export const PLAN_ORDER: PlanId[] = ['starter', 'growth', 'autopilot', 'scale'];
  */
 export const FEATURE_MIN_PLAN = {
   // ── Publishing platforms ──
-  /** Telegram publishing — every tier. */
-  platform_telegram: 'starter',
+  /** Telegram publishing — every tier, including Free. */
+  platform_telegram: 'free',
   /** Facebook page publishing (native or via Make relay). */
   platform_facebook: 'growth',
   /** Instagram business publishing. */
@@ -71,8 +79,8 @@ export const FEATURE_MIN_PLAN = {
   platform_whatsapp: 'growth',
 
   // ── Product sources ──
-  /** AliExpress keyword search — every tier. */
-  source_aliexpress: 'starter',
+  /** AliExpress keyword search — every tier, including Free. */
+  source_aliexpress: 'free',
   /** Amazon PA-API campaigns. */
   source_amazon: 'autopilot',
   /** Supplier/FLYLINK catalog rotation. */
@@ -99,13 +107,19 @@ export const FEATURE_MIN_PLAN = {
   image_enhancer: 'growth',
   /** English/US-audience campaign preset (Pinterest SEO copy, USD pricing). */
   english_campaigns: 'scale',
+
+  // ── Automation add-ons ──
+  /** Sales-recovery auto-push (order-drop → boost hot products). */
+  sales_recovery: 'autopilot',
+  /** Paid-ads auto-boost (Meta Ads, ROAS-driven). */
+  paid_boost: 'scale',
 } as const;
 
 export type FeatureKey = keyof typeof FEATURE_MIN_PLAN;
 
 /** Max WhatsApp connections per tier (0 = platform locked anyway). */
 export const WHATSAPP_CONNECTIONS: Record<PlanId, number> = {
-  starter: 0, growth: 1, autopilot: 2, scale: 3,
+  free: 0, starter: 0, growth: 1, autopilot: 2, scale: 3,
 };
 
 /** True when `plan` is at or above the feature's minimal tier. */

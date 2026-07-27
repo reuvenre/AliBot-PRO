@@ -2,6 +2,7 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CredentialsService } from '../credentials/credentials.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { AiUsageService } from './ai-usage.service';
 
 /** Dashboard AI token-usage metering (daily consumption + monthly budget gauge). */
@@ -11,6 +12,7 @@ export class AiUsageController {
   constructor(
     private readonly usage: AiUsageService,
     private readonly credentials: CredentialsService,
+    private readonly subscription: SubscriptionService,
   ) {}
 
   private uid(req: Request) { return (req.user as any).id; }
@@ -18,6 +20,11 @@ export class AiUsageController {
   @Get()
   async get(@Req() req: Request, @Query('days') days?: string) {
     const userId = this.uid(req);
+    // Token/budget tracking is a Scale-tier feature — return a locked marker for lower
+    // plans instead of the real metering so the panel can't be used without upgrading.
+    if (!(await this.subscription.allows(userId, 'token_tracking'))) {
+      return { locked: true, feature: 'token_tracking' };
+    }
     const creds = await this.credentials.getRaw(userId).catch(() => null);
     const budget = creds?.ai_monthly_token_budget ?? null;
     const window = Math.min(60, Math.max(7, Number(days) || 14));

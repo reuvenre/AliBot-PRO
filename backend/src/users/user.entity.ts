@@ -54,16 +54,18 @@ export class User {
   // Plan numbers (credits/limits/prices) live in subscription/plans.const.ts;
   // only the user's state is stored here.
 
-  /** Active plan id: 'starter' | 'growth' | 'autopilot' | 'scale' */
-  @Column({ default: 'starter' })
+  /** Active plan id: 'free' | 'starter' | 'growth' | 'autopilot' | 'scale'.
+   *  New signups start on 'free' — never a paid tier without payment. */
+  @Column({ default: 'free' })
   subscription_plan: string;
 
   /** 'monthly' | 'annual' — affects displayed price only (demo mode). */
   @Column({ default: 'monthly' })
   plan_billing: string;
 
-  /** Current credit balance; refilled to the plan's monthly amount each cycle. */
-  @Column({ type: 'int', default: 500 })
+  /** Current credit balance; refilled to the plan's monthly amount each cycle.
+   *  Default matches the Free plan's monthly_credits. */
+  @Column({ type: 'int', default: 100 })
   credits_remaining: number;
 
   /** When the next monthly credit refill happens (lazy — applied on first use after). */

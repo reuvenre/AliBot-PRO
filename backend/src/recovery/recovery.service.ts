@@ -8,6 +8,7 @@ import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsService } from '../credentials/credentials.service';
 import { PostsService } from '../posts/posts.service';
 import { ProductsService } from '../products/products.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 /**
  * Sales-recovery auto-push. When a user's attributed orders drop below their configured
@@ -29,6 +30,7 @@ export class RecoveryService {
     private readonly credentials: CredentialsService,
     private readonly postsService: PostsService,
     private readonly products: ProductsService,
+    private readonly subscription: SubscriptionService,
   ) {}
 
   /** Hourly at :05 (offset from the other minute/quarter crons). One publish per tick,
@@ -51,6 +53,10 @@ export class RecoveryService {
   }
 
   private async runForUser(u: { userId: string; minOrders: number; windowDays: number; postsPerDay: number; campaignIds: string[] }): Promise<void> {
+    // Plan gate: sales-recovery is an Autopilot+ feature. A Starter/Growth user who
+    // toggled the flag must not get free auto-push. (Admins bypass in allows().)
+    if (!(await this.subscription.allows(u.userId, 'sales_recovery'))) return;
+
     const now = Date.now();
 
     // 1) Orders in the window (one earnings row per order). Healthy → nothing to do.
