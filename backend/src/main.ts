@@ -56,11 +56,12 @@ async function bootstrap() {
   // FRONTEND_URL accepts a comma-separated list for multiple domains.
   const allowList = [
     ...(process.env.FRONTEND_URL || '').split(',').map((s) => s.trim()).filter(Boolean),
-    'http://localhost:3000',
+    // localhost is a dev convenience only — never reflect it as a credentialed origin in prod.
+    ...(isProd ? [] : ['http://localhost:3000']),
   ];
   // The project's main production domain does NOT carry the team suffix
   // (ali-bot-pro.vercel.app vs *-reuvenres-projects.vercel.app) — allow it explicitly.
-  const allowedHosts = ['localhost', 'ali-bot-pro.vercel.app'];
+  const allowedHosts = [...(isProd ? [] : ['localhost']), 'ali-bot-pro.vercel.app'];
   // e.g. "-reuvenres-projects.vercel.app" — override via env if the team slug changes.
   const vercelSuffix = process.env.CORS_VERCEL_SUFFIX || '-reuvenres-projects.vercel.app';
   app.enableCors({

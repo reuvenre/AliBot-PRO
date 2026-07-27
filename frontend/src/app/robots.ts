@@ -7,10 +7,10 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/login', '/register'],
+        allow: ['/', '/pricing', '/blog', '/privacy', '/terms', '/login', '/register'],
         // Keep the authenticated app out of the index — only the marketing
         // surface should be crawlable.
-        disallow: ['/dashboard', '/campaigns', '/posts', '/products', '/ads', '/settings', '/earnings', '/orders', '/groups', '/templates', '/quick-post'],
+        disallow: ['/dashboard', '/campaigns', '/posts', '/products', '/settings', '/earnings', '/orders', '/groups', '/templates', '/quick-post', '/scheduled', '/reports', '/suppliers'],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

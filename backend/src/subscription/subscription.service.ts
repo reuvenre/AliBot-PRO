@@ -29,6 +29,7 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   english_campaigns: 'קמפיין באנגלית לקהל ארה"ב',
   sales_recovery: 'התאוששות מכירות אוטומטית',
   paid_boost: 'קידום ממומן אוטומטי (Meta Ads)',
+  landing_pages: 'דפי נחיתה (ClickLead)',
 };
 
 export interface SubscriptionStatus {

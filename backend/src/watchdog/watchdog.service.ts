@@ -662,8 +662,11 @@ export class WatchdogService implements OnModuleInit {
   }
 
   /** Shared secret Telegram echoes back in a header, so only Telegram can call our webhook.
-   *  Derived from JWT_SECRET → no extra env needed, stable across restarts. */
+   *  Prefer a dedicated TELEGRAM_WEBHOOK_SECRET so rotating JWT_SECRET can't silently break
+   *  the webhook; fall back to a JWT-derived value when it isn't set (no extra env needed). */
   telegramWebhookSecret(): string {
+    const dedicated = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+    if (dedicated) return dedicated;
     return crypto.createHash('sha256').update(`tg-webhook:${process.env.JWT_SECRET || 'nexlify'}`).digest('hex').slice(0, 40);
   }
 

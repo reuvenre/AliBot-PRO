@@ -58,7 +58,7 @@ export class UsersService implements OnModuleInit {
     if (!normalized || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
       throw new ConflictException('כתובת אימייל לא תקינה');
     }
-    if (!password || password.length < 6) throw new ConflictException('סיסמה חייבת להכיל לפחות 6 תווים');
+    if (!password || password.length < 8) throw new ConflictException('סיסמה חייבת להכיל לפחות 8 תווים');
     const exists = await this.repo.findOne({ where: { email: normalized } });
     if (exists) throw new ConflictException('האימייל כבר רשום במערכת');
     const password_hash = await bcrypt.hash(password, 12);

@@ -21,7 +21,9 @@ export class PostsController {
     @Query('campaign_id') campaignId?: string,
     @Query('source') source?: string,
   ) {
-    return this.svc.list(this.uid(req), +page, +limit, status, campaignId, source);
+    // Cap the page size so a client can't request an arbitrarily large page.
+    const safeLimit = Math.min(100, Math.max(1, +limit || 20));
+    return this.svc.list(this.uid(req), +page, safeLimit, status, campaignId, source);
   }
 
   @Post('preview')

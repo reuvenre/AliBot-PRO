@@ -113,6 +113,8 @@ export const FEATURE_MIN_PLAN = {
   sales_recovery: 'autopilot',
   /** Paid-ads auto-boost (Meta Ads, ROAS-driven). */
   paid_boost: 'scale',
+  /** ClickLead landing pages + ROI (SSO). */
+  landing_pages: 'scale',
 } as const;
 
 export type FeatureKey = keyof typeof FEATURE_MIN_PLAN;

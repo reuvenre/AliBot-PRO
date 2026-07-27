@@ -1,12 +1,20 @@
 import { Controller, Get, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { planAllows } from '../subscription/plans.const';
 import { IntegrationsService } from './integrations.service';
 
 @Controller('integrations')
 @UseGuards(JwtAuthGuard)
 export class IntegrationsController {
   constructor(private readonly svc: IntegrationsService) {}
+
+  /** Scale-tier feature — admins bypass. Uses the shared feature map, not a hardcoded
+   *  plan string, so an admin on any plan (and future tier changes) resolve consistently. */
+  private assertLandingPages(user: any) {
+    const ok = user?.role === 'admin' || planAllows(user?.subscription_plan, 'landing_pages');
+    if (!ok) throw new ForbiddenException('דפי הנחיתה (ClickLead) זמינים בתוכנית Scale בלבד');
+  }
 
   /**
    * Scale-only. Returns a Firebase custom token + ClickLead URL so the frontend can open
@@ -16,9 +24,7 @@ export class IntegrationsController {
   @Get('clicklead/sso')
   async clickleadSso(@Req() req: Request) {
     const user = req.user as any;
-    if (user?.subscription_plan !== 'scale') {
-      throw new ForbiddenException('דפי הנחיתה (ClickLead) זמינים בתוכנית Scale בלבד');
-    }
+    this.assertLandingPages(user);
     const token = await this.svc.clickleadSsoToken(user?.email);
     return { token, url: this.svc.clickleadUrl };
   }
@@ -30,9 +36,7 @@ export class IntegrationsController {
   @Get('clicklead/roi')
   async clickleadRoi(@Req() req: Request) {
     const user = req.user as any;
-    if (user?.subscription_plan !== 'scale') {
-      throw new ForbiddenException('דוח ה-ROI זמין בתוכנית Scale בלבד');
-    }
+    this.assertLandingPages(user);
     return this.svc.clickleadRoi(user?.email);
   }
 }
