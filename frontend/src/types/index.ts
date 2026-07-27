@@ -225,6 +225,10 @@ export interface CredentialSet {
   seasonal_enabled?: boolean;
   recycle_winners_enabled?: boolean;
   recycle_min_clicks?: number;
+  recovery_enabled?: boolean;
+  recovery_min_orders?: number;
+  recovery_window_days?: number;
+  recovery_posts_per_day?: number;
   schedule_last_sent_at?: string;
   created_at: string;
   updated_at: string;
@@ -296,6 +300,10 @@ export interface CredentialSetInput {
   seasonal_enabled?: boolean;
   recycle_winners_enabled?: boolean;
   recycle_min_clicks?: number;
+  recovery_enabled?: boolean;
+  recovery_min_orders?: number;
+  recovery_window_days?: number;
+  recovery_posts_per_day?: number;
 }
 
 export interface VerifyResult {

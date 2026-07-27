@@ -41,6 +41,11 @@ export function SchedulingForm() {
   const [seasonalOn, setSeasonalOn] = useState(true);
   const [recycleOn, setRecycleOn] = useState(false);
   const [recycleMinClicks, setRecycleMinClicks] = useState(10);
+  // Sales recovery: when orders drop below a threshold, auto-push extra hot products.
+  const [recoveryOn, setRecoveryOn] = useState(false);
+  const [recoveryMinOrders, setRecoveryMinOrders] = useState(5);
+  const [recoveryWindowDays, setRecoveryWindowDays] = useState(3);
+  const [recoveryPostsPerDay, setRecoveryPostsPerDay] = useState(3);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -57,6 +62,10 @@ export function SchedulingForm() {
         setSeasonalOn(c.seasonal_enabled ?? true);
         setRecycleOn(c.recycle_winners_enabled ?? false);
         setRecycleMinClicks(c.recycle_min_clicks ?? 10);
+        setRecoveryOn(c.recovery_enabled ?? false);
+        setRecoveryMinOrders(c.recovery_min_orders ?? 5);
+        setRecoveryWindowDays(c.recovery_window_days ?? 3);
+        setRecoveryPostsPerDay(c.recovery_posts_per_day ?? 3);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -86,6 +95,10 @@ export function SchedulingForm() {
         seasonal_enabled: seasonalOn,
         recycle_winners_enabled: recycleOn,
         recycle_min_clicks: Math.max(1, recycleMinClicks || 10),
+        recovery_enabled: recoveryOn,
+        recovery_min_orders: Math.max(1, recoveryMinOrders || 5),
+        recovery_window_days: Math.max(1, recoveryWindowDays || 3),
+        recovery_posts_per_day: Math.max(1, Math.min(20, recoveryPostsPerDay || 3)),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -309,6 +322,58 @@ export function SchedulingForm() {
               ))}
             </select>
             <p className="text-2xs text-white/30 mt-1.5">פוסט עם עמלה משויכת נחשב מנצח גם בלי לעמוד בסף.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Sales recovery — when orders drop, auto-push extra hot products until they recover. */}
+      <div className="bg-surface-secondary border border-edge rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">🚀 התאוששות מכירות אוטומטית</h3>
+            <p className="text-xs text-white/35 mt-1">
+              אם כמות ההזמנות יורדת מתחת לסף שתגדיר — המערכת "מעלה הילוך" ומפרסמת אוטומטית מוצרים חמים נוספים
+              (מוצרים שקנו ולא פורסמו + הנמכרים-ביותר ב-AliExpress) לקבוצות של הקמפיינים הפעילים, עד שההזמנות חוזרות.
+              כל פוסט צורך קרדיט פרסום.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRecoveryOn((v) => !v)}
+            className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${recoveryOn ? 'bg-amber-500' : 'bg-white/15'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${recoveryOn ? 'right-0.5' : 'right-4'}`} />
+          </button>
+        </div>
+        {recoveryOn && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3" dir="rtl">
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">סף: פחות מ-</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} value={recoveryMinOrders} onChange={(e) => setRecoveryMinOrders(+e.target.value)}
+                  className="w-20 bg-white/5 border border-edge-hover rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500/60" dir="ltr" />
+                <span className="text-xs text-white/40">הזמנות</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">בתוך</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} value={recoveryWindowDays} onChange={(e) => setRecoveryWindowDays(+e.target.value)}
+                  className="w-20 bg-white/5 border border-edge-hover rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500/60" dir="ltr" />
+                <span className="text-xs text-white/40">ימים</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">פוסטי boost ביום</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} max={20} value={recoveryPostsPerDay} onChange={(e) => setRecoveryPostsPerDay(+e.target.value)}
+                  className="w-20 bg-white/5 border border-edge-hover rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500/60" dir="ltr" />
+                <span className="text-xs text-white/40">עד</span>
+              </div>
+            </div>
+            <p className="sm:col-span-3 text-2xs text-white/30">
+              נעצר אוטומטית ברגע שההזמנות חוזרות מעל הסף. דורש קמפיין פעיל אחד לפחות (משם נלקחות קבוצות היעד).
+            </p>
           </div>
         )}
       </div>
