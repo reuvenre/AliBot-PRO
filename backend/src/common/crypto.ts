@@ -43,15 +43,18 @@ export function decrypt(ciphertext: string): string {
     return decipher.update(enc) + decipher.final('utf8');
   } catch {
     // The value may be legacy plaintext from before encryption was added (migration
-    // safety). But this also fires on a wrong/rotated ENCRYPTION_KEY — in which case we
-    // would otherwise hand raw ciphertext to Telegram/OpenAI/AliExpress silently. A
-    // value that looks like our base64 envelope (>= IV+TAG bytes) almost certainly IS
-    // encrypted, so surface the failure rather than returning garbage.
-    const looksEncrypted = Buffer.from(ciphertext, 'base64').length >= IV_LEN + TAG_LEN;
+    // safety). But this also fires on a wrong/rotated ENCRYPTION_KEY — in which case
+    // returning raw ciphertext would silently send garbage bot tokens / API keys to
+    // Telegram/OpenAI/AliExpress. Distinguish the two: a genuine envelope is CANONICAL
+    // base64 of >= IV+TAG bytes (encrypt() emits exactly that), whereas legacy plaintext
+    // (e.g. a "123456:ABC" telegram token) does not round-trip through base64. Throw for
+    // the former (surfaces the key problem loudly); pass through only real plaintext.
+    const raw = Buffer.from(ciphertext, 'base64');
+    const looksEncrypted = raw.length >= IV_LEN + TAG_LEN && raw.toString('base64') === ciphertext;
     if (looksEncrypted) {
-      console.error('[crypto] decrypt failed for an encrypted value — check ENCRYPTION_KEY');
+      throw new Error('[crypto] decrypt failed for an encrypted value — check ENCRYPTION_KEY');
     }
-    return ciphertext; // assume legacy plaintext
+    return ciphertext; // genuine legacy plaintext
   }
 }
 

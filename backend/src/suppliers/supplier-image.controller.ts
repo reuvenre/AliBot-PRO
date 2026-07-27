@@ -8,7 +8,9 @@ import axios from 'axios';
  * directly. This endpoint fetches with the required Referer and streams the bytes.
  *
  * PUBLIC (no JWT) on purpose — Telegram fetches the image server-side and cannot
- * send an auth header. SSRF is contained by only allowing *.yupoo.com hosts.
+ * send an auth header. SSRF is contained by (a) only allowing *.yupoo.com hosts and
+ * (b) refusing to follow redirects — otherwise a yupoo URL that 302s to an internal
+ * address (e.g. cloud metadata) would be fetched and streamed back. Rate-limited too.
  */
 @Controller('suppliers')
 export class SupplierImageController {
@@ -20,6 +22,9 @@ export class SupplierImageController {
 
     const upstream = await axios.get(url, {
       responseType: 'arraybuffer',
+      // Never follow redirects: the initial host is validated but a redirect target
+      // is not, so following one re-opens the SSRF hole. A 30x becomes a non-200 → 502.
+      maxRedirects: 0,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         // A fixed x.yupoo.com referer satisfies the hotlink check for any store.

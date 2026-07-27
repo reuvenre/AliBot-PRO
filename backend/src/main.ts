@@ -2,6 +2,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 // Crash safety: since Node 15 an unhandled promise rejection KILLS the process —
@@ -17,6 +18,21 @@ process.on('uncaughtException', (err) => {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Security headers. The API serves JSON + the streamed image proxy — no first-party
+  // HTML app — so a restrictive CSP is safe. HSTS is enabled in prod (behind TLS).
+  const isProd = process.env.NODE_ENV === 'production';
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        frameAncestors: ["'none'"],
+      },
+    },
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // image proxy is fetched cross-origin
+    hsts: isProd ? { maxAge: 15552000, includeSubDomains: true } : false,
+  }));
 
   app.use(cookieParser());
 

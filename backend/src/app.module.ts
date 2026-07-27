@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import KeyvRedis from '@keyv/redis';
+import { validateEnv } from './config/env.validation';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CredentialsModule } from './credentials/credentials.module';
@@ -40,6 +42,7 @@ import { HealthController } from './health.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['../.env', '.env'], // finds alibot-pro/.env when running from alibot-pro/backend/
+      validate: validateEnv, // fail fast at boot on missing/short secrets (prod)
     }),
     CacheModule.registerAsync({
       isGlobal: true,
@@ -65,9 +68,14 @@ import { HealthController } from './health.controller';
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: config.get('NODE_ENV') !== 'production',
+        // Auto-DDL only outside production, and never when DB_SYNC=false — a mis-set
+        // NODE_ENV must not silently rewrite the production schema.
+        synchronize: config.get('DB_SYNC') === 'false' ? false : config.get('NODE_ENV') !== 'production',
         migrations: ['dist/migrations/*.js'],
         migrationsRun: config.get('NODE_ENV') === 'production',
+        // Bound the pool: the per-minute crons + web traffic must not exhaust the
+        // Postgres/pgBouncer connection ceiling ("sorry, too many clients").
+        extra: { max: Number(config.get('DB_POOL_MAX')) || 10 },
         ssl: config.get('NODE_ENV') === 'production' && config.get('DATABASE_SSL') === 'true'
           ? { rejectUnauthorized: false }
           : false,
@@ -104,5 +112,10 @@ import { HealthController } from './health.controller';
     SecurityModule,
   ],
   controllers: [HealthController],
+  providers: [
+    // Enforce the 100 req/min/IP default on EVERY route (not just /auth). Public
+    // routes and expensive authed routes were previously unthrottled.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
