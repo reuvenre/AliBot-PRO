@@ -78,10 +78,14 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold text-white mb-2">6. Cookies</h2>
+            <h2 className="text-lg font-semibold text-white mb-2">6. Cookies &amp; Analytics</h2>
             <p>
-              The Service uses only essential cookies (authentication/session). We do not use
-              advertising or cross-site tracking cookies.
+              The Service uses essential cookies (authentication/session) that are always active.
+              With your consent, we also use Google Analytics to understand usage and improve the
+              product; Google Analytics sets its own analytics cookies. Analytics runs in Google
+              Consent Mode with storage denied by default — no analytics cookies are set until you
+              accept via the cookie banner, and you can decline at any time. We do not sell your
+              data or use cross-site advertising cookies.
             </p>
           </div>
 

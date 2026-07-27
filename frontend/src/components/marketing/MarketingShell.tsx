@@ -50,6 +50,10 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-edge text-xs text-white/30">
             <span className="flex items-center gap-2"><Globe size={13} /> Nexlify — Affiliate Automation</span>
+            <div className="flex items-center gap-4">
+              <Link href="/privacy" className="text-white/40 hover:text-white/70 underline-offset-2 hover:underline">מדיניות פרטיות</Link>
+              <Link href="/terms" className="text-white/40 hover:text-white/70 underline-offset-2 hover:underline">תנאי שימוש</Link>
+            </div>
             <span className="flex items-center gap-2">
               מבית{' '}
               <a href="https://win-solutions.co.il" target="_blank" rel="noopener noreferrer"

@@ -4,6 +4,7 @@ import Script from 'next/script';
 import { AuthProvider } from '@/lib/hooks/useAuth';
 import { ThemeProvider } from '@/lib/hooks/useTheme';
 import { PwaRegister } from '@/components/PwaRegister';
+import { CookieConsent } from '@/components/CookieConsent';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -85,20 +86,34 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         {GA_MEASUREMENT_ID && (
           <>
+            {/* Consent Mode v2: DENY analytics/ad storage by default — GA sends cookieless
+                pings until the CookieConsent banner grants it. Must run before gtag config. */}
+            <Script id="gtag-consent-default" strategy="beforeInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('consent', 'default', {
+                  ad_storage: 'denied',
+                  ad_user_data: 'denied',
+                  ad_personalization: 'denied',
+                  analytics_storage: 'denied',
+                  wait_for_update: 500
+                });
+              `}
+            </Script>
             <Script
               src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
               strategy="afterInteractive"
             />
             <Script id="gtag-init" strategy="afterInteractive">
               {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
                 gtag('config', '${GA_MEASUREMENT_ID}');
               `}
             </Script>
           </>
         )}
+        <CookieConsent />
         <PwaRegister />
         <ThemeProvider>
           <AuthProvider>

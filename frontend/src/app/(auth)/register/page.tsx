@@ -158,6 +158,13 @@ export default function RegisterPage() {
               {isLoading && <Loader2 size={15} className="animate-spin" />}
               {isLoading ? 'יוצר חשבון...' : 'צור חשבון'}
             </button>
+
+            <p className="text-[11px] text-white/35 text-center leading-relaxed mt-3">
+              ביצירת חשבון אני מאשר/ת את{' '}
+              <a href="/terms" target="_blank" className="text-blue-400 hover:text-blue-300 underline">תנאי השימוש</a>
+              {' '}ואת{' '}
+              <a href="/privacy" target="_blank" className="text-blue-400 hover:text-blue-300 underline">מדיניות הפרטיות</a>.
+            </p>
           </form>
 
           {/* divider */}
