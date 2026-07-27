@@ -12,7 +12,9 @@ export interface RateCache {
 }
 
 const RATES_CACHE_KEY = 'exchange_rates';
+const RATES_LAST_GOOD_KEY = 'exchange_rates_last_good';
 const RATES_TTL_SEC = 60 * 60; // 1 hour
+const LAST_GOOD_TTL_SEC = 30 * 24 * 60 * 60; // 30 days — survives a long upstream outage
 
 const FALLBACK: RateCache = {
   USD_ILS: 3.7,
@@ -53,14 +55,19 @@ export class RatesService {
         { timeout: 8000 },
       );
       const r = res.data.rates;
-      return {
+      const fresh: RateCache = {
         USD_ILS: r.ILS || FALLBACK.USD_ILS,
         USD_EUR: r.EUR || FALLBACK.USD_EUR,
         USD_GBP: r.GBP || FALLBACK.USD_GBP,
         updated_at: new Date().toISOString(),
       };
+      // Persist the last KNOWN-GOOD rate separately (long TTL) so an upstream outage
+      // falls back to a real recent rate instead of the stale hardcoded 3.7.
+      await cacheSet(this.cacheManager, RATES_LAST_GOOD_KEY, fresh, LAST_GOOD_TTL_SEC * 1000);
+      return fresh;
     } catch {
-      return FALLBACK;
+      const lastGood = await cacheGet<RateCache>(this.cacheManager, RATES_LAST_GOOD_KEY);
+      return lastGood || FALLBACK;
     }
   }
 }

@@ -4,6 +4,10 @@ import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { installRetryAfterInterceptor } from './common/http-retry';
+
+// Honor 429 Retry-After (Telegram/FB/etc.) globally with one backed-off retry.
+installRetryAfterInterceptor();
 
 // Crash safety: since Node 15 an unhandled promise rejection KILLS the process —
 // on a free single-instance host that reads as "the server randomly falls over".

@@ -3055,7 +3055,19 @@ export class PostsService {
         tracking_id: creds.aliexpress_tracking_id,
       }, creds.aliexpress_app_secret);
 
-      const res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
+      // Retry transient failures (network / 5xx / timeout): a single blip used to skip the
+      // whole campaign cycle unattended. Up to 3 attempts with linear backoff.
+      let res: any;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
+          break;
+        } catch (e: any) {
+          const retriable = !e?.response || e.response.status >= 500 || e.code === 'ECONNABORTED';
+          if (attempt >= 3 || !retriable) throw e;
+          await new Promise((r) => setTimeout(r, attempt * 800));
+        }
+      }
 
       const items = res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
       return items.map((p: any) => {
