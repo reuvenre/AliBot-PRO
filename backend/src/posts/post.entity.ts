@@ -125,6 +125,12 @@ export class Post {
   @Column({ nullable: true })
   sent_at: Date;
 
+  /** When the post entered 'pending' (a send was claimed). The stuck-post cleanup keys off
+   *  this — not created_at — so a post that sat queued for hours isn't declared "stuck" the
+   *  instant it starts sending. */
+  @Column({ nullable: true })
+  pending_at: Date;
+
   @Column({ nullable: true })
   scheduled_at: Date;
 

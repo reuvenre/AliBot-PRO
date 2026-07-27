@@ -511,6 +511,7 @@ export class PostsService {
       price_ils: product ? parts.priceIls : 0,
       generated_text: text,
       status: 'pending',
+      pending_at: new Date(),
       is_promo: !!promoNorm,
       promo_ends_at: promoNorm?.ends_at,
       promo_discount: promoNorm?.discount ?? null,
@@ -623,6 +624,7 @@ export class PostsService {
     const creds = await this.credentials.getRaw(userId);
     const post = this.buildCustomPost(userId, data);
     post.status = 'pending';
+    post.pending_at = new Date();
     await this.repo.save(post);
     // sendToTelegram swallows channel errors and marks the post 'failed' — surface that
     // to the caller so the UI shows the real reason instead of a false "sent".
@@ -849,8 +851,15 @@ export class PostsService {
       return { sent: false, deferred: true, chats };
     }
 
+    // Atomically CLAIM the post: flip queued → pending in one statement. If another
+    // worker (or a re-entrant tick) already took it, affected = 0 → skip, so the same
+    // post can't be published and charged twice.
+    const claim = await this.repo.createQueryBuilder()
+      .update(Post).set({ status: 'pending', pending_at: () => 'NOW()' })
+      .where('id = :id AND status = :queued', { id: next.id, queued: 'queued' })
+      .execute();
+    if (!claim.affected) return { sent: false };
     next.status = 'pending';
-    await this.repo.save(next);
     // Route to the post's target group if set (supplier products / per-catalog channel).
     await this.sendToTelegram(next, creds, next.channel_override || undefined);
     // sendToTelegram mutates next.status in place ('sent' | 'failed'); TS still sees the
@@ -953,12 +962,17 @@ export class PostsService {
 
   async findDueScheduledPosts(): Promise<Post[]> {
     const now = new Date();
+    const DUE_CAP = 1000; // memory backstop — a per-minute cron must never load unbounded rows
     const due = await this.repo
       .createQueryBuilder('p')
       .where('p.status = :status', { status: 'scheduled' })
       .andWhere('p.scheduled_at <= :now', { now })
       .orderBy('p.scheduled_at', 'ASC')
+      .take(DUE_CAP)
       .getMany();
+    if (due.length === DUE_CAP) {
+      this.logger.warn(`findDueScheduledPosts hit the ${DUE_CAP}-row cap — a backlog is draining; oldest are processed first`);
+    }
 
     // Release the OLDEST due post per group this tick, and RE-SPACE that group's remaining
     // overdue posts into future slots (now + N·interval). This uses scheduled_at — an
@@ -1027,8 +1041,14 @@ export class PostsService {
 
   async sendScheduled(post: Post) {
     const creds = await this.credentials.getRaw(post.user_id);
+    // Atomically claim the scheduled post (scheduled → pending). If another instance's
+    // cron already picked the same due head this tick, affected = 0 → skip.
+    const claim = await this.repo.createQueryBuilder()
+      .update(Post).set({ status: 'pending', pending_at: () => 'NOW()' })
+      .where('id = :id AND status = :scheduled', { id: post.id, scheduled: 'scheduled' })
+      .execute();
+    if (!claim.affected) return;
     post.status = 'pending';
-    await this.repo.save(post);
     await this.sendToTelegram(post, creds, post.channel_override || undefined);
     // Share ONE clock per group. Scheduled (campaign) posts and the manual auto-send queue
     // used to run on SEPARATE clocks, so a manually-queued post fired in-between the autopilot
@@ -1688,6 +1708,7 @@ export class PostsService {
       price_ils: parts.priceIls,
       generated_text: data.generated_text,
       status: 'pending',
+      pending_at: new Date(),
     });
 
     await this.repo.save(post);
@@ -1699,10 +1720,15 @@ export class PostsService {
 
   async resetStuckPendingPosts(): Promise<void> {
     const cutoff = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
-    await this.repo.update(
-      { status: 'pending', created_at: LessThan(cutoff) },
-      { status: 'failed', error_message: 'Timed out — server may have restarted during send' },
-    );
+    // Key off pending_at (when the send was claimed), falling back to created_at for rows
+    // written before pending_at existed — so a post that merely sat queued a long time
+    // isn't marked "stuck" the moment it starts sending.
+    await this.repo.createQueryBuilder()
+      .update(Post)
+      .set({ status: 'failed', error_message: 'Timed out — server may have restarted during send' })
+      .where('status = :pending', { pending: 'pending' })
+      .andWhere('COALESCE(pending_at, created_at) < :cutoff', { cutoff })
+      .execute();
   }
 
   // ── Winner recycling (daily cron) ─────────────────────────────────────────
@@ -1855,6 +1881,7 @@ export class PostsService {
     }
     const creds = await this.credentials.getRaw(userId);
     post.status = 'pending';
+    post.pending_at = new Date();
     post.error_message = null;
     await this.repo.save(post);
     await this.sendToTelegram(post, creds, post.channel_override || undefined);
@@ -2726,7 +2753,10 @@ export class PostsService {
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 8000 },
     );
     if (res.data?.error) throw new Error(res.data.error.message);
-    post.facebook_post_id = res.data?.id;
+    // A 200 without a post id means nothing was actually published — treat it as a
+    // failure instead of marking the post 'sent' (Telegram validates delivery; FB didn't).
+    if (!res.data?.id) throw new Error('Facebook did not return a post id (nothing published)');
+    post.facebook_post_id = res.data.id;
   }
 
   /**
