@@ -80,6 +80,23 @@ export class SubscriptionService {
    *    quote; the plan is activated manually. The UI tells the user it's pending.
    * Either way the user never self-grants a paid tier without payment.
    */
+  /**
+   * Server-side price for a plan+billing, with any active promotion applied. The AUTHORITATIVE
+   * amount — checkout must use this, never a client-supplied price (which is tamperable).
+   */
+  async quote(planId: string, billing: BillingCycle = 'monthly'): Promise<{ plan: typeof PLANS[PlanId]; billing: BillingCycle; price: number; dealTitle?: string }> {
+    const plan = PLANS[planId as PlanId];
+    if (!plan) throw new BadRequestException('תוכנית לא מוכרת');
+    if (billing !== 'monthly' && billing !== 'annual') billing = 'monthly';
+    const base = billing === 'annual' ? plan.price_annual : plan.price_monthly;
+    const deals = await this.promotions.active().catch(() => []);
+    const deal = deals.find((d) => d.target_type === 'plan' && d.target_id === plan.id)
+      || deals.find((d) => d.target_type === 'all_plans')
+      || null;
+    const price = deal ? PromotionsService.dealPrice(base, deal) : base;
+    return { plan, billing, price, dealTitle: deal?.title };
+  }
+
   async requestUpgrade(userId: string, planId: string, billing: BillingCycle = 'monthly') {
     const plan = PLANS[planId as PlanId];
     if (!plan) throw new BadRequestException('תוכנית לא מוכרת');
@@ -91,22 +108,16 @@ export class SubscriptionService {
     }
 
     // Quote with any active promo applied — the same price the pricing UI showed.
-    const base = billing === 'annual' ? plan.price_annual : plan.price_monthly;
-    const deals = await this.promotions.active().catch(() => []);
-    const deal = deals.find((d) => d.target_type === 'plan' && d.target_id === plan.id)
-      || deals.find((d) => d.target_type === 'all_plans')
-      || null;
-    const price = deal ? PromotionsService.dealPrice(base, deal) : base;
+    const quoted = await this.quote(plan.id, billing);
+    const price = quoted.price;
+    const deal = quoted.dealTitle ? { title: quoted.dealTitle } : null;
 
-    // Payment-gateway hook point (Grow/Meshulam/Stripe…): hand off to checkout.
-    const checkoutBase = process.env.PAYMENT_CHECKOUT_URL;
-    if (checkoutBase) {
-      const url = `${checkoutBase}${checkoutBase.includes('?') ? '&' : '?'}`
-        + `plan=${plan.id}&billing=${billing}&price=${price}&uid=${user.id}`;
-      return { status: 'checkout' as const, checkout_url: url, plan: plan.id, billing, price };
-    }
+    // NOTE: hosted checkout now lives in PaymentsService (POST /payments/checkout), which
+    // computes the amount server-side and confirms via a signed webhook. The old
+    // client-visible price-in-URL hand-off was removed (a tampered price could reach the
+    // gateway). This method is now purely the no-gateway manual-activation path.
 
-    // No gateway yet — notify every admin with the exact quote for manual activation.
+    // Notify every admin with the exact quote for manual activation.
     this.logger.log(`Upgrade request: ${user.email} → ${plan.id} (${billing}) at ₪${price}`);
     if (this.mail.isConfigured()) {
       const admins = await this.users.find({ where: { role: 'admin' } });

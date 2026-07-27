@@ -22,7 +22,9 @@ process.on('uncaughtException', (err) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody:true keeps the unparsed request body available (req.rawBody) so payment-webhook
+  // signatures can be verified over the exact bytes the provider signed.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Security headers. The API serves JSON + the streamed image proxy — no first-party
   // HTML app — so a restrictive CSP is safe. HSTS is enabled in prod (behind TLS).

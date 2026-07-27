@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   Check, Zap, Loader2, ArrowUpCircle, Rocket, Flame, X, CheckCircle2, ShieldCheck,
 } from 'lucide-react';
-import { subscriptionApi } from '@/lib/api-client';
+import { subscriptionApi, paymentsApi } from '@/lib/api-client';
 import { dealFor, dealPrice, endsInLabel } from '@/lib/deals';
 import type { ActiveDeal, BillingCycle, CreditPack, PlanDef, SubscriptionStatus } from '@/types';
 
@@ -379,12 +379,16 @@ function UpgradeConfirmModal({ plan, billing, deals, features, onClose }: {
   const confirm = async () => {
     setSubmitting(true); setError('');
     try {
-      const r = await subscriptionApi.upgrade(plan.id, billing);
-      if (r.status === 'checkout' && r.checkout_url) {
-        window.location.href = r.checkout_url; // gateway flow — activation lands via webhook
+      // Secure checkout: the server computes the amount and (with a gateway) returns a
+      // redirect URL; payment is confirmed via a signed webhook. No gateway → fall back to
+      // the manual upgrade request (records it + emails an admin to activate).
+      const r = await paymentsApi.checkout({ kind: 'subscription', planId: plan.id, billing });
+      if (r.status === 'checkout' && r.url) {
+        window.location.href = r.url;
         return;
       }
-      setDone({ price: r.price });
+      await subscriptionApi.upgrade(plan.id, billing).catch(() => {});
+      setDone({ price: r.amount });
     } catch (e: any) {
       setError(e?.response?.data?.message || 'שליחת הבקשה נכשלה — נסה שוב');
     } finally {

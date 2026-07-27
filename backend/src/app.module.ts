@@ -34,6 +34,7 @@ import { LinksModule } from './links/links.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { WatchdogModule } from './watchdog/watchdog.module';
 import { RecoveryModule } from './recovery/recovery.module';
+import { PaymentsModule } from './payments/payments.module';
 import { SecurityModule } from './security/security.module';
 import { HealthController } from './health.controller';
 
@@ -112,6 +113,7 @@ import { HealthController } from './health.controller';
     PromotionsModule,
     WatchdogModule,
     RecoveryModule,
+    PaymentsModule,
     SecurityModule,
   ],
   controllers: [HealthController],

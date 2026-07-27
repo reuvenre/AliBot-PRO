@@ -348,6 +348,17 @@ export const subscriptionApi = {
   // upgrades are handled by an admin (PATCH /admin/users/:id/subscription) until billing lands.
 };
 
+// ─── Payments API ────────────────────────────────────────────────────────────
+export const paymentsApi = {
+  /** Which gateway is live ('none' = manual activation). */
+  provider: () => http.get<{ provider: string }>('/payments/provider').then(extract),
+  /** Create a checkout session (server-computed amount). status 'checkout' → redirect to url. */
+  checkout: (input: { kind?: 'subscription' | 'credit_pack'; planId?: string; billing?: BillingCycle; packId?: string }) =>
+    http.post<{ status: 'checkout' | 'pending'; url?: string; session_id: string; amount: number }>(
+      '/payments/checkout', input,
+    ).then(extract),
+};
+
 // ─── Scheduled custom posts API ──────────────────────────────────────────────
 
 export const customPostsApi = {
