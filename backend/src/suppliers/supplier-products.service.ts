@@ -362,13 +362,31 @@ export class SupplierProductsService {
     return full.slice(0, max);
   }
 
+  /**
+   * Gallery for a manual send/schedule/queue. An explicit user selection always wins.
+   * Otherwise, when this product was ALREADY published, a re-push must mirror the first
+   * post's images — not dump the whole Yupoo album. Only a never-posted product falls
+   * back to the full album (capped). Fixes re-sends ballooning e.g. 4 → 10 images.
+   */
+  private async resolveGallery(userId: string, p: SupplierProduct, selected: string[] | undefined, max: number): Promise<string[]> {
+    if (selected?.length) return this.selectGallery(p, selected, max);
+    const original = await this.posts.findOriginalPost(userId, String(p.sku || p.id)).catch(() => null);
+    if (original) {
+      let g: string[] = [];
+      try { g = original.gallery_json ? JSON.parse(original.gallery_json) : []; } catch { g = []; }
+      if (!g.length && original.product_image) g = [original.product_image];
+      if (g.length) return g.slice(0, max);
+    }
+    return this.selectGallery(p, undefined, max);
+  }
+
   /** Send now — to one group or several at once (a single credit for the action). */
   async send(userId: string, id: string, text?: string, channelId?: string, images?: string[], collageCells?: number, channels?: string[]) {
     const p = await this.get(userId, id);
     if (p.in_stock === false) throw new BadRequestException('המוצר לא זמין (קישור FLYLINK מת)');
     if (!p.flylink_url) throw new BadRequestException('חסר קישור FLYLINK למוצר');
 
-    const gallery = this.selectGallery(p, images, collageCells ? 30 : 10);
+    const gallery = await this.resolveGallery(userId, p, images, collageCells ? 30 : 10);
     const image = gallery[0] || this.proxyImage(p.image_url) || '';
     const finalText = text?.trim() || (await this.preview(userId, id)).generated_text;
     const targets = await this.targetChannels(p, channels, channelId);
@@ -390,7 +408,7 @@ export class SupplierProductsService {
     if (p.in_stock === false) throw new BadRequestException('המוצר לא זמין (קישור FLYLINK מת)');
     if (!p.flylink_url) throw new BadRequestException('חסר קישור FLYLINK למוצר');
 
-    const gallery = this.selectGallery(p, images, collageCells ? 30 : 10);
+    const gallery = await this.resolveGallery(userId, p, images, collageCells ? 30 : 10);
     const image = gallery[0] || this.proxyImage(p.image_url) || '';
     const finalText = text?.trim() || (await this.preview(userId, id)).generated_text;
     const targets = await this.targetChannels(p, channels, channelId);
@@ -415,7 +433,7 @@ export class SupplierProductsService {
     if (p.in_stock === false) throw new BadRequestException('המוצר לא זמין (קישור FLYLINK מת)');
     if (!p.flylink_url) throw new BadRequestException('חסר קישור FLYLINK למוצר');
 
-    const gallery = this.selectGallery(p, images, collageCells ? 30 : 10);
+    const gallery = await this.resolveGallery(userId, p, images, collageCells ? 30 : 10);
     const image = gallery[0] || this.proxyImage(p.image_url) || '';
     const targets = await this.targetChannels(p, channels, channelId);
     const { price, currency } = await this.pricing(userId, p.price);
