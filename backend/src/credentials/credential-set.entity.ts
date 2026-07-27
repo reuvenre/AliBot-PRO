@@ -260,6 +260,23 @@ export class CredentialSet {
   @Column({ default: 10 })
   recycle_min_clicks: number;
 
+  // ── Sales-recovery auto-push (organic) — distinct from the paid-ads boost_* fields ──
+  /** When orders drop below the threshold, auto-publish extra hot products (bought-but-
+   *  unposted + AliExpress best-sellers) to the active campaigns' groups until sales recover. */
+  @Column({ default: false })
+  recovery_enabled: boolean;
+
+  /** Trigger: fewer than this many attributed orders within recovery_window_days activates it. */
+  @Column({ default: 5 })
+  recovery_min_orders: number;
+
+  @Column({ default: 3 })
+  recovery_window_days: number;
+
+  /** Extra recovery posts per day while active. */
+  @Column({ default: 3 })
+  recovery_posts_per_day: number;
+
   /** Timestamp of last queue post sent (used to enforce interval) */
   @Column({ nullable: true })
   schedule_last_sent_at: Date;

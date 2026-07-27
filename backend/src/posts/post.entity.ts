@@ -111,6 +111,11 @@ export class Post {
   @Column({ default: false })
   promo_expired: boolean;
 
+  /** Published by the sales-recovery auto-push (order-drop → extra hot products). Used to
+   *  cap how many recovery posts go out per day. */
+  @Column({ default: false })
+  is_boost: boolean;
+
   @Column({ default: 'pending' })
   status: PostStatus;
 

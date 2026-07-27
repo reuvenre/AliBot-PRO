@@ -78,6 +78,10 @@ export interface DecryptedCredentials {
   seasonal_enabled?: boolean;
   recycle_winners_enabled?: boolean;
   recycle_min_clicks?: number;
+  recovery_enabled?: boolean;
+  recovery_min_orders?: number;
+  recovery_window_days?: number;
+  recovery_posts_per_day?: number;
   schedule_last_sent_at?: Date;
 }
 
@@ -259,6 +263,10 @@ export class CredentialsService {
     if (dto.seasonal_enabled !== undefined) cred.seasonal_enabled = dto.seasonal_enabled;
     if (dto.recycle_winners_enabled !== undefined) cred.recycle_winners_enabled = dto.recycle_winners_enabled;
     if (dto.recycle_min_clicks !== undefined) cred.recycle_min_clicks = Math.max(1, Math.floor(dto.recycle_min_clicks) || 10);
+    if (dto.recovery_enabled !== undefined) cred.recovery_enabled = dto.recovery_enabled;
+    if (dto.recovery_min_orders !== undefined) cred.recovery_min_orders = Math.max(1, Math.floor(dto.recovery_min_orders) || 5);
+    if (dto.recovery_window_days !== undefined) cred.recovery_window_days = Math.max(1, Math.floor(dto.recovery_window_days) || 3);
+    if (dto.recovery_posts_per_day !== undefined) cred.recovery_posts_per_day = Math.max(1, Math.min(20, Math.floor(dto.recovery_posts_per_day) || 3));
 
     // Secret fields — only update when a non-empty value is provided
     if (dto.aliexpress_app_secret?.trim()) {
@@ -521,6 +529,10 @@ export class CredentialsService {
       seasonal_enabled: cred.seasonal_enabled ?? true,
       recycle_winners_enabled: cred.recycle_winners_enabled ?? false,
       recycle_min_clicks: cred.recycle_min_clicks ?? 10,
+      recovery_enabled: cred.recovery_enabled ?? false,
+      recovery_min_orders: cred.recovery_min_orders ?? 5,
+      recovery_window_days: cred.recovery_window_days ?? 3,
+      recovery_posts_per_day: cred.recovery_posts_per_day ?? 3,
       schedule_last_sent_at: cred.schedule_last_sent_at,
     };
   }
@@ -548,6 +560,17 @@ export class CredentialsService {
   async getTelegramToken(userId: string): Promise<string | null> {
     const cred = await this.repo.findOne({ where: { user_id: userId } });
     return cred?.telegram_bot_token_enc ? decrypt(cred.telegram_bot_token_enc) : null;
+  }
+
+  /** Users with sales-recovery enabled + their thresholds (for the recovery cron). */
+  async recoverySettings(): Promise<Array<{ userId: string; minOrders: number; windowDays: number; postsPerDay: number }>> {
+    const rows = await this.repo.find({ where: { recovery_enabled: true } });
+    return rows.map((c) => ({
+      userId: c.user_id,
+      minOrders: c.recovery_min_orders ?? 5,
+      windowDays: c.recovery_window_days ?? 3,
+      postsPerDay: c.recovery_posts_per_day ?? 3,
+    }));
   }
 
   /** Returns all credential sets with scheduling enabled (for queue cron) */
@@ -659,6 +682,10 @@ export class CredentialsService {
       seasonal_enabled: cred.seasonal_enabled ?? true,
       recycle_winners_enabled: cred.recycle_winners_enabled ?? false,
       recycle_min_clicks: cred.recycle_min_clicks ?? 10,
+      recovery_enabled: cred.recovery_enabled ?? false,
+      recovery_min_orders: cred.recovery_min_orders ?? 5,
+      recovery_window_days: cred.recovery_window_days ?? 3,
+      recovery_posts_per_day: cred.recovery_posts_per_day ?? 3,
       schedule_last_sent_at: cred.schedule_last_sent_at ?? null,
       created_at: cred.created_at,
       updated_at: cred.updated_at,

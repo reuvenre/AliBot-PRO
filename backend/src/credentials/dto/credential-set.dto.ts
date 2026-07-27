@@ -219,4 +219,20 @@ export class CredentialSetDto {
   @IsOptional()
   @IsNumber()
   recycle_min_clicks?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  recovery_enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  recovery_min_orders?: number;
+
+  @IsOptional()
+  @IsNumber()
+  recovery_window_days?: number;
+
+  @IsOptional()
+  @IsNumber()
+  recovery_posts_per_day?: number;
 }
