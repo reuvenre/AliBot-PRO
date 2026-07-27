@@ -82,6 +82,7 @@ export interface DecryptedCredentials {
   recovery_min_orders?: number;
   recovery_window_days?: number;
   recovery_posts_per_day?: number;
+  recovery_campaign_ids?: string[];
   schedule_last_sent_at?: Date;
 }
 
@@ -267,6 +268,12 @@ export class CredentialsService {
     if (dto.recovery_min_orders !== undefined) cred.recovery_min_orders = Math.max(1, Math.floor(dto.recovery_min_orders) || 5);
     if (dto.recovery_window_days !== undefined) cred.recovery_window_days = Math.max(1, Math.floor(dto.recovery_window_days) || 3);
     if (dto.recovery_posts_per_day !== undefined) cred.recovery_posts_per_day = Math.max(1, Math.min(20, Math.floor(dto.recovery_posts_per_day) || 3));
+    if (dto.recovery_campaign_ids !== undefined) {
+      const ids = Array.isArray(dto.recovery_campaign_ids)
+        ? dto.recovery_campaign_ids.map((x) => String(x)).filter(Boolean)
+        : [];
+      cred.recovery_campaign_ids = ids.length ? JSON.stringify(ids) : null;
+    }
 
     // Secret fields — only update when a non-empty value is provided
     if (dto.aliexpress_app_secret?.trim()) {
@@ -533,8 +540,16 @@ export class CredentialsService {
       recovery_min_orders: cred.recovery_min_orders ?? 5,
       recovery_window_days: cred.recovery_window_days ?? 3,
       recovery_posts_per_day: cred.recovery_posts_per_day ?? 3,
+      recovery_campaign_ids: this.parseCampaignIds(cred.recovery_campaign_ids),
       schedule_last_sent_at: cred.schedule_last_sent_at,
     };
+  }
+
+  private parseCampaignIds(raw: string | null | undefined): string[] {
+    try {
+      const parsed = JSON.parse(raw || '[]');
+      return Array.isArray(parsed) ? parsed.map((x) => String(x)).filter(Boolean) : [];
+    } catch { return []; }
   }
 
   /** WhatsApp Cloud API credentials (decrypted), or null when not configured. */
@@ -562,15 +577,24 @@ export class CredentialsService {
     return cred?.telegram_bot_token_enc ? decrypt(cred.telegram_bot_token_enc) : null;
   }
 
-  /** Users with sales-recovery enabled + their thresholds (for the recovery cron). */
-  async recoverySettings(): Promise<Array<{ userId: string; minOrders: number; windowDays: number; postsPerDay: number }>> {
+  /** Users with sales-recovery enabled + their thresholds (for the recovery cron).
+   *  campaignIds is the opt-in campaign filter — empty = every active campaign. */
+  async recoverySettings(): Promise<Array<{ userId: string; minOrders: number; windowDays: number; postsPerDay: number; campaignIds: string[] }>> {
     const rows = await this.repo.find({ where: { recovery_enabled: true } });
-    return rows.map((c) => ({
-      userId: c.user_id,
-      minOrders: c.recovery_min_orders ?? 5,
-      windowDays: c.recovery_window_days ?? 3,
-      postsPerDay: c.recovery_posts_per_day ?? 3,
-    }));
+    return rows.map((c) => {
+      let campaignIds: string[] = [];
+      try {
+        const parsed = JSON.parse(c.recovery_campaign_ids || '[]');
+        if (Array.isArray(parsed)) campaignIds = parsed.map((x) => String(x)).filter(Boolean);
+      } catch { /* ignore malformed */ }
+      return {
+        userId: c.user_id,
+        minOrders: c.recovery_min_orders ?? 5,
+        windowDays: c.recovery_window_days ?? 3,
+        postsPerDay: c.recovery_posts_per_day ?? 3,
+        campaignIds,
+      };
+    });
   }
 
   /** Returns all credential sets with scheduling enabled (for queue cron) */
@@ -686,6 +710,7 @@ export class CredentialsService {
       recovery_min_orders: cred.recovery_min_orders ?? 5,
       recovery_window_days: cred.recovery_window_days ?? 3,
       recovery_posts_per_day: cred.recovery_posts_per_day ?? 3,
+      recovery_campaign_ids: this.parseCampaignIds(cred.recovery_campaign_ids),
       schedule_last_sent_at: cred.schedule_last_sent_at ?? null,
       created_at: cred.created_at,
       updated_at: cred.updated_at,

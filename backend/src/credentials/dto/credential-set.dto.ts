@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsInt, IsNumber, IsIn, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt, IsNumber, IsIn, IsArray, Min, Max } from 'class-validator';
 
 export class CredentialSetDto {
   @IsOptional()
@@ -235,4 +235,10 @@ export class CredentialSetDto {
   @IsOptional()
   @IsNumber()
   recovery_posts_per_day?: number;
+
+  /** Campaign ids opted into recovery boosts. Empty/omitted = every active campaign. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  recovery_campaign_ids?: string[];
 }

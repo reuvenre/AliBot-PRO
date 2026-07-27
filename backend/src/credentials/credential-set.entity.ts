@@ -277,6 +277,12 @@ export class CredentialSet {
   @Column({ default: 3 })
   recovery_posts_per_day: number;
 
+  /** JSON array of campaign ids that opt into recovery boosts. Empty/null = every
+   *  active campaign participates (backward-compatible default). When set, only these
+   *  campaigns' target groups receive boost posts. */
+  @Column({ type: 'text', nullable: true })
+  recovery_campaign_ids: string | null;
+
   /** Timestamp of last queue post sent (used to enforce interval) */
   @Column({ nullable: true })
   schedule_last_sent_at: Date;

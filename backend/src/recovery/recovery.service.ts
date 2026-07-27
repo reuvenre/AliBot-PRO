@@ -50,7 +50,7 @@ export class RecoveryService {
     }
   }
 
-  private async runForUser(u: { userId: string; minOrders: number; windowDays: number; postsPerDay: number }): Promise<void> {
+  private async runForUser(u: { userId: string; minOrders: number; windowDays: number; postsPerDay: number; campaignIds: string[] }): Promise<void> {
     const now = Date.now();
 
     // 1) Orders in the window (one earnings row per order). Healthy → nothing to do.
@@ -63,10 +63,14 @@ export class RecoveryService {
     const boostToday = await this.posts.count({ where: { user_id: u.userId, is_boost: true, created_at: MoreThan(startOfDay) } });
     if (boostToday >= u.postsPerDay) return;
 
-    // 3) Target groups = the union of the active campaigns' target channels.
+    // 3) Target groups = the union of the participating active campaigns' target channels.
+    //    An explicit campaignIds selection narrows it; empty = every active campaign.
     const active = await this.campaigns.find({ where: { user_id: u.userId, status: 'active' as any } });
+    const selected = u.campaignIds.length
+      ? active.filter((c) => u.campaignIds.includes(String(c.id)))
+      : active;
     const groups = new Set<string>();
-    for (const c of active) {
+    for (const c of selected) {
       try { for (const g of JSON.parse(c.target_channels || '[]')) if (g) groups.add(String(g)); } catch { /* ignore */ }
     }
     const groupList = [...groups];

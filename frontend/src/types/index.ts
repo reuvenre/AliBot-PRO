@@ -229,6 +229,7 @@ export interface CredentialSet {
   recovery_min_orders?: number;
   recovery_window_days?: number;
   recovery_posts_per_day?: number;
+  recovery_campaign_ids?: string[];
   schedule_last_sent_at?: string;
   created_at: string;
   updated_at: string;
@@ -304,6 +305,7 @@ export interface CredentialSetInput {
   recovery_min_orders?: number;
   recovery_window_days?: number;
   recovery_posts_per_day?: number;
+  recovery_campaign_ids?: string[];
 }
 
 export interface VerifyResult {

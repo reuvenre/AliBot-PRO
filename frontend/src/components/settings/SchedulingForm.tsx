@@ -5,7 +5,8 @@ import {
   ListOrdered, Save, Loader2, CheckCircle2, Clock,
   Sun, Moon, Timer, Info, Zap,
 } from 'lucide-react';
-import { credentialsApi } from '@/lib/api-client';
+import { credentialsApi, campaignsApi } from '@/lib/api-client';
+import type { Campaign } from '@/types';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => {
   const label = i === 0 ? '00:00 (חצות)'
@@ -46,6 +47,9 @@ export function SchedulingForm() {
   const [recoveryMinOrders, setRecoveryMinOrders] = useState(5);
   const [recoveryWindowDays, setRecoveryWindowDays] = useState(3);
   const [recoveryPostsPerDay, setRecoveryPostsPerDay] = useState(3);
+  // Which campaigns participate in recovery. Empty = all active campaigns.
+  const [recoveryCampaignIds, setRecoveryCampaignIds] = useState<string[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -66,9 +70,14 @@ export function SchedulingForm() {
         setRecoveryMinOrders(c.recovery_min_orders ?? 5);
         setRecoveryWindowDays(c.recovery_window_days ?? 3);
         setRecoveryPostsPerDay(c.recovery_posts_per_day ?? 3);
+        setRecoveryCampaignIds(c.recovery_campaign_ids ?? []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Active campaigns feed the recovery opt-in checklist.
+    campaignsApi.list({ status: 'active', limit: 100 })
+      .then((res) => setActiveCampaigns(res?.data ?? []))
+      .catch(() => {});
   }, []);
 
   const postsPerDay = estimatePostsPerDay(startHour, endHour, interval);
@@ -99,6 +108,7 @@ export function SchedulingForm() {
         recovery_min_orders: Math.max(1, recoveryMinOrders || 5),
         recovery_window_days: Math.max(1, recoveryWindowDays || 3),
         recovery_posts_per_day: Math.max(1, Math.min(20, recoveryPostsPerDay || 3)),
+        recovery_campaign_ids: recoveryCampaignIds,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -374,6 +384,42 @@ export function SchedulingForm() {
             <p className="sm:col-span-3 text-2xs text-white/30">
               נעצר אוטומטית ברגע שההזמנות חוזרות מעל הסף. דורש קמפיין פעיל אחד לפחות (משם נלקחות קבוצות היעד).
             </p>
+          </div>
+        )}
+        {recoveryOn && (
+          <div className="mt-4 pt-4 border-t border-edge" dir="rtl">
+            <label className="block text-xs font-medium text-white/50 mb-2">אילו קמפיינים משתתפים בהתאוששות?</label>
+            {activeCampaigns.length === 0 ? (
+              <p className="text-2xs text-white/30">אין קמפיינים פעילים. הפעל קמפיין כדי לבחור קבוצות יעד.</p>
+            ) : (
+              <>
+                <div className="space-y-1.5 max-h-52 overflow-y-auto pl-1">
+                  {activeCampaigns.map((c) => {
+                    const checked = recoveryCampaignIds.includes(c.id);
+                    return (
+                      <label key={c.id} className="flex items-center gap-2.5 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setRecoveryCampaignIds((prev) =>
+                              e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id),
+                            )
+                          }
+                          className="w-4 h-4 rounded accent-amber-500 shrink-0"
+                        />
+                        <span className="text-sm text-white/80 group-hover:text-white truncate">{c.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-2xs text-white/30 mt-2">
+                  {recoveryCampaignIds.length === 0
+                    ? 'לא נבחר כלום — ברירת מחדל: כל הקמפיינים הפעילים משתתפים.'
+                    : `נבחרו ${recoveryCampaignIds.length} קמפיינים — רק הקבוצות שלהם יקבלו פוסטי boost.`}
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>
