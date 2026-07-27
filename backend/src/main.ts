@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
 import { installRetryAfterInterceptor } from './common/http-retry';
 
@@ -26,6 +27,28 @@ async function bootstrap() {
   // Security headers. The API serves JSON + the streamed image proxy — no first-party
   // HTML app — so a restrictive CSP is safe. HSTS is enabled in prod (behind TLS).
   const isProd = process.env.NODE_ENV === 'production';
+
+  // Production schema bootstrap: on a truly EMPTY database (fresh deploy / DR / new region)
+  // build the baseline from the entities via synchronize, THEN run migrations. On the
+  // existing populated DB the synchronize step is skipped and only migrations run — so this
+  // is a no-op there, but a clean rebuild no longer dies on the first ALTER of a missing table.
+  if (isProd && process.env.DB_SYNC !== 'false') {
+    const ds = app.get(DataSource);
+    try {
+      const rows = await ds.query(`SELECT to_regclass('public.users') AS t`);
+      const dbIsEmpty = !rows?.[0]?.t;
+      if (dbIsEmpty) {
+        console.log('[bootstrap] empty database detected — building baseline schema from entities');
+        await ds.synchronize();
+      }
+      await ds.runMigrations();
+      console.log('[bootstrap] migrations applied');
+    } catch (err) {
+      console.error('[bootstrap] schema bootstrap failed', err);
+      throw err;
+    }
+  }
+
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {

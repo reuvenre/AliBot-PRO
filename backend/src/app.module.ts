@@ -72,7 +72,10 @@ import { HealthController } from './health.controller';
         // NODE_ENV must not silently rewrite the production schema.
         synchronize: config.get('DB_SYNC') === 'false' ? false : config.get('NODE_ENV') !== 'production',
         migrations: ['dist/migrations/*.js'],
-        migrationsRun: config.get('NODE_ENV') === 'production',
+        // Prod migrations are run manually in main.ts (bootstrapProdSchema) so a truly
+        // EMPTY database can build its baseline from the entities first — otherwise the
+        // earliest ALTER migration hits a non-existent table and the deploy dies.
+        migrationsRun: false,
         // Bound the pool: the per-minute crons + web traffic must not exhaust the
         // Postgres/pgBouncer connection ceiling ("sorry, too many clients").
         extra: { max: Number(config.get('DB_POOL_MAX')) || 10 },
