@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import type { OverlayOptions } from 'sharp';
+import { isSafeOutboundUrl } from '../common/ssrf';
 // sharp's runtime is CommonJS (module.exports = sharp) but its types use `export default`,
 // and this tsconfig has NO esModuleInterop — so `import sharp from 'sharp'` emits
 // `sharp_1.default`, which is undefined at runtime → "sharp_1.default is not a function".
@@ -128,11 +129,20 @@ export class CollageService {
     } else if (/yupoo\.com/i.test(url)) {
       referer = 'https://x.yupoo.com/';
     }
+    // SSRF guard: gallery URLs (and the unwrapped proxy target) can be user-supplied
+    // (custom-post image_urls). Reject internal/private hosts and non-http(s), and never
+    // follow redirects — a public host must not 30x into cloud metadata / localhost, and the
+    // unwrapped /suppliers/image target must not bypass containment either. Best-effort: on a
+    // blocked/failed fetch return null (the caller falls back to a URL send).
+    if (!isSafeOutboundUrl(target)) {
+      this.logger.warn('collage fetchImage blocked a non-public URL');
+      return null;
+    }
     try {
       const res = await axios.get(target, {
         responseType: 'arraybuffer',
         headers: { 'User-Agent': UA, ...(referer ? { Referer: referer } : {}) },
-        timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
+        timeout: 12000, maxRedirects: 0, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
       });
       if (res.status !== 200) return null;
       return Buffer.from(res.data);

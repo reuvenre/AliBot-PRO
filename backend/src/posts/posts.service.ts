@@ -22,6 +22,7 @@ import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
 import { normalizeTelegramChatId } from '../common/crypto';
+import { assertSafeOutboundUrl } from '../common/ssrf';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
 
@@ -3034,6 +3035,10 @@ export class PostsService {
   private async sendToMakeWebhook(post: Post, creds: DecryptedCredentials, body: string, pageId: string) {
     const url = creds?.make_webhook_url;
     if (!url) throw new Error('Missing Make webhook URL');
+    // SSRF guard: the webhook URL is user-configured. Reject internal/private targets and
+    // non-http(s) so it can't be pointed at cloud metadata / internal services (the payload
+    // carries the post — a blind SSRF exfil vector otherwise).
+    assertSafeOutboundUrl(url);
 
     let gallery: string[] = [];
     try { gallery = post.gallery_json ? JSON.parse(post.gallery_json) : []; } catch { /* ignore */ }
@@ -3061,7 +3066,7 @@ export class PostsService {
 
     const res = await axios.post(url, payload, {
       headers: { 'Content-Type': 'application/json' },
-      timeout: 15000,
+      timeout: 15000, maxRedirects: 0,
       // Make returns 200 "Accepted" on success; surface anything else as an error.
       validateStatus: (s) => s >= 200 && s < 300,
     });

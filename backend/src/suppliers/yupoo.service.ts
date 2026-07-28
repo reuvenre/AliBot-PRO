@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { assertSafeOutboundUrl } from '../common/ssrf';
 
 export interface YupooItem {
   code: string;        // raw code from the title, e.g. "LUN1526"
@@ -85,6 +86,10 @@ export class YupooService {
   }
 
   private async get(url: string, referer: string, password?: string): Promise<string> {
+    // SSRF guard: this URL comes straight from user input (catalog/album URL). Restrict it to
+    // Yupoo hosts and never follow redirects — otherwise a user could point it at cloud
+    // metadata / internal services and exfiltrate the response (title/headings/images).
+    assertSafeOutboundUrl(url, { allowHost: /(^|\.)yupoo\.com$/i });
     // A password-protected ("index-lock") store unlocks with the `indexlockcode` cookie set
     // to the password — proven live (cookie alone → full album list, no verify call needed).
     const cookie = password ? { Cookie: `indexlockcode=${encodeURIComponent(password)}` } : {};
@@ -95,7 +100,7 @@ export class YupooService {
       try {
         const res = await axios.get(url, {
           headers: { ...BROWSER_HEADERS, ...cookie, Referer: referer },
-          timeout: 14000, maxRedirects: 5, maxContentLength: 5 * 1024 * 1024,
+          timeout: 14000, maxRedirects: 0, maxContentLength: 5 * 1024 * 1024,
           validateStatus: () => true,
         });
         if (res.status === 200 && typeof res.data === 'string') return res.data;
