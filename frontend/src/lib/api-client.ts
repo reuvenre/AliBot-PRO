@@ -380,6 +380,9 @@ export interface ClickleadRoiCampaign {
   orders: number;
   revenue_ils: number;
   roas: number | null;
+  /** The campaign's Telegram group hasn't been proven to belong to this account,
+   *  so its revenue is withheld until the one-time verification in ClickLead. */
+  unverified?: boolean;
 }
 export interface ClickleadRoi {
   configured: boolean;

@@ -71,7 +71,13 @@ export function ClickleadRoiPanel() {
             <span className="text-white/70 truncate ml-3">{c.name || c.chat_id}</span>
             <span className="flex items-center gap-4 shrink-0 tabular-nums" dir="ltr">
               <span className="text-white/40">{nis(c.spend)} ←</span>
-              <span className="text-emerald-300 font-medium">{nis(c.revenue_ils)}</span>
+              {c.unverified ? (
+                <span className="text-amber-300/80" title="אמתו את הבעלות על קבוצת הטלגרם בתוך ClickLead כדי להציג את ההכנסות">
+                  ממתין לאימות הקבוצה
+                </span>
+              ) : (
+                <span className="text-emerald-300 font-medium">{nis(c.revenue_ils)}</span>
+              )}
               <span className={`font-semibold ${c.roas != null && c.roas >= 1 ? 'text-emerald-300' : c.roas != null ? 'text-rose-300' : 'text-white/30'}`}>
                 {c.roas != null ? `×${c.roas.toFixed(2)}` : '—'}
               </span>

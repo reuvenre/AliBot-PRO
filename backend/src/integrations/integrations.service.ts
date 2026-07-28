@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { Brackets, DataSource } from 'typeorm';
 import { Earning } from '../earnings/earning.entity';
 import { Post } from '../posts/post.entity';
@@ -104,6 +105,29 @@ export class IntegrationsService {
   }
 
   /**
+   * Does this ClickLead tenant actually own the Telegram chat they typed into a
+   * campaign? Chat ids are public (they appear in ads and invite links), so
+   * without this a user could point a campaign at a competitor's group and read
+   * its commissions here. ClickLead's bot issues the proof only after Telegram
+   * confirms the claimer administrates the chat; the same secret signs both sides.
+   *
+   * With no secret configured the check cannot be performed at all — enforcing
+   * it then would just hide every user's own revenue, so it stays open and says so.
+   */
+  private chatOwned(uid: string, chat: string, proof: string): boolean {
+    const secret = process.env.TELEGRAM_CLAIM_SECRET || '';
+    if (!secret) {
+      this.logger.warn('TELEGRAM_CLAIM_SECRET is unset — ClickLead chat ownership is NOT enforced');
+      return true;
+    }
+    const c = String(chat || '').trim().replace(/^@/, '').toLowerCase();
+    const expected = createHmac('sha256', secret).update(`${uid}|${c}`).digest('hex').slice(0, 32);
+    const got = String(proof || '').trim().toLowerCase();
+    if (expected.length !== got.length) return false;
+    return timingSafeEqual(Buffer.from(expected), Buffer.from(got));
+  }
+
+  /**
    * The user's ClickLead ROI summary for the Nexlify dashboard widget: their
    * tracked campaigns (ad spend + lead count from ClickLead's Firestore, read
    * with the same admin credential the SSO bridge uses) joined with the
@@ -123,19 +147,31 @@ export class IntegrationsService {
     }
 
     const db = getFirestore(app);
-    const snap = await db.collection('tenants').doc(uid).collection('campaigns').get();
+    // Ad spend lives in the tenant's owner-only `private/costs` document, not on
+    // the campaign — campaign docs are world-readable so the landing page can
+    // render them, and a budget has no business being public.
+    const [snap, costsSnap] = await Promise.all([
+      db.collection('tenants').doc(uid).collection('campaigns').get(),
+      db.collection('tenants').doc(uid).collection('private').doc('costs').get(),
+    ]);
+    const costs: Record<string, number> = costsSnap.exists ? (costsSnap.data() as any) || {} : {};
     const tracked = snap.docs
       .map((d: any) => ({ id: d.id, ...d.data() }))
       .filter((c: any) => String(c.telegramChatId || '').trim());
 
     const campaigns = [] as any[];
     for (const c of tracked.slice(0, 20)) {
+      const owned = this.chatOwned(uid, c.telegramChatId, c.telegramChatProof);
       const [leadsAgg, earnings] = await Promise.all([
         db.collection('tenants').doc(uid).collection('leads')
           .where('campaignId', '==', c.id).count().get(),
-        this.earningsForChat(c.telegramChatId),
+        owned
+          ? this.earningsForChat(c.telegramChatId)
+          : Promise.resolve({ chat_id: String(c.telegramChatId || ''), orders: 0, commission_ils: 0 }),
       ]);
-      const spend = Number(c.adSpend || 0);
+      // `c.adSpend` is the pre-migration fallback for tenants who haven't
+      // opened their ClickLead dashboard since the move.
+      const spend = Number(costs[c.id] ?? c.adSpend ?? 0);
       const revenue = earnings.commission_ils;
       campaigns.push({
         id: c.id,
@@ -145,7 +181,9 @@ export class IntegrationsService {
         leads: leadsAgg.data().count || 0,
         orders: earnings.orders,
         revenue_ils: revenue,
-        roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null,
+        roas: spend > 0 && owned ? Math.round((revenue / spend) * 100) / 100 : null,
+        // The widget says so rather than showing an unexplained zero.
+        unverified: !owned,
       });
     }
     return { configured: true, campaigns };
