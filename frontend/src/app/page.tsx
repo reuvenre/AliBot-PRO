@@ -88,9 +88,12 @@ export default function LandingPage() {
             מגלים, כותבים, מפרסמים ומודדים<br />
             <span className="bg-gradient-to-l from-blue-400 to-violet-400 bg-clip-text text-transparent">— אוטומטית, במערכת אחת</span>
           </h1>
-          <p className="text-lg text-white/55 max-w-2xl mx-auto mb-9 leading-relaxed">
+          <p className="text-lg text-white/55 max-w-2xl mx-auto mb-4 leading-relaxed">
             Nexlify מנהלת את כל מסע שיווק השותפים: מגלה מוצרים חמים מ-AliExpress, כותבת קופי מוכר עם AI,
-            מפרסמת לחמש פלטפורמות, ומודדת כל קליק ועמלה עד רמת הפוסט ומילת המפתח.
+            מפרסמת לחמש פלטפורמות, מודדת כל קליק ועמלה — <b className="text-white/80">ולומדת כל לילה מה מוכר כדי למכור יותר מחר</b>.
+          </p>
+          <p className="text-base font-semibold bg-gradient-to-l from-amber-300 to-orange-400 bg-clip-text text-transparent mb-9">
+            המערכת שלא רק מפרסמת עבורך — היא עובדת בשבילך. 🧠
           </p>
           <div className="flex items-center justify-center gap-3">
             <Link href="/register" className="group flex items-center gap-2 bg-gradient-to-r from-blue-600 to-violet-600 hover:brightness-110 transition-all rounded-xl px-7 py-3.5 font-semibold shadow-lg shadow-blue-600/30 ring-1 ring-inset ring-white/15">

@@ -44,6 +44,7 @@ const PLAN_FEATURES: Record<string, { includesLabel: string; features: { label: 
     includesLabel: 'כל מה שב-Growth, ובנוסף',
     features: [
       { label: 'מצב טייס אוטומטי — מגילוי ועד פרסום, אפס קלט' },
+      { label: '🧠 מנוע אופטימיזציה לומד — מכוונן מילות מפתח לפי עמלות אמיתיות' },
       { label: 'סוכני AI לניהול הקמפיינים' },
       { label: 'מקור מוצרים נוסף: Amazon' },
       { label: 'מיחזור מנצחים אוטומטי' },
