@@ -34,15 +34,20 @@ async function bootstrap() {
   // build the baseline from the entities via synchronize, THEN run migrations. On the
   // existing populated DB the synchronize step is skipped and only migrations run — so this
   // is a no-op there, but a clean rebuild no longer dies on the first ALTER of a missing table.
-  if (isProd && process.env.DB_SYNC !== 'false') {
+  if (isProd) {
     const ds = app.get(DataSource);
     try {
       const rows = await ds.query(`SELECT to_regclass('public.users') AS t`);
       const dbIsEmpty = !rows?.[0]?.t;
-      if (dbIsEmpty) {
+      // Baseline the schema from entities ONLY on a truly empty DB, and only when auto-DDL
+      // isn't opted out. This is the only thing DB_SYNC gates.
+      if (dbIsEmpty && process.env.DB_SYNC !== 'false') {
         console.log('[bootstrap] empty database detected — building baseline schema from entities');
         await ds.synchronize();
       }
+      // Migrations ALWAYS run in production, regardless of DB_SYNC — otherwise a new column
+      // (e.g. posts.pending_at) is missing and every query that references it throws, silently
+      // killing the send pipeline. DB_SYNC=false must disable synchronize, never migrations.
       await ds.runMigrations();
       console.log('[bootstrap] migrations applied');
     } catch (err) {
