@@ -203,10 +203,20 @@ export class AiService {
     const model = creds.gemini_model || 'gemini-2.5-flash';
     // gemini-2.5-* are "thinking" models — reasoning tokens can otherwise eat the whole
     // output budget and truncate the post. flash / flash-lite allow disabling thinking
-    // (budget 0); gemini-2.5-pro does NOT — it rejects budget 0 (min 128), which would
-    // fail the request and silently fall back to generic copy. So branch by model.
+    // (budget 0); gemini-2.5-pro does NOT — it rejects budget 0 (min 128). This quirk is
+    // specific to the 2.5 FAMILY: newer generations (3.x+) manage their own thinking and
+    // may reject a forced budget outright — so only send thinkingConfig for 2.5 models,
+    // and give newer models extra output headroom instead.
     const isPro = /pro/i.test(model);
-    const res = await this.withRetry(() =>
+    const legacy25 = /2\.5/.test(model);
+    const generationConfig: Record<string, unknown> = {
+      temperature,
+      // Give headroom so the full post is never cut off mid-sentence (thinking models
+      // also spend part of the budget on reasoning, so allow more).
+      maxOutputTokens: Math.max(maxTokens, legacy25 ? (isPro ? 2048 : 1024) : 2048),
+    };
+    if (legacy25) generationConfig.thinkingConfig = { thinkingBudget: isPro ? 128 : 0 };
+    const doCall = (cfg: Record<string, unknown>) =>
       axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${creds.gemini_api_key}`,
         {
@@ -218,17 +228,20 @@ export class AiService {
               ...(opts.images || []).map((img) => ({ inline_data: { mime_type: img.mime, data: img.data } })),
             ],
           }],
-          generationConfig: {
-            temperature,
-            // Give headroom so the full post is never cut off mid-sentence (pro also
-            // spends part of the budget on thinking, so allow more).
-            maxOutputTokens: Math.max(maxTokens, isPro ? 2048 : 1024),
-            thinkingConfig: { thinkingBudget: isPro ? 128 : 0 },
-          },
+          generationConfig: cfg,
         },
         { headers: { 'Content-Type': 'application/json' }, timeout: 25_000 },
-      ),
-    );
+      );
+    const res = await this.withRetry(() => doCall(generationConfig)).catch(async (err: any) => {
+      // Defensive: if a model rejects thinkingConfig (INVALID_ARGUMENT mentioning
+      // thinking), retry once without it rather than failing the whole generation.
+      const msg = String(err?.response?.data?.error?.message || '');
+      if (err?.response?.status === 400 && /think/i.test(msg) && generationConfig.thinkingConfig) {
+        const { thinkingConfig: _drop, ...rest } = generationConfig;
+        return this.withRetry(() => doCall(rest));
+      }
+      throw err;
+    });
     // Join every text part (a response may be split across parts).
     const parts = res.data?.candidates?.[0]?.content?.parts || [];
     const text = parts.map((p: any) => p?.text || '').join('').trim();
