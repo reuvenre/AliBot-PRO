@@ -1950,10 +1950,22 @@ export class PostsService {
       }
     } catch { /* fall back to the raw affiliate link */ }
 
+    // Legacy copy (and verbatim REPOSTS of it) embeds the raw affiliate URL inside the
+    // text. In-place substitution left a bare URL in the body — which escapes the pretty
+    // "🛒 לרכישה — לחצו כאן" anchor treatment (that only wraps the 🔗-prefixed link) and
+    // showed followers a raw long link. Instead: STRIP the inline URL and re-attach the
+    // tracked short link in the one standard 🔗 form every post uses.
     const linkAlreadyInText = post.affiliate_url && post.generated_text.includes(post.affiliate_url);
-    let body = linkAlreadyInText
-      ? post.generated_text.split(post.affiliate_url).join(link)
-      : (post.affiliate_url ? `${post.generated_text}\n\n🔗 ${link}` : post.generated_text);
+    let body: string;
+    if (linkAlreadyInText) {
+      const stripped = post.generated_text
+        .split(post.affiliate_url).join('')
+        .replace(/\n{3,}/g, '\n\n')
+        .trimEnd();
+      body = `${stripped}\n\n🔗 ${link}`;
+    } else {
+      body = post.affiliate_url ? `${post.generated_text}\n\n🔗 ${link}` : post.generated_text;
+    }
 
     // Coupons are AliExpress-ONLY — the codes redeem at AliExpress checkout, so an AliExpress
     // code on a FLYLINK post is useless and misleading. Attach one only when this post's link
