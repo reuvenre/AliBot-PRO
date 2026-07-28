@@ -262,6 +262,11 @@ export class CredentialSet {
   @Column({ default: false })
   recycle_winners_enabled: boolean;
 
+  /** Learning optimizer: nightly keyword scoring (clicks/commissions) → retire dead
+   *  keywords, boost earners, morning digest. The loop-closer. */
+  @Column({ default: false })
+  optimizer_enabled: boolean;
+
   /** Minimum short-link clicks for a post to count as a "winner" (revenue always counts). */
   @Column({ default: 10 })
   recycle_min_clicks: number;

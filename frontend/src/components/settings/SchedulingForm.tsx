@@ -41,6 +41,7 @@ export function SchedulingForm() {
   // Winner recycling: republish proven posts (clicks/commissions) with fresh AI copy.
   const [seasonalOn, setSeasonalOn] = useState(true);
   const [recycleOn, setRecycleOn] = useState(false);
+  const [optimizerOn, setOptimizerOn] = useState(false);
   const [recycleMinClicks, setRecycleMinClicks] = useState(10);
   // Sales recovery: when orders drop below a threshold, auto-push extra hot products.
   const [recoveryOn, setRecoveryOn] = useState(false);
@@ -65,6 +66,7 @@ export function SchedulingForm() {
         setLastSentAt(c.schedule_last_sent_at ?? null);
         setSeasonalOn(c.seasonal_enabled ?? true);
         setRecycleOn(c.recycle_winners_enabled ?? false);
+        setOptimizerOn(c.optimizer_enabled ?? false);
         setRecycleMinClicks(c.recycle_min_clicks ?? 10);
         setRecoveryOn(c.recovery_enabled ?? false);
         setRecoveryMinOrders(c.recovery_min_orders ?? 5);
@@ -103,6 +105,7 @@ export function SchedulingForm() {
         schedule_interval_minutes: interval,
         seasonal_enabled: seasonalOn,
         recycle_winners_enabled: recycleOn,
+        optimizer_enabled: optimizerOn,
         recycle_min_clicks: Math.max(1, recycleMinClicks || 10),
         recovery_enabled: recoveryOn,
         recovery_min_orders: Math.max(1, recoveryMinOrders || 5),
@@ -296,6 +299,27 @@ export function SchedulingForm() {
             className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${seasonalOn ? 'bg-amber-500' : 'bg-white/15'}`}
           >
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${seasonalOn ? 'right-0.5' : 'right-4'}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Learning optimizer — the loop-closer: nightly keyword scoring -> retire/boost + digest. */}
+      <div className="bg-surface-secondary border border-edge rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">🧠 מנוע אופטימיזציה לומד</h3>
+            <p className="text-xs text-white/35 mt-1">
+              כל לילה המנוע מדרג את מילות המפתח לפי קליקים ועמלות אמיתיות: מוציא מהרוטציה מילים
+              שקיבלו הזדמנות הוגנת בלי קליק אחד (נשמרות ב"בארכיון" וניתנות להחזרה), מכפיל את המילה
+              שמייצרת עמלות, ושולח לך כל בוקר דו"ח לטלגרם ולמייל — מה שונה ולמה.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOptimizerOn((v) => !v)}
+            className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${optimizerOn ? 'bg-violet-500' : 'bg-white/15'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${optimizerOn ? 'right-0.5' : 'right-4'}`} />
           </button>
         </div>
       </div>

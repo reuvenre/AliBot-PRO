@@ -221,6 +221,10 @@ export class CredentialSetDto {
   recycle_winners_enabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  optimizer_enabled?: boolean;
+
+  @IsOptional()
   @IsNumber()
   recycle_min_clicks?: number;
 

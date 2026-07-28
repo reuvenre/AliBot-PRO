@@ -44,6 +44,11 @@ export class Campaign {
   @Column('text', { array: true, default: '{}' })
   keywords: string[];
 
+  /** Keywords the learning optimizer pulled from rotation (0 clicks after a fair chance).
+   *  Kept visible + restorable — never deleted. */
+  @Column('text', { array: true, default: '{}' })
+  retired_keywords: string[];
+
   /**
    * Round-robin pointer into `keywords`: each run uses keywords[cursor % len] then advances,
    * so every keyword gets equal airtime and consecutive runs differ. Replaces the old random

@@ -30,6 +30,7 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   sales_recovery: 'התאוששות מכירות אוטומטית',
   paid_boost: 'קידום ממומן אוטומטי (Meta Ads)',
   landing_pages: 'דפי נחיתה (ClickLead)',
+  learning_optimizer: 'מנוע אופטימיזציה לומד',
 };
 
 export interface SubscriptionStatus {

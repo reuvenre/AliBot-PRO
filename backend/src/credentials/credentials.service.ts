@@ -78,6 +78,7 @@ export interface DecryptedCredentials {
   schedule_interval_minutes?: number;
   seasonal_enabled?: boolean;
   recycle_winners_enabled?: boolean;
+  optimizer_enabled?: boolean;
   recycle_min_clicks?: number;
   recovery_enabled?: boolean;
   recovery_min_orders?: number;
@@ -267,6 +268,7 @@ export class CredentialsService {
     if (dto.schedule_interval_minutes !== undefined) cred.schedule_interval_minutes = dto.schedule_interval_minutes;
     if (dto.seasonal_enabled !== undefined) cred.seasonal_enabled = dto.seasonal_enabled;
     if (dto.recycle_winners_enabled !== undefined) cred.recycle_winners_enabled = dto.recycle_winners_enabled;
+    if (dto.optimizer_enabled !== undefined) cred.optimizer_enabled = dto.optimizer_enabled;
     if (dto.recycle_min_clicks !== undefined) cred.recycle_min_clicks = Math.max(1, Math.floor(dto.recycle_min_clicks) || 10);
     if (dto.recovery_enabled !== undefined) cred.recovery_enabled = dto.recovery_enabled;
     if (dto.recovery_min_orders !== undefined) cred.recovery_min_orders = Math.max(1, Math.floor(dto.recovery_min_orders) || 5);
@@ -582,6 +584,7 @@ export class CredentialsService {
       schedule_interval_minutes: cred.schedule_interval_minutes,
       seasonal_enabled: cred.seasonal_enabled ?? true,
       recycle_winners_enabled: cred.recycle_winners_enabled ?? false,
+      optimizer_enabled: cred.optimizer_enabled ?? false,
       recycle_min_clicks: cred.recycle_min_clicks ?? 10,
       recovery_enabled: cred.recovery_enabled ?? false,
       recovery_min_orders: cred.recovery_min_orders ?? 5,
@@ -663,6 +666,18 @@ export class CredentialsService {
       .andWhere("c.aliexpress_app_secret_enc IS NOT NULL AND c.aliexpress_app_secret_enc <> ''")
       .getRawMany();
     return Array.from(new Set(rows.map((r) => String(r.user_id)).filter(Boolean)));
+  }
+
+  /** Users with the learning optimizer ON (for the nightly optimizer cron). */
+  async listUserIdsWithOptimizer(): Promise<string[]> {
+    const rows = await this.repo.find({ where: { optimizer_enabled: true } });
+    return rows.map((c) => c.user_id).filter(Boolean);
+  }
+
+  /** The account email of a credential-set owner (for digests). */
+  async userEmail(userId: string): Promise<string | null> {
+    const cred = await this.repo.findOne({ where: { user_id: userId }, relations: ['user'] });
+    return cred?.user?.email || null;
   }
 
   /** Users with winner recycling ON + their click threshold (for the daily recycle cron). */
@@ -753,6 +768,7 @@ export class CredentialsService {
       schedule_interval_minutes: cred.schedule_interval_minutes ?? 60,
       seasonal_enabled: cred.seasonal_enabled ?? true,
       recycle_winners_enabled: cred.recycle_winners_enabled ?? false,
+      optimizer_enabled: cred.optimizer_enabled ?? false,
       recycle_min_clicks: cred.recycle_min_clicks ?? 10,
       recovery_enabled: cred.recovery_enabled ?? false,
       recovery_min_orders: cred.recovery_min_orders ?? 5,

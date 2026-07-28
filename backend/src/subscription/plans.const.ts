@@ -115,6 +115,8 @@ export const FEATURE_MIN_PLAN = {
   paid_boost: 'scale',
   /** ClickLead landing pages + ROI (SSO). */
   landing_pages: 'scale',
+  /** Nightly learning optimizer: keyword scoring → retire/boost + morning digest. */
+  learning_optimizer: 'autopilot',
 } as const;
 
 export type FeatureKey = keyof typeof FEATURE_MIN_PLAN;

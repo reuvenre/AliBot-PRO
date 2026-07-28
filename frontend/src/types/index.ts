@@ -225,6 +225,7 @@ export interface CredentialSet {
   schedule_interval_minutes: number;
   seasonal_enabled?: boolean;
   recycle_winners_enabled?: boolean;
+  optimizer_enabled?: boolean;
   recycle_min_clicks?: number;
   recovery_enabled?: boolean;
   recovery_min_orders?: number;
@@ -302,6 +303,7 @@ export interface CredentialSetInput {
   schedule_interval_minutes?: number;
   seasonal_enabled?: boolean;
   recycle_winners_enabled?: boolean;
+  optimizer_enabled?: boolean;
   recycle_min_clicks?: number;
   recovery_enabled?: boolean;
   recovery_min_orders?: number;
