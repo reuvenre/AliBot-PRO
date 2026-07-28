@@ -115,6 +115,26 @@ export class CollageService {
   }
 
   /**
+   * Fetch an image and normalise it to a bounded JPEG (≤1440px, q88) — the input format
+   * for the AI image redesign ("Nano Banana"): guarantees a known mime type and keeps the
+   * base64 payload small. Null on any failure (caller falls back).
+   */
+  async fetchAsJpeg(url: string): Promise<Buffer | null> {
+    const buf = await this.fetchImage(url);
+    if (!buf) return null;
+    try {
+      return await sharp(buf)
+        .rotate()
+        .resize(1440, 1440, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 88 })
+        .toBuffer();
+    } catch (e: any) {
+      this.logger.warn(`fetchAsJpeg failed: ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Fetch image bytes. If the URL is our own /suppliers/image proxy, extract the raw
    * target and send the Yupoo Referer directly (avoids a self-request and the hotlink
    * block). Any yupoo.com URL also gets the Referer.

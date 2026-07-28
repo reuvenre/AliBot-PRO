@@ -34,6 +34,7 @@ export function IntegrationsForm() {
 
   // Auto image enhancement (local sharp pass, applied on the Telegram album)
   const [imageEnhance, setImageEnhance] = useState(false);
+  const [imageEnhanceMode, setImageEnhanceMode] = useState<'studio' | 'ai'>('studio');
 
   // Facebook throttle: min minutes between FB posts per page (0 = every post). Paces FB
   // independently of Telegram so high-frequency posting doesn't hit Facebook's spam block.
@@ -81,6 +82,7 @@ export function IntegrationsForm() {
         setPubFacebook(c.publish_facebook ?? false);
         setPubInstagram(c.publish_instagram ?? false);
         setImageEnhance(c.image_enhance_enabled ?? false);
+        setImageEnhanceMode((c.image_enhance_mode as 'studio' | 'ai') || 'studio');
         setFbMinInterval(String(c.facebook_min_interval_minutes ?? 0));
         setMakeUrl(c.make_webhook_url || '');
         setPubViaMake(c.publish_via_make ?? false);
@@ -124,6 +126,7 @@ export function IntegrationsForm() {
         publish_facebook: pubFacebook,
         publish_instagram: pubInstagram,
         image_enhance_enabled: imageEnhance,
+        image_enhance_mode: imageEnhanceMode,
         facebook_min_interval_minutes: Math.max(0, parseInt(fbMinInterval, 10) || 0),
         make_webhook_url: makeUrl,
         publish_via_make: pubViaMake,
@@ -643,6 +646,32 @@ export function IntegrationsForm() {
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${imageEnhance ? 'right-0.5' : 'right-4'}`} />
           </span>
         </button>
+
+        {imageEnhance && (
+          <div className="mt-3 space-y-2">
+            <button
+              type="button"
+              onClick={() => setImageEnhanceMode('studio')}
+              className={`w-full text-right px-3 py-2.5 rounded-lg border transition-all
+                ${imageEnhanceMode === 'studio' ? 'bg-blue-600/10 border-blue-500/40' : 'bg-white/3 border-edge-hover hover:border-white/20'}`}
+            >
+              <span className="text-sm text-white/85">✨ סטודיו מהיר</span>
+              <p className="text-2xs text-white/35 mt-0.5">חידוד, הבהרה וחיזוק צבעים — מקומי, מיידי וללא עלות.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setImageEnhanceMode('ai')}
+              className={`w-full text-right px-3 py-2.5 rounded-lg border transition-all
+                ${imageEnhanceMode === 'ai' ? 'bg-amber-500/10 border-amber-500/40' : 'bg-white/3 border-edge-hover hover:border-white/20'}`}
+            >
+              <span className="text-sm text-white/85">🍌 ננו בננה — עיצוב AI</span>
+              <p className="text-2xs text-white/35 mt-0.5">
+                מודל התמונות של Gemini מעצב מחדש את התמונה: רקע סטודיו נקי, תאורה מקצועית — המוצר עצמו נשמר זהה.
+                משתמש במפתח ה-Gemini שלך (עלות לפי תמונה אצל Google). חל על עד 3 התמונות הראשונות בפוסט; השאר עוברות סטודיו מהיר. בכל תקלה — נופל אוטומטית לסטודיו.
+              </p>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Instagram Business (publishing reuses the Facebook Page token) */}

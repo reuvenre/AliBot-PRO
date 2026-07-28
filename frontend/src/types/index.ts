@@ -185,6 +185,7 @@ export interface CredentialSet {
   make_webhook_url: string;
   publish_via_make: boolean;
   image_enhance_enabled: boolean;
+  image_enhance_mode?: 'studio' | 'ai';
   facebook_min_interval_minutes: number;
   // Discovery
   apify_api_token: string;        // masked
@@ -262,6 +263,7 @@ export interface CredentialSetInput {
   make_webhook_url?: string;
   publish_via_make?: boolean;
   image_enhance_enabled?: boolean;
+  image_enhance_mode?: 'studio' | 'ai';
   facebook_min_interval_minutes?: number;
   // Discovery
   apify_api_token?: string;

@@ -2507,13 +2507,51 @@ export class PostsService {
         && await this.subscription.allows(post.user_id, 'image_enhancer')) {
       const src = gallery.length ? gallery.slice(0, 10) : (post.product_image ? [post.product_image] : []);
       if (src.length) {
-        const buffers = await this.collage.enhance(src).catch(() => [] as Buffer[]);
+        // 'ai' mode: Gemini's image model ("Nano Banana") redesigns the shot(s) — clean
+        // studio background, pro lighting — on the user's own Gemini key. Falls back to
+        // the local studio pass per-image and wholesale, so publishing never blocks on AI.
+        let buffers: Buffer[] = [];
+        if (creds.image_enhance_mode === 'ai') {
+          buffers = await this.aiRedesignImages(src, creds).catch(() => [] as Buffer[]);
+        }
+        if (!buffers.length) buffers = await this.collage.enhance(src).catch(() => [] as Buffer[]);
         if (buffers.length) return { kind: 'buffers', buffers };
       }
     }
 
     if (gallery.length > 1) return { kind: 'album', images: gallery.slice(0, 10) };
     return { kind: 'single', image: post.product_image };
+  }
+
+  /** The redesign brief for Nano Banana. Fidelity first: an affiliate post must show the
+   *  REAL product — the model may restage lighting/background, never the item itself. */
+  private static readonly NANO_BANANA_PROMPT =
+    'Enhance this e-commerce product photo: place the product on a clean, professional studio background with soft, even lighting and a subtle natural shadow. Keep the product itself 100% identical — same shape, colors, materials, printed text and logos; do not add, remove or alter anything on the product. No added text, no watermarks, no people. Output a photorealistic, sharp, well-lit product shot.';
+
+  /**
+   * AI-redesign the first few images (cost control — the image model bills per image),
+   * studio-pass the rest so the album stays visually coherent. Any per-image failure
+   * degrades to the studio pass for that image; an empty result makes the caller fall
+   * back to the studio pass wholesale.
+   */
+  private async aiRedesignImages(urls: string[], creds: DecryptedCredentials): Promise<Buffer[]> {
+    const AI_MAX = 3;
+    const out: Buffer[] = [];
+    for (let i = 0; i < Math.min(urls.length, 10); i++) {
+      const url = urls[i];
+      if (i < AI_MAX) {
+        const raw = await this.collage.fetchAsJpeg(url);
+        if (raw) {
+          const gen = await this.ai.generateProductImage(
+            creds, { mime: 'image/jpeg', data: raw.toString('base64') }, PostsService.NANO_BANANA_PROMPT,
+          );
+          if (gen?.data?.length) { out.push(gen.data); continue; }
+        }
+      }
+      const studio = await this.collage.enhance([url]).catch(() => [] as Buffer[]);
+      if (studio.length) out.push(studio[0]);
+    }
+    return out;
   }
 
   /**

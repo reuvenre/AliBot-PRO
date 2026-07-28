@@ -39,7 +39,93 @@ export interface GenerateResult {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
+  /** Working Gemini IMAGE model per api-key (discovered at runtime). Model families
+   *  retire without notice (see the gemini-2.5-flash saga) — discovery + cache means
+   *  image generation self-heals instead of silently dying with the model. */
+  private readonly geminiImageModelCache = new Map<string, string>();
+
   constructor(private readonly usage: AiUsageService) {}
+
+  /**
+   * Redesign/enhance a product photo with Gemini's image model ("Nano Banana"),
+   * using the user's own Gemini key. Returns the generated image bytes, or null on
+   * any failure — callers MUST fall back (e.g. to the local studio pass); publishing
+   * never depends on this succeeding.
+   */
+  async generateProductImage(
+    creds: DecryptedCredentials | null,
+    image: GenerateImage,
+    prompt: string,
+  ): Promise<{ data: Buffer; mime: string } | null> {
+    const key = creds?.gemini_api_key;
+    if (!key) return null;
+    const cacheKey = key.slice(0, 12);
+    const tried = new Set<string>();
+    let model: string | null = this.geminiImageModelCache.get(cacheKey) || 'gemini-2.5-flash-image';
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!model || tried.has(model)) model = await this.discoverGeminiImageModel(key);
+      if (!model || tried.has(model)) return null;
+      tried.add(model);
+      try {
+        const res = await this.withRetry(() =>
+          axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+            {
+              contents: [{ parts: [
+                { text: prompt },
+                { inline_data: { mime_type: image.mime, data: image.data } },
+              ] }],
+              generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+            },
+            { headers: { 'Content-Type': 'application/json' }, timeout: 60_000 },
+          ),
+        );
+        const parts = res.data?.candidates?.[0]?.content?.parts || [];
+        for (const p of parts) {
+          const inline = p?.inlineData || p?.inline_data;
+          if (inline?.data) {
+            this.geminiImageModelCache.set(cacheKey, model);
+            return { data: Buffer.from(inline.data, 'base64'), mime: inline.mimeType || inline.mime_type || 'image/png' };
+          }
+        }
+        this.logger.warn(`[AI:image] ${model} returned no image part`);
+        return null; // model worked but produced no image (e.g. safety) — don't thrash discovery
+      } catch (err: any) {
+        const msg = err?.response?.data?.error?.message || err.message;
+        this.logger.warn(`[AI:image] ${model} failed: ${msg}`);
+        // Model unavailable/retired → discover what THIS key can use and retry once.
+        if (err?.response?.status === 404 || /not (available|found|supported)/i.test(String(msg))) {
+          this.geminiImageModelCache.delete(cacheKey);
+          model = null; // force discovery on the next attempt
+          continue;
+        }
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /** First image-capable Gemini model this key can use, from Google's live catalog. */
+  private async discoverGeminiImageModel(key: string): Promise<string | null> {
+    try {
+      const res = await axios.get(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}&pageSize=100`,
+        { timeout: 8000 },
+      );
+      const names: string[] = (res.data?.models || [])
+        .filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map((m: any) => String(m.name || '').replace(/^models\//, ''))
+        .filter((n: string) => /^gemini/i.test(n) && /image/i.test(n) && !/preview-\d{2}/i.test(n));
+      // Prefer flash-image (cheapest); otherwise the newest image model.
+      names.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+      const pick = names.find((n) => /flash-image/i.test(n)) || names[0] || null;
+      if (pick) this.logger.log(`[AI:image] discovered image model: ${pick}`);
+      return pick;
+    } catch {
+      return null;
+    }
+  }
 
   /** Returns true if at least one provider has a usable key. */
   hasAnyKey(creds: DecryptedCredentials | null): boolean {

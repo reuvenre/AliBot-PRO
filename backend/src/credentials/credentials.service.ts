@@ -53,6 +53,7 @@ export interface DecryptedCredentials {
   make_webhook_url?: string;
   publish_via_make?: boolean;
   image_enhance_enabled?: boolean;
+  image_enhance_mode?: string;
   /** Min minutes between Facebook posts per page (0 = every post). Paces FB independently
    *  of Telegram so high-frequency posting doesn't trip Facebook's spam block. */
   facebook_min_interval_minutes?: number;
@@ -235,6 +236,9 @@ export class CredentialsService {
     if (dto.make_webhook_url !== undefined)  cred.make_webhook_url = dto.make_webhook_url.trim() || null;
     if (dto.publish_via_make !== undefined)  cred.publish_via_make = dto.publish_via_make;
     if (dto.image_enhance_enabled !== undefined) cred.image_enhance_enabled = dto.image_enhance_enabled;
+    if (dto.image_enhance_mode !== undefined) {
+      cred.image_enhance_mode = dto.image_enhance_mode === 'ai' ? 'ai' : 'studio';
+    }
     if (dto.facebook_min_interval_minutes !== undefined) {
       cred.facebook_min_interval_minutes = Math.max(0, Math.floor(dto.facebook_min_interval_minutes) || 0);
     }
@@ -557,6 +561,7 @@ export class CredentialsService {
       make_webhook_url: cred.make_webhook_url,
       publish_via_make: cred.publish_via_make,
       image_enhance_enabled: cred.image_enhance_enabled,
+      image_enhance_mode: cred.image_enhance_mode || 'studio',
       facebook_min_interval_minutes: cred.facebook_min_interval_minutes,
       apify_api_token: decrypt(cred.apify_api_token_enc),
       boost_enabled: cred.boost_enabled,
@@ -712,6 +717,7 @@ export class CredentialsService {
       make_webhook_url: cred.make_webhook_url || '',
       publish_via_make: cred.publish_via_make ?? false,
       image_enhance_enabled: cred.image_enhance_enabled ?? false,
+      image_enhance_mode: cred.image_enhance_mode || 'studio',
       facebook_min_interval_minutes: cred.facebook_min_interval_minutes ?? 0,
       // Discovery
       apify_api_token: cred.apify_api_token_enc ? mask(decrypt(cred.apify_api_token_enc)) : '',

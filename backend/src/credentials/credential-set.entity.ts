@@ -117,6 +117,12 @@ export class CredentialSet {
   @Column({ default: false })
   image_enhance_enabled: boolean;
 
+  /** How photos are enhanced: 'studio' = the local sharp pass (fast, free);
+   *  'ai' = Gemini image model ("Nano Banana") redesigns the shot — clean studio
+   *  background, pro lighting — using the user's own Gemini key. */
+  @Column({ default: 'studio' })
+  image_enhance_mode: string;
+
   /** Min minutes between Facebook posts per page (0 = every post). Paces Facebook
    *  independently of Telegram so high-frequency posting doesn't hit FB's spam block. */
   @Column({ type: 'int', default: 0 })
