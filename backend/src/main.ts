@@ -26,6 +26,11 @@ async function bootstrap() {
   // signatures can be verified over the exact bytes the provider signed.
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  // Behind Cloudflare + the platform router — trust the proxy chain so req.ip / secure
+  // reflect the real client, and the rate limiter buckets per client (see
+  // ThrottlerBehindProxyGuard) instead of collapsing everyone onto the edge IP.
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
+
   // Security headers. The API serves JSON + the streamed image proxy — no first-party
   // HTML app — so a restrictive CSP is safe. HSTS is enabled in prod (behind TLS).
   const isProd = process.env.NODE_ENV === 'production';

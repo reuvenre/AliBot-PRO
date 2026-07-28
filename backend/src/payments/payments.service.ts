@@ -92,22 +92,30 @@ export class PaymentsService {
       throw new BadRequestException('Amount mismatch');
     }
 
-    // Apply the purchase.
-    if (session.kind === 'credit_pack') {
-      const pack = CREDIT_PACKS.find((p) => p.id === session.pack_id);
-      if (pack) await this.subscription.addCredits(session.user_id, pack.credits);
-    } else if (session.plan) {
-      await this.subscription.setPlanForUser(session.user_id, session.plan, session.billing as BillingCycle);
-    }
+    // ATOMICALLY claim the session (pending → paid) in ONE statement BEFORE granting. Two
+    // simultaneous deliveries of the same webhook would otherwise both read 'pending' and
+    // both apply the purchase (double credits on a pack). Only the row that flips pending→paid
+    // here proceeds to grant; a concurrent duplicate gets affected=0 and is a no-op.
+    const claim = await this.sessions.createQueryBuilder()
+      .update(PaymentSession)
+      .set({ status: 'paid', external_ref: evt.externalRef, paid_at: () => 'NOW()' })
+      .where('id = :id AND status = :pending', { id: session.id, pending: 'pending' })
+      .execute();
+    if (!claim.affected) return { ok: true, duplicate: true };
 
-    session.status = 'paid';
-    session.external_ref = evt.externalRef;
-    session.paid_at = new Date();
+    // We won the claim — apply the purchase exactly once. (If a grant throws here the session
+    // is already 'paid' but ungranted — logged loudly for manual reconciliation; far rarer and
+    // safer than a double grant.)
     try {
-      await this.sessions.save(session);
+      if (session.kind === 'credit_pack') {
+        const pack = CREDIT_PACKS.find((p) => p.id === session.pack_id);
+        if (pack) await this.subscription.addCredits(session.user_id, pack.credits);
+      } else if (session.plan) {
+        await this.subscription.setPlanForUser(session.user_id, session.plan, session.billing as BillingCycle);
+      }
     } catch (err: any) {
-      // Unique external_ref clash = a concurrent duplicate already applied it — safe no-op.
-      this.logger.warn(`session ${session.id} save race: ${err?.message}`);
+      this.logger.error(`session ${session.id} claimed paid but grant FAILED — reconcile manually: ${err?.message}`);
+      throw err;
     }
     this.logger.log(`payment applied: session ${session.id} (${session.kind} ${session.plan || session.pack_id}) user ${session.user_id}`);
     return { ok: true };

@@ -4,9 +4,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import KeyvRedis from '@keyv/redis';
 import { validateEnv } from './config/env.validation';
+import { ThrottlerBehindProxyGuard } from './common/throttler-proxy.guard';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CredentialsModule } from './credentials/credentials.module';
@@ -119,8 +120,9 @@ import { HealthController } from './health.controller';
   controllers: [HealthController],
   providers: [
     // Enforce the 100 req/min/IP default on EVERY route (not just /auth). Public
-    // routes and expensive authed routes were previously unthrottled.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // routes and expensive authed routes were previously unthrottled. Uses the
+    // proxy-aware guard so the limit is per REAL client, not per edge IP.
+    { provide: APP_GUARD, useClass: ThrottlerBehindProxyGuard },
   ],
 })
 export class AppModule {}

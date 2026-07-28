@@ -12,8 +12,14 @@ describe('PaymentsService.handleWebhook', () => {
 
   const raw = Buffer.from('{}');
 
-  async function build(fakeEvent: any) {
-    sessions = { findOne: jest.fn(), save: jest.fn((s) => Promise.resolve(s)), create: jest.fn((x) => x) };
+  async function build(fakeEvent: any, claimAffected = 1) {
+    const qb: any = {};
+    qb.update = () => qb; qb.set = () => qb; qb.where = () => qb;
+    qb.execute = jest.fn().mockResolvedValue({ affected: claimAffected });
+    sessions = {
+      findOne: jest.fn(), save: jest.fn((s) => Promise.resolve(s)), create: jest.fn((x) => x),
+      createQueryBuilder: jest.fn(() => qb),
+    };
     subscription = { setPlanForUser: jest.fn().mockResolvedValue(undefined), addCredits: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -40,6 +46,14 @@ describe('PaymentsService.handleWebhook', () => {
     sessions.findOne.mockResolvedValue({ id: 's1', status: 'paid', kind: 'subscription', plan: 'growth' });
     const res = await service.handleWebhook(raw, {});
     expect(subscription.setPlanForUser).not.toHaveBeenCalled();
+    expect(res).toEqual({ ok: true, duplicate: true });
+  });
+
+  it('does not double-grant when a concurrent duplicate loses the atomic claim', async () => {
+    await build({ sessionId: 's2', externalRef: 'tx2', status: 'paid' }, 0); // claim affects 0 rows
+    sessions.findOne.mockResolvedValue({ id: 's2', status: 'pending', kind: 'credit_pack', pack_id: 'pack_5k', amount: 59, user_id: 'u' });
+    const res = await service.handleWebhook(raw, {});
+    expect(subscription.addCredits).not.toHaveBeenCalled();
     expect(res).toEqual({ ok: true, duplicate: true });
   });
 

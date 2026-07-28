@@ -1368,13 +1368,18 @@ export class PostsService {
     // sibling campaign just QUEUED this tick.
     let campaignChannels: string[] = [];
     try { campaignChannels = JSON.parse(campaign.target_channels || '[]'); } catch { campaignChannels = []; }
+    const crossGroupPosted = new Set<string>();
     if (campaignChannels.length) {
       const groupPosted = await this.postedProductIdsToChannels(campaignChannels, cooldownCutoff);
-      for (const id of groupPosted) postedIds.add(id);
+      for (const id of groupPosted) { postedIds.add(id); crossGroupPosted.add(id); }
     }
     // product_id → last-posted ms, so a fallback recycle can pick the product posted
     // LONGEST ago (never the same item two days running).
     const postedAtMs = new Map<string, number>();
+    // Treat cross-campaign group-posted products as JUST posted (now), so the oldest-first
+    // recycle tiers rank them LAST — otherwise, absent from postedAtMs, they'd sort as 0
+    // (oldest) and be recycled FIRST, re-posting the very item the dedup meant to suppress.
+    for (const id of crossGroupPosted) postedAtMs.set(id, Date.now());
     for (const r of postedRows) {
       const ms = r.created_at ? new Date(r.created_at).getTime() : 0;
       const id = String(r.product_id);
