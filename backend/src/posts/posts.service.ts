@@ -2703,7 +2703,11 @@ export class PostsService {
       }));
       form.append('media', JSON.stringify(media));
       sheets.forEach((b, i) => form.append(`sheet${i}`, b, { filename: `sheet${i}.jpg`, contentType: 'image/jpeg' }));
-      return axios.post(url, form, { headers: form.getHeaders(), timeout: 40000, maxBodyLength: Infinity, maxContentLength: Infinity });
+      // 120s: a 10-photo album is uploaded as raw multipart bytes from a small instance —
+      // 40s regularly expired mid-upload while Telegram went on to PUBLISH the album anyway,
+      // producing a false "failed" (and a duplicate when the user resent). Uploads are slow,
+      // not stuck — give them room.
+      return axios.post(url, form, { headers: form.getHeaders(), timeout: 120_000, maxBodyLength: Infinity, maxContentLength: Infinity });
     };
     try {
       const res = await send(true);
@@ -2730,7 +2734,8 @@ export class PostsService {
       form.append('caption', withHtml ? caption : caption.replace(/<[^>]+>/g, ''));
       if (withHtml) form.append('parse_mode', 'HTML');
       form.append('photo', buffer, { filename: 'photo.jpg', contentType: 'image/jpeg' });
-      return axios.post(url, form, { headers: form.getHeaders(), timeout: 30000, maxBodyLength: Infinity, maxContentLength: Infinity });
+      // 90s — same slow-upload reality as the album path (see sendMediaGroupUpload).
+      return axios.post(url, form, { headers: form.getHeaders(), timeout: 90_000, maxBodyLength: Infinity, maxContentLength: Infinity });
     };
     try {
       const res = await send(true);
