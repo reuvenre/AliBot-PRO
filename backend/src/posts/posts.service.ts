@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
-import { Repository, LessThan, MoreThan } from 'typeorm';
+import { Repository, LessThan, MoreThan, Brackets } from 'typeorm';
 import axios from 'axios';
 // CommonJS module (no .default) — import-require avoids the `.default is not a
 // constructor` trap under this tsconfig (no esModuleInterop). See collage.service.ts.
@@ -1142,6 +1142,30 @@ export class PostsService {
     return times;
   }
 
+  /**
+   * product_ids already posted (ANY status, ANY campaign) to ANY of these channels since
+   * `since`. This is the cross-campaign, per-GROUP dedup: two campaigns that share a target
+   * group can't post the same product to it — the "same item shows up twice in the group"
+   * complaint. Includes queued/scheduled/pending too, so when campaigns run back-to-back in
+   * one tick the second sees what the first just queued.
+   */
+  async postedProductIdsToChannels(channelIds: string[], since: Date): Promise<Set<string>> {
+    const ids = (channelIds || []).filter((c) => typeof c === 'string' && c.trim());
+    if (!ids.length) return new Set();
+    const rows = await this.repo.createQueryBuilder('p')
+      .select('DISTINCT p.product_id', 'product_id')
+      .where('p.created_at > :since', { since })
+      .andWhere(new Brackets((w) => {
+        ids.forEach((c, i) => {
+          w.orWhere(`p.channel_override = :cc${i}`, { [`cc${i}`]: c });
+          w.orWhere(`p.channel_overrides LIKE :ll${i}`, { [`ll${i}`]: `%${c}%` });
+        });
+      }))
+      .getRawMany()
+      .catch(() => [] as { product_id: string }[]);
+    return new Set(rows.map((r) => String(r.product_id)));
+  }
+
   /** The distinct product_ids this campaign has already posted (any status) — the explicit
    *  dedup signal the runners use so a campaign cycles through its catalog before repeating. */
   async postedProductIds(campaignId: string): Promise<Set<string>> {
@@ -1336,6 +1360,18 @@ export class PostsService {
       select: ['product_id', 'keyword', 'created_at'],
     }).catch(() => [] as PostedProduct[]);
     const postedIds = new Set(postedRows.map((r) => String(r.product_id)));
+    // CROSS-CAMPAIGN, PER-GROUP dedup: also exclude products that ANY campaign posted to
+    // THIS campaign's target group(s) within the cooldown. Two campaigns sharing a group
+    // with overlapping keywords used to post the SAME product to it (observed: both
+    // "Tactical" campaigns published product 1005009983369472 to the group seconds apart).
+    // Because the scheduler runs campaigns sequentially, this also catches a product the
+    // sibling campaign just QUEUED this tick.
+    let campaignChannels: string[] = [];
+    try { campaignChannels = JSON.parse(campaign.target_channels || '[]'); } catch { campaignChannels = []; }
+    if (campaignChannels.length) {
+      const groupPosted = await this.postedProductIdsToChannels(campaignChannels, cooldownCutoff);
+      for (const id of groupPosted) postedIds.add(id);
+    }
     // product_id → last-posted ms, so a fallback recycle can pick the product posted
     // LONGEST ago (never the same item two days running).
     const postedAtMs = new Map<string, number>();
