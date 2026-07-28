@@ -102,8 +102,14 @@ export class MailService {
     const smtpHost = this.config.get<string>('SMTP_HOST');
 
     if (!smtpHost) {
-      // Dev fallback: log the link so developers can use it without SMTP
-      this.logger.warn(`[DEV] Password reset link for ${email}: ${resetUrl}`);
+      // Dev fallback: log the link so developers can use it without SMTP. NEVER in
+      // production — a prod instance misconfigured without SMTP must not write live
+      // (1h-valid) reset URLs into its logs.
+      if (this.config.get('NODE_ENV') !== 'production') {
+        this.logger.warn(`[DEV] Password reset link for ${email}: ${resetUrl}`);
+      } else {
+        this.logger.error('SMTP_HOST is not configured — password reset email NOT sent');
+      }
       return;
     }
 

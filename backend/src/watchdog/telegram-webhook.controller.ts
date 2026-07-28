@@ -1,5 +1,13 @@
 import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { WatchdogService } from './watchdog.service';
+
+/** Constant-time string compare — avoids leaking the secret via response timing. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a || '');
+  const bb = Buffer.from(b || '');
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
 
 /**
  * PUBLIC endpoint Telegram POSTs bot updates to (set via setWebhook on boot). Auth is the
@@ -16,7 +24,7 @@ export class TelegramWebhookController {
     @Headers('x-telegram-bot-api-secret-token') secret: string,
     @Body() body: any,
   ) {
-    if (secret && secret === this.watchdog.telegramWebhookSecret()) {
+    if (secret && safeEqual(secret, this.watchdog.telegramWebhookSecret())) {
       await this.watchdog.handleTelegramUpdate(body).catch(() => {});
     }
     return { ok: true };

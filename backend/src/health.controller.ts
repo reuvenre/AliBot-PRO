@@ -22,10 +22,12 @@ export class HealthController {
     try {
       await this.ds.query('SELECT 1');
     } catch (err: any) {
+      // Log the real error server-side, but never return it — a raw Postgres error can
+      // disclose host/port/database name to an anonymous caller. Keep the body generic.
+      console.error('[health] DB check failed:', err?.message);
       throw new ServiceUnavailableException({
         status: 'error',
         db: 'down',
-        error: err?.message ?? 'database unreachable',
         timestamp: new Date().toISOString(),
       });
     }
