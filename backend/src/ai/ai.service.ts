@@ -48,51 +48,66 @@ export class AiService {
 
   /** Resolve the effective provider: the chosen one if keyed, else the first keyed provider. */
   resolveProvider(creds: DecryptedCredentials | null): AiProvider | null {
-    if (!creds) return null;
+    return this.providerOrder(creds)[0] || null;
+  }
+
+  /**
+   * Keyed providers in try-order: the chosen one first, then the others that ALSO have a
+   * key — the failover chain. So if the primary provider errors or returns empty at runtime,
+   * generate() falls back to a real second AI instead of the dumb defaultText (which is what
+   * made posts go out with the raw English title / ignoring the campaign template).
+   */
+  private providerOrder(creds: DecryptedCredentials | null): AiProvider[] {
+    if (!creds) return [];
     const has: Record<AiProvider, boolean> = {
       anthropic: !!creds.anthropic_api_key,
       openai: !!creds.openai_api_key,
       gemini: !!creds.gemini_api_key,
     };
     const chosen = (creds.ai_provider as AiProvider) || 'anthropic';
-    if (has[chosen]) return chosen;
-    return (['anthropic', 'openai', 'gemini'] as AiProvider[]).find((p) => has[p]) || null;
+    const all: AiProvider[] = ['anthropic', 'openai', 'gemini'];
+    return [chosen, ...all.filter((p) => p !== chosen)].filter((p) => has[p]);
   }
 
   async generate(creds: DecryptedCredentials | null, opts: GenerateOptions): Promise<GenerateResult | null> {
-    const provider = this.resolveProvider(creds);
-    if (!provider || !creds) return null;
+    if (!creds) return null;
+    const order = this.providerOrder(creds);
+    if (!order.length) return null;
 
     const maxTokens = opts.maxTokens ?? 600;
     const temperature = opts.temperature ?? 0.85;
 
-    try {
-      let result: GenerateResult;
-      switch (provider) {
-        case 'anthropic':
-          result = await this.callAnthropic(creds, opts, maxTokens, temperature);
-          break;
-        case 'openai':
-          result = await this.callOpenAI(creds, opts, maxTokens, temperature);
-          break;
-        case 'gemini':
-          result = await this.callGemini(creds, opts, maxTokens, temperature);
-          break;
-        default:
-          return null;
+    // Try each keyed provider in order; move on when one errors OR returns empty text, so a
+    // single provider hiccup (bad key, quota, retired model, safety-block) doesn't dump the
+    // post to generic default copy while another usable provider sits idle.
+    for (let i = 0; i < order.length; i++) {
+      const provider = order[i];
+      try {
+        let result: GenerateResult;
+        switch (provider) {
+          case 'anthropic': result = await this.callAnthropic(creds, opts, maxTokens, temperature); break;
+          case 'openai':    result = await this.callOpenAI(creds, opts, maxTokens, temperature); break;
+          case 'gemini':    result = await this.callGemini(creds, opts, maxTokens, temperature); break;
+          default: continue;
+        }
+        if (!result?.text?.trim()) {
+          this.logger.warn(`[AI:${provider}] returned empty text${i < order.length - 1 ? ' — failing over to next provider' : ''}`);
+          continue;
+        }
+        // Meter token consumption per user/day/provider (best-effort, never blocks).
+        if (creds.user_id && result.tokens > 0) {
+          void this.usage.record(
+            creds.user_id, result.provider,
+            result.promptTokens ?? 0, result.outputTokens ?? 0, result.tokens,
+          );
+        }
+        return result;
+      } catch (err: any) {
+        const msg = err?.response?.data?.error?.message || err.message;
+        this.logger.error(`[AI:${provider}] generation failed: ${msg}${i < order.length - 1 ? ' — failing over to next provider' : ''}`);
       }
-      // Meter token consumption per user/day/provider (best-effort, never blocks).
-      if (creds.user_id && result.tokens > 0) {
-        void this.usage.record(
-          creds.user_id, result.provider,
-          result.promptTokens ?? 0, result.outputTokens ?? 0, result.tokens,
-        );
-      }
-      return result;
-    } catch (err: any) {
-      this.logger.error(`[AI:${provider}] generation failed: ${err?.response?.data?.error?.message || err.message}`);
-      return null;
     }
+    return null;
   }
 
   // ── Anthropic Claude ──────────────────────────────────────────────────────
