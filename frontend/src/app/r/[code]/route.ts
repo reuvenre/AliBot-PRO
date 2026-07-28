@@ -13,9 +13,10 @@ const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace
  */
 const FALLBACK = (process.env.SHORT_LINK_FALLBACK_URL || '').trim();
 
-export async function GET(req: NextRequest, { params }: { params: { code: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params;
   try {
-    const res = await fetch(`${API}/r/${encodeURIComponent(params.code)}/resolve`, {
+    const res = await fetch(`${API}/r/${encodeURIComponent(code)}/resolve`, {
       headers: {
         'x-forwarded-referrer': req.headers.get('referer') || '',
         'user-agent': req.headers.get('user-agent') || '',

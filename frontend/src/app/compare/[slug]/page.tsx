@@ -9,8 +9,9 @@ export function generateStaticParams() {
   return COMPARISONS.map((c) => ({ slug: c.slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
-  const c = getComparison(params.slug);
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const c = getComparison(slug);
   if (!c) return {};
   return {
     title: c.title,
@@ -20,8 +21,9 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   };
 }
 
-export default function ComparePage({ params }: { params: { slug: string } }) {
-  const c = getComparison(params.slug);
+export default async function ComparePage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const c = getComparison(slug);
   if (!c) notFound();
 
   return (

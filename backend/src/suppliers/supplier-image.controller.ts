@@ -34,7 +34,7 @@ export class SupplierImageController {
     });
     if (upstream.status !== 200) { res.status(502).send('image unavailable'); return; }
 
-    res.setHeader('Content-Type', upstream.headers['content-type'] || 'image/jpeg');
+    res.setHeader('Content-Type', String(upstream.headers['content-type'] || 'image/jpeg'));
     res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
     res.send(Buffer.from(upstream.data));
   }
