@@ -33,6 +33,10 @@ export function CredentialsForm() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>(null);
   const [saved, setSaved] = useState(false);
+  // LIVE Gemini model list for the saved key (Google's own catalog) — the hardcoded
+  // options went stale when Google retired gemini-2.5-* for new keys, leaving a "valid"
+  // key that failed every generation. Empty → fall back to the static options.
+  const [geminiModels, setGeminiModels] = useState<{ name: string; displayName: string }[]>([]);
 
   useEffect(() => {
     credentialsApi.get()
@@ -61,6 +65,9 @@ export function CredentialsForm() {
         }));
       })
       .catch(() => {});
+    credentialsApi.geminiModels()
+      .then((r) => setGeminiModels(r.models || []))
+      .catch(() => {});
   }, []);
 
   const handleSave = async () => {
@@ -69,6 +76,8 @@ export function CredentialsForm() {
       await credentialsApi.upsert(form);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // A new key may unlock a different model catalog — refresh the live list.
+      credentialsApi.geminiModels().then((r) => setGeminiModels(r.models || [])).catch(() => {});
     } finally {
       setIsSaving(false);
     }
@@ -235,9 +244,29 @@ export function CredentialsForm() {
                   onChange={(e) => setForm((f) => ({ ...f, gemini_model: e.target.value }))}
                   className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-colors"
                 >
-                  <option value="gemini-2.5-flash">gemini-2.5-flash (מהיר)</option>
-                  <option value="gemini-2.5-pro">gemini-2.5-pro (איכות גבוהה)</option>
+                  {geminiModels.length > 0 ? (
+                    <>
+                      {/* Live catalog from Google for THIS key — can't go stale. */}
+                      {geminiModels.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}{m.displayName && m.displayName !== m.name ? ` — ${m.displayName}` : ''}
+                        </option>
+                      ))}
+                      {/* Keep the saved value selectable even if it vanished from the catalog. */}
+                      {!geminiModels.some((m) => m.name === form.gemini_model) && form.gemini_model && (
+                        <option value={form.gemini_model}>{form.gemini_model} (לא זמין למפתח הנוכחי)</option>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash (מהיר)</option>
+                      <option value="gemini-2.5-pro">gemini-2.5-pro (איכות גבוהה)</option>
+                    </>
+                  )}
                 </select>
+                {geminiModels.length > 0 && (
+                  <p className="text-2xs text-white/30 mt-1">הרשימה נטענת ישירות מ-Google לפי המפתח שלך — בחר מודל, שמור, ולחץ "בדוק תקינות".</p>
+                )}
               </div>
             </>
           )}

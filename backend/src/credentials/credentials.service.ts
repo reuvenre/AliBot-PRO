@@ -323,6 +323,39 @@ export class CredentialsService {
     return this.toPublic(cred);
   }
 
+  /**
+   * The Gemini models THIS user's key can generate with, straight from Google's models
+   * endpoint (filtered to generateContent-capable gemini* text models, newest first).
+   * Empty list when no key is set or the listing fails — the UI then falls back to its
+   * static options.
+   */
+  async listGeminiModels(userId: string): Promise<{ models: { name: string; displayName: string }[] }> {
+    const cred = await this.repo.findOne({ where: { user_id: userId } });
+    const key = cred?.gemini_api_key_enc ? decrypt(cred.gemini_api_key_enc) : '';
+    if (!key) return { models: [] };
+    try {
+      const res = await axios.get(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}&pageSize=100`,
+        { timeout: 8000 },
+      );
+      const models = (res.data?.models || [])
+        .filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map((m: any) => ({
+          name: String(m.name || '').replace(/^models\//, ''),
+          displayName: String(m.displayName || ''),
+        }))
+        // Text-generation gemini models only — skip embeddings/aqa/imagen and dated
+        // preview snapshots (e.g. ...-preview-05-20), which retire without notice.
+        .filter((m: any) => /^gemini/i.test(m.name) && !/embedding|aqa|preview-\d{2}/i.test(m.name))
+        // Newest family first so the UI's top suggestion is the current generation.
+        .sort((a: any, b: any) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+      return { models };
+    } catch (err: any) {
+      this.logger.warn(`listGeminiModels failed: ${err?.message}`);
+      return { models: [] };
+    }
+  }
+
   async verify(userId: string): Promise<{
     aliexpress: boolean; telegram: boolean; openai: boolean;
     gemini: boolean; anthropic: boolean; facebook: boolean; instagram: boolean; metaAdAccount: boolean; apify: boolean;

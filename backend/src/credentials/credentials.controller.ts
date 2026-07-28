@@ -29,4 +29,15 @@ export class CredentialsController {
   tokenStatus(@Req() req: Request) {
     return this.svc.getTokenStatus((req.user as any).id);
   }
+
+  /**
+   * LIVE list of Gemini models the user's key can actually generate with. The settings
+   * dropdown was hardcoded and went stale when Google retired gemini-2.5-* for new
+   * users — a "valid" key then failed every generation. Populating from Google's own
+   * models endpoint means the list can never rot again.
+   */
+  @Get('gemini-models')
+  geminiModels(@Req() req: Request) {
+    return this.svc.listGeminiModels((req.user as any).id);
+  }
 }

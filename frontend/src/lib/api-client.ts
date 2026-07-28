@@ -240,6 +240,11 @@ export const credentialsApi = {
   /** Facebook Page token expiry — countdown in Settings + renew banner in the dashboard. */
   tokenStatus: () =>
     http.get<{ has_token: boolean; expires_at: string | null; days_left: number | null }>('/credentials/token-status').then(extract),
+
+  /** LIVE Gemini models the saved key can generate with — populates the model dropdown
+   *  so it can't go stale when Google retires a model family. */
+  geminiModels: () =>
+    http.get<{ models: { name: string; displayName: string }[] }>('/credentials/gemini-models').then(extract),
 };
 
 // ─── AI token-usage metering ─────────────────────────────────────────────────
