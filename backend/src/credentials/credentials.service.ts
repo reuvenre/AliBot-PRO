@@ -363,15 +363,24 @@ export class CredentialsService {
       }
     } catch (err: any) { errors.openai = apiErrorMessage(err); }
 
-    // Verify Gemini
+    // Verify Gemini — do a REAL generateContent call with the CONFIGURED model, exactly
+    // like publishing does. The old check only listed models (models?key=), which passes
+    // even when the key/project can't actually generate (model not enabled, billing/quota),
+    // giving a false "valid" while every post silently fell back to generic copy.
     try {
       const key = decrypt(cred.gemini_api_key_enc);
       if (key) {
-        const res = await axios.get(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
-          { timeout: 5000 },
+        const model = cred.gemini_model || 'gemini-2.5-flash';
+        const res = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+          { contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } },
+          { headers: { 'Content-Type': 'application/json' }, timeout: 8000, validateStatus: () => true },
         );
-        results.gemini = res.status === 200;
+        if (res.status === 200 && !res.data?.error) {
+          results.gemini = true;
+        } else {
+          errors.gemini = res.data?.error?.message || `HTTP ${res.status}`;
+        }
       } else {
         errors.gemini = 'לא הוזן מפתח API';
       }
