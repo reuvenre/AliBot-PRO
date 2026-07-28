@@ -15,6 +15,16 @@ import { RatesService } from '../rates/rates.service';
 
 const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'flylink_url', 'status'] as const;
 
+/**
+ * A FLYLINK product isn't re-posted until at least this long after its last post. FLYLINK
+ * catalogs are FINITE (unlike AliExpress's endless search), so when a catalog is small — or
+ * mostly out of stock — the round-robin has nothing new and used to re-post the SAME product
+ * every cron tick (the "same water gun over and over" bug). This gap makes a small catalog
+ * cycle slowly instead of spamming one item; the campaign simply skips a tick when nothing is
+ * past the gap. Tunable via env for stores that accept faster repeats.
+ */
+const FLYLINK_REPEAT_COOLDOWN_MS = (Number(process.env.FLYLINK_REPEAT_COOLDOWN_HOURS) || 48) * 3_600_000;
+
 @Injectable()
 export class SupplierProductsService {
   constructor(
@@ -503,11 +513,24 @@ export class SupplierProductsService {
 
     // Explicit dedup — the SAME signal the AliExpress runner uses (and why it never repeats):
     // skip products this campaign already posted. last_posted_at ordering alone let a product
-    // get re-selected on the next run (observed: WT1463 posted at 06:00 AND 09:00). Fall back
-    // to the full list only once the whole catalog has been cycled through.
+    // get re-selected on the next run (observed: WT1463 posted at 06:00 AND 09:00).
     const postedIds = await this.posts.postedProductIds(campaign.id).catch(() => new Set<string>());
     const fresh = candidates.filter((p) => !postedIds.has(String(p.sku || p.id)));
-    const products = (fresh.length ? fresh : candidates).slice(0, limit);
+    // Once the whole catalog has been posted at least once, repeats are allowed — but ONLY
+    // for items past the repeat-cooldown, oldest-first (candidates are ordered by
+    // last_posted_at ASC). Without this, a tiny/mostly-out-of-stock catalog re-posted the
+    // same product every cron tick. If nothing is past the cooldown, publish NOTHING this
+    // run rather than spam the same item — the campaign catches up next cadence.
+    let pool = fresh;
+    if (!pool.length) {
+      const cutoff = Date.now() - FLYLINK_REPEAT_COOLDOWN_MS;
+      pool = candidates.filter((p) => !p.last_posted_at || new Date(p.last_posted_at).getTime() < cutoff);
+    }
+    const products = pool.slice(0, limit);
+    if (!products.length) {
+      return { queued: 0, failed: 0, keyword: 'מוצרי FLYLINK', searched: 'FLYLINK',
+        errors: ['כל מוצרי הקטלוג פורסמו לאחרונה — דילוג עד שהקולדאון יעבור. הוסף מוצרים לקטלוג לפרסום תכוף ומגוון יותר.'] };
+    }
 
     // Copy style of the group the campaign posts to (first target) — e.g. the "מאמא מותגים"
     // hidden-product template. Empty → the built-in voice.
