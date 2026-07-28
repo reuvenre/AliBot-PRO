@@ -402,6 +402,24 @@ export class WatchdogService implements OnModuleInit {
       try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
       let overSubscribed = false;
       if (groups.length) {
+        // The group's last delivery from ANY source — sibling campaigns, the queue, and
+        // MANUAL posts alike. Needed regardless of siblings: a hand-published post books
+        // the group's interval slot too, making the campaign's next run skip by design.
+        const grpRow = await this.posts.createQueryBuilder('p')
+          .select('MAX(p.sent_at)', 'max')
+          .where("p.status = 'sent'")
+          .andWhere(groups.map((_g, i) => `(p.channel_override = :g${i} OR p.channel_overrides LIKE :l${i})`).join(' OR '),
+            Object.fromEntries(groups.flatMap((g, i) => [[`g${i}`, g], [`l${i}`, `%"${g}"%`]])))
+          .getRawOne().catch(() => null);
+        const grpLastMs = grpRow?.max ? new Date(grpRow.max).getTime() : 0;
+
+        // Group served very recently (within ~1.5 intervals)? The campaign's runs are
+        // legitimately skipping on interval pacing — e.g. the owner just posted MANUALLY
+        // to the group (observed: a 14:28 manual post made the 15:00 campaign run skip,
+        // and the watchdog cried "silent campaign" while the pacing worked exactly as
+        // designed). Re-check next sweep; alert only if the group itself goes quiet.
+        if (grpLastMs && now - grpLastMs < 90 * 60_000) continue;
+
         const siblings = silent.filter((o) => o.id !== c.id).filter((o) => {
           let og: string[] = [];
           try { og = JSON.parse(o.target_channels || '[]'); } catch { og = []; }
@@ -409,15 +427,9 @@ export class WatchdogService implements OnModuleInit {
         });
         if (siblings.length) {
           overSubscribed = true;
-          // Did the GROUP publish recently (any campaign)? If so it's healthy fair-share
-          // rotation — this campaign just took a back seat this round. Don't cry wolf.
-          const grpRow = await this.posts.createQueryBuilder('p')
-            .select('MAX(p.sent_at)', 'max')
-            .where("p.status = 'sent'")
-            .andWhere(groups.map((_g, i) => `(p.channel_override = :g${i} OR p.channel_overrides LIKE :l${i})`).join(' OR '),
-              Object.fromEntries(groups.flatMap((g, i) => [[`g${i}`, g], [`l${i}`, `%"${g}"%`]])))
-            .getRawOne().catch(() => null);
-          const grpLastMs = grpRow?.max ? new Date(grpRow.max).getTime() : 0;
+          // Shared group: under fair-share each campaign's expected quiet window scales
+          // with the number of campaigns splitting the group's rate. Don't cry wolf while
+          // the group is alive within that budget.
           const perCampaignBudget = (siblings.length + 1) * 3 * 60 * 60_000; // expected quiet window
           if (grpLastMs && now - grpLastMs < perCampaignBudget) {
             continue; // group is alive → fair-share rotation, not a fault
