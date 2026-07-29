@@ -10,6 +10,21 @@ import { adminApi, subscriptionApi } from '@/lib/api-client';
 import { useAuth } from '@/lib/hooks/useAuth';
 import type { AdminUser, AdminStats, PlanDef, BroadcastResult } from '@/types';
 
+/**
+ * Result banners. Every colour is stated for BOTH themes rather than relying on the
+ * light-theme remapping layer in globals.css — a diagnostics banner is exactly the place
+ * where "washed out and unreadable" costs the most, so it doesn't get to depend on a
+ * global override staying in sync.
+ */
+const bannerClass = (ok: boolean) => (ok
+  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 dark:bg-emerald-500/15 dark:border-emerald-400/40 dark:text-emerald-100'
+  : 'bg-red-50 border-red-300 text-red-900 dark:bg-red-500/15 dark:border-red-400/50 dark:text-red-100');
+
+const CODE_CHIP = 'font-mono text-xs rounded px-1.5 py-0.5 align-middle '
+  + 'bg-red-900/10 text-red-950 dark:bg-black/40 dark:text-white';
+
+const HINT_CLASS = 'mt-2 font-normal leading-relaxed text-red-800 dark:text-red-50/90';
+
 export default function AdminUsersPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -114,33 +129,24 @@ export default function AdminUsersPage() {
       </div>
 
       {smtpResult && (
-        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${smtpResult.ok
-          ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
-          : 'bg-red-500/15 border-red-400/50 text-red-100'}`} dir="rtl">
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${bannerClass(smtpResult.ok)}`} dir="rtl">
           {smtpResult.ok ? (
             <>✅ שליחת המיילים תקינה ({smtpResult.host}{smtpResult.port ? `:${smtpResult.port}` : ''}) — נשלח מייל בדיקה לתיבה שלך.</>
           ) : (
             <>
-              <div>
-                ⚠️ בעיית שליחת מיילים:{' '}
-                <span dir="ltr" className="font-mono text-xs bg-black/30 rounded px-1.5 py-0.5 text-white">
-                  {smtpResult.error}
-                </span>
-              </div>
+              <div>⚠️ בעיית שליחת מיילים: <code dir="ltr" className={CODE_CHIP}>{smtpResult.error}</code></div>
               {/* The raw provider string says WHAT broke; the hint says which knob to turn. */}
-              {smtpResult.hint && <div className="mt-2 text-red-50/90 font-normal leading-relaxed">{smtpResult.hint}</div>}
+              {smtpResult.hint && <div className={HINT_CLASS}>{smtpResult.hint}</div>}
             </>
           )}
         </div>
       )}
 
       {wdResult && (
-        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${wdResult.ok
-          ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
-          : 'bg-red-500/15 border-red-400/50 text-red-100'}`} dir="rtl">
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${bannerClass(wdResult.ok)}`} dir="rtl">
           {wdResult.ok
             ? <>✅ נשלחה הודעת בדיקה לטלגרם — בדוק שקיבלת אותה בצ׳אט עם הבוט.</>
-            : <>⚠️ התראת Watchdog: <span dir="ltr" className="font-mono text-xs bg-black/30 rounded px-1.5 py-0.5 text-white">{wdResult.error}</span></>}
+            : <>⚠️ התראת Watchdog: <code dir="ltr" className={CODE_CHIP}>{wdResult.error}</code></>}
         </div>
       )}
 

@@ -117,8 +117,12 @@ export class MailService {
    */
   private smtpHint(code: string, host: string, port: number): string | undefined {
     if (code === 'ETIMEDOUT' || code === 'ESOCKET' || code === 'ECONNECTION') {
-      return `החיבור אל ${host}:${port} לא נפתח כלל — כנראה הפורט חסום ביציאה מהשרת. `
-        + `נסה SMTP_PORT=587; אם גם הוא נכשל, הגדר RESEND_API_KEY והמערכת תשלח דרך HTTPS (פורט 443) במקום SMTP.`;
+      // Don't suggest the port that's already in use — on 587 the remaining explanation is
+      // that the host blocks outbound SMTP entirely, and only an HTTPS API gets out.
+      const portAdvice = port === 587
+        ? 'פורט 587 כבר בשימוש, כלומר השרת חוסם SMTP יוצא. הפתרון: הגדר RESEND_API_KEY והמערכת תשלח דרך HTTPS (פורט 443).'
+        : 'נסה SMTP_PORT=587; אם גם הוא נכשל, הגדר RESEND_API_KEY והמערכת תשלח דרך HTTPS (פורט 443) במקום SMTP.';
+      return `החיבור אל ${host}:${port} לא נפתח כלל — הפורט חסום ביציאה מהשרת. ${portAdvice}`;
     }
     if (code === 'EAUTH') {
       return 'השם או הסיסמה נדחו. ב-Gmail חייבים App Password בן 16 תווים (בלי רווחים) — לא סיסמת החשבון הרגילה.';
