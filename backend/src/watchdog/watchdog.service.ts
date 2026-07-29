@@ -733,37 +733,49 @@ export class WatchdogService implements OnModuleInit {
     const token = await this.telegramToken();
     if (!token) return;
     const url = `${base}/telegram/webhook`;
+    // 'callback_query' carries the product bot's inline-button taps. It is NOT implied by
+    // a previously-registered ['message'] webhook, so an already-ours webhook still has to
+    // be re-registered when it predates the product bot — otherwise every tap is dropped.
+    const wanted = ['message', 'callback_query'];
     try {
       const info = await axios.get(`https://api.telegram.org/bot${token}/getWebhookInfo`, { timeout: 10000 });
       const current = info.data?.result?.url || '';
-      if (current === url) return; // already ours
-      if (current) { this.logger.warn(`telegram bot already has a webhook (${current}) — not overwriting`); return; }
+      const allowed: string[] = info.data?.result?.allowed_updates || [];
+      if (current === url) {
+        if (wanted.every((u) => allowed.includes(u))) return; // already ours, already complete
+      } else if (current) {
+        this.logger.warn(`telegram bot already has a webhook (${current}) — not overwriting`);
+        return;
+      }
     } catch { /* proceed to set */ }
     await axios.post(`https://api.telegram.org/bot${token}/setWebhook`, {
       url,
       secret_token: this.telegramWebhookSecret(),
-      allowed_updates: ['message'],
+      allowed_updates: wanted,
     }, { timeout: 10000 });
-    this.logger.log('Telegram status webhook registered');
+    this.logger.log('Telegram webhook registered (status + product bot)');
   }
 
-  /** Handle one incoming Telegram update. Only the configured owner chat may query; a
-   *  status keyword returns the live report, anything else a short hint. */
+  /** Does this message ask for the status report? The webhook uses it to split the
+   *  shared bot between the watchdog and the product bot. */
+  isStatusRequest(text: string): boolean {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    return /^\/?(status|health)\b/i.test(t) || /סטטוס|תקלות|מה\s*המצב|מה\s*קורה/.test(t);
+  }
+
+  /** Reply to a status request. Only the configured owner chat is answered; every other
+   *  message is routed to the product bot by the webhook, not handled here. */
   async handleTelegramUpdate(update: any): Promise<void> {
     const msg = update?.message;
     const text = String(msg?.text || '').trim();
     const chatId = String(msg?.chat?.id ?? '');
     if (!text || !chatId) return;
     if (chatId !== String(process.env.WATCHDOG_TELEGRAM_CHAT_ID || '')) return; // owner-only
+    if (!this.isStatusRequest(text)) return;
 
-    const isStatus = /^\/?(status|health)\b/i.test(text)
-      || /סטטוס|תקלות|מה\s*המצב|מה\s*קורה/.test(text);
-    if (isStatus) {
-      const report = await this.statusReport().catch((err) => `שגיאה בהפקת הסטטוס: ${err?.message}`);
-      await this.sendTelegramTo(chatId, report).catch(() => {});
-    } else {
-      await this.sendTelegramTo(chatId, 'שלח /status (או "סטטוס") כדי לקבל את מצב התקלות בזמן אמת.').catch(() => {});
-    }
+    const report = await this.statusReport().catch((err) => `שגיאה בהפקת הסטטוס: ${err?.message}`);
+    await this.sendTelegramTo(chatId, report).catch(() => {});
   }
 
   /** Build the on-demand status text: open '[watchdog]' issues + a live scan. */

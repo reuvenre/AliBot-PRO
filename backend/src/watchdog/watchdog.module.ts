@@ -9,9 +9,10 @@ import { WatchdogService } from './watchdog.service';
 import { TelegramWebhookController } from './telegram-webhook.controller';
 import { SecurityModule } from '../security/security.module';
 import { ChannelsModule } from '../channels/channels.module';
+import { TelegramBotModule } from '../telegram-bot/telegram-bot.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Post, Campaign, User]), MailModule, CredentialsModule, SecurityModule, ChannelsModule],
+  imports: [TypeOrmModule.forFeature([Post, Campaign, User]), MailModule, CredentialsModule, SecurityModule, ChannelsModule, TelegramBotModule],
   providers: [WatchdogService],
   controllers: [TelegramWebhookController],
   exports: [WatchdogService],
