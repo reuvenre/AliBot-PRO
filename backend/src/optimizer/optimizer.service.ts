@@ -233,25 +233,35 @@ export class OptimizerService {
   }
 
   /** Telegram (the owner's watchdog chat, via the user's own bot) + email. Best-effort. */
+  /**
+   * Email is the digest's home for EVERY user — it's the one channel that is provably
+   * theirs. Telegram is an extra, and only for the platform operator: the watchdog chat
+   * is the owner's, so routing a customer's keyword and revenue report there would leak
+   * their business data into someone else's inbox.
+   */
   private async deliverDigest(userId: string, text: string): Promise<void> {
-    try {
-      const chatId = process.env.WATCHDOG_TELEGRAM_CHAT_ID;
-      const creds = await this.credentials.getRaw(userId).catch(() => null);
-      const token = process.env.WATCHDOG_TELEGRAM_BOT_TOKEN || creds?.telegram_bot_token;
-      if (chatId && token) {
-        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`,
-          { chat_id: chatId, text }, { timeout: 10_000 });
-      }
-    } catch (err: any) {
-      this.logger.warn(`digest telegram failed: ${err?.message}`);
-    }
-    try {
-      if (this.mail.isConfigured()) {
-        const email = await this.credentials.userEmail(userId);
-        if (email) {
-          await this.mail.sendHtml(email, '🧠 Nexlify — דו"ח הבוקר של המנוע הלומד',
-            `<div dir="rtl" style="font-family:Arial,sans-serif;white-space:pre-line;padding:16px">${text}</div>`);
+    const { email, isAdmin } = await this.credentials.userContact(userId).catch(
+      () => ({ email: null as string | null, isAdmin: false }),
+    );
+
+    if (isAdmin) {
+      try {
+        const chatId = process.env.WATCHDOG_TELEGRAM_CHAT_ID;
+        const creds = await this.credentials.getRaw(userId).catch(() => null);
+        const token = process.env.WATCHDOG_TELEGRAM_BOT_TOKEN || creds?.telegram_bot_token;
+        if (chatId && token) {
+          await axios.post(`https://api.telegram.org/bot${token}/sendMessage`,
+            { chat_id: chatId, text }, { timeout: 10_000 });
         }
+      } catch (err: any) {
+        this.logger.warn(`digest telegram failed: ${err?.message}`);
+      }
+    }
+
+    try {
+      if (email && this.mail.isConfigured()) {
+        await this.mail.sendHtml(email, '🧠 Nexlify — דו"ח הבוקר של המנוע הלומד',
+          `<div dir="rtl" style="font-family:Arial,sans-serif;white-space:pre-line;padding:16px">${text}</div>`);
       }
     } catch (err: any) {
       this.logger.warn(`digest email failed: ${err?.message}`);

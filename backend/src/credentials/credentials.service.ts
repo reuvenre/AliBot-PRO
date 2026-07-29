@@ -680,6 +680,16 @@ export class CredentialsService {
     return cred?.user?.email || null;
   }
 
+  /**
+   * Email + role in one hit. The role matters for anything routed to an OPERATOR channel
+   * (the watchdog Telegram chat): that chat belongs to the platform owner, so a customer's
+   * report must never be sent there.
+   */
+  async userContact(userId: string): Promise<{ email: string | null; isAdmin: boolean }> {
+    const cred = await this.repo.findOne({ where: { user_id: userId }, relations: ['user'] });
+    return { email: cred?.user?.email || null, isAdmin: cred?.user?.role === 'admin' };
+  }
+
   /** Users with winner recycling ON + their click threshold (for the daily recycle cron). */
   async listRecycleEnabled(): Promise<Array<{ user_id: string; min_clicks: number }>> {
     const rows = await this.repo.find({ where: { recycle_winners_enabled: true } });
