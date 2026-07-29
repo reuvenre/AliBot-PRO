@@ -421,3 +421,41 @@ input.bg-white:-webkit-autofill:active {
 [data-theme="light"] .text-amber-300\/70,
 [data-theme="light"] .text-amber-300\/80,
 [data-theme="light"] .text-amber-400\/90 { color: rgba(180, 83, 9, 0.8) !important; }
+
+/* Same problem, rest of the palette. The 100–300 shades are picked to sit on a DARK
+   surface; on the light theme they wash out to near-invisible (the SMTP result banner
+   was the giveaway — pale red text on a pale red tint). Map each to its 700/800 shade,
+   which carries the same hue at readable contrast on white. */
+[data-theme="light"] .text-red-100,
+[data-theme="light"] .text-red-200     { color: #991b1b !important; }
+[data-theme="light"] .text-red-300     { color: #b91c1c !important; }
+[data-theme="light"] .text-red-50\/90  { color: rgba(153, 27, 27, 0.85) !important; }
+[data-theme="light"] .text-emerald-200,
+[data-theme="light"] .text-green-200   { color: #065f46 !important; }
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-green-300   { color: #047857 !important; }
+[data-theme="light"] .text-blue-200    { color: #1d4ed8 !important; }
+[data-theme="light"] .text-blue-300    { color: #2563eb !important; }
+[data-theme="light"] .text-violet-200  { color: #6d28d9 !important; }
+[data-theme="light"] .text-violet-300  { color: #7c3aed !important; }
+[data-theme="light"] .text-pink-200    { color: #9d174d !important; }
+[data-theme="light"] .text-pink-300    { color: #be185d !important; }
+[data-theme="light"] .text-rose-300    { color: #be123c !important; }
+[data-theme="light"] .text-cyan-300    { color: #0e7490 !important; }
+[data-theme="light"] .text-orange-300  { color: #c2410c !important; }
+
+/* Tinted alert surfaces: a /15 wash of a saturated colour reads as flat grey on white.
+   Nudge the fill up and the border to a real hue so the banner keeps its meaning. */
+[data-theme="light"] .bg-red-500\/10,
+[data-theme="light"] .bg-red-500\/15     { background-color: rgba(239, 68, 68, 0.10) !important; }
+[data-theme="light"] .border-red-400\/50,
+[data-theme="light"] .border-red-500\/25 { border-color: rgba(220, 38, 38, 0.35) !important; }
+[data-theme="light"] .bg-emerald-500\/10,
+[data-theme="light"] .bg-emerald-500\/15 { background-color: rgba(16, 185, 129, 0.12) !important; }
+[data-theme="light"] .border-emerald-400\/40,
+[data-theme="light"] .border-emerald-500\/25 { border-color: rgba(5, 150, 105, 0.35) !important; }
+
+/* Inline code chips inside those banners. `text-white` is already remapped to near-black
+   above, so the chip needs the INVERSE treatment here: a light grey fill, not a dark one,
+   or the dark text lands on a dark background. */
+[data-theme="light"] .bg-black\/30 { background-color: rgba(15, 17, 23, 0.08) !important; }
