@@ -1248,14 +1248,23 @@ export class PostsService {
       .groupBy('p.campaign_id')
       .getRawMany();
 
+    // The pacing HORIZON: only work landing within the current interval competes for this
+    // slot. A post scheduled far ahead (a manual announcement queued for tonight) must not
+    // make the group look busy for the hours in between — that silenced every campaign on
+    // every group the post fanned out to, which is why the horizon is explicit here.
+    const horizonMs = now + intervalMin * 60_000;
+
     let latestMs = 0;
-    let hasPending = false;
+    let pendingSoon = false;
     let lastSentMs = 0;
     const lastSentByCampaign = new Map<string, number>();
     for (const r of rows) {
       const pend = r.pending ? new Date(r.pending).getTime() : 0;
       const sent = r.sent ? new Date(r.sent).getTime() : 0;
-      if (pend) { hasPending = true; latestMs = Math.max(latestMs, pend); }
+      // An overdue pending post (pend < now) still occupies the group — it's the far-future
+      // one we ignore. Re-spaced backlog lands at now + 1·interval, so the nearest queued
+      // post stays inside the horizon and the anti-pile-up back-pressure is preserved.
+      if (pend && pend <= horizonMs) { pendingSoon = true; latestMs = Math.max(latestMs, pend); }
       if (sent) { lastSentMs = Math.max(lastSentMs, sent); latestMs = Math.max(latestMs, sent); }
       lastSentByCampaign.set(String(r.campaign_id ?? ''), Math.max(pend, sent));
     }
@@ -1263,14 +1272,14 @@ export class PostsService {
     if (!latestMs) return { slot: notBefore, skip: false };
     const slotMs = Math.max(latestMs + intervalMin * 60_000, notBefore.getTime());
 
-    // Group is BUSY when it already has a pending post, or it published within the interval
-    // MINUS a small grace. The grace is essential: a campaign whose cron matches the group
-    // interval (hourly campaign + 60-min group) sends a few seconds SHY of a full interval
-    // before its next run, so a strict "< interval" check marked the group busy and skipped
-    // every OTHER run → the group posted every 2 hours instead of every hour. The grace
-    // (15% of the interval) absorbs that cron/send jitter.
+    // Group is BUSY when work is already booked inside the horizon, or it published within
+    // the interval MINUS a small grace. The grace is essential: a campaign whose cron matches
+    // the group interval (hourly campaign + 60-min group) sends a few seconds SHY of a full
+    // interval before its next run, so a strict "< interval" check marked the group busy and
+    // skipped every OTHER run → the group posted every 2 hours instead of every hour. The
+    // grace (15% of the interval) absorbs that cron/send jitter.
     const graceMs = intervalMin * 0.15 * 60_000;
-    const groupBusy = hasPending || (lastSentMs > 0 && now - lastSentMs < intervalMin * 60_000 - graceMs);
+    const groupBusy = pendingSoon || (lastSentMs > 0 && now - lastSentMs < intervalMin * 60_000 - graceMs);
 
     // FAIR-SHARE: when several campaigns publish to one group, the group's single rate is
     // split between them — the MOST-BEHIND campaign (oldest last-post, or never posted) wins
@@ -1278,12 +1287,18 @@ export class PostsService {
     // alternate (each ~every 2h) instead of the first one always starving the second. The
     // decision keys off last-post time, not scheduler run order, so it's stable. Single-
     // campaign groups: this campaign is trivially the winner → unchanged behaviour.
+    //
+    // Only CAMPAIGNS take turns. A manual/one-off post has no cadence to catch up on: it
+    // consumes the slot it occupies (via groupBusy above) and nothing more. Letting it into
+    // the rotation starved the campaigns outright — manual posts key to '' here, and
+    // '' < any-uuid is always true, so they won every tie-break and the campaign skipped
+    // the next run for a sibling that was never going to post again.
     let notMyTurn = false;
     if (campaignId && rows.length) {
       const mine = lastSentByCampaign.get(campaignId) ?? 0;
       // A sibling is "more behind" (older last-post, tie broken by id) → it gets the slot.
       for (const [cid, last] of lastSentByCampaign) {
-        if (cid === campaignId) continue;
+        if (!cid || cid === campaignId) continue;
         if (last < mine || (last === mine && cid < campaignId)) { notMyTurn = true; break; }
       }
     }
@@ -1297,7 +1312,18 @@ export class PostsService {
     const slotHour = this.hourInZone(new Date(slotMs), tz);
     const outOfWindow = startHour < endHour && (slotHour < startHour || slotHour >= endHour);
 
-    return { slot: new Date(slotMs), skip: bookedAhead || outOfWindow };
+    const skip = bookedAhead || outOfWindow;
+    if (skip) {
+      // Name the gate that closed. A silent skip is indistinguishable from "nothing to post",
+      // which is what made a cadence regression here take hours to localise.
+      const why = pendingSoon ? 'post already booked within the interval'
+        : groupBusy ? `published ${Math.round((now - lastSentMs) / 60_000)}m ago (interval ${intervalMin}m)`
+        : notMyTurn ? 'another campaign on this group is further behind'
+        : `slot ${slotHour}:00 is outside the ${startHour}:00-${endHour}:00 window`;
+      this.logger.log(`nextGroupSlot skip · group ${groupId}${campaignId ? ` · campaign ${campaignId}` : ''} · ${why}`);
+    }
+
+    return { slot: new Date(slotMs), skip };
   }
 
   async runCampaign(campaign: Campaign, userId: string, opts?: { fromScheduler?: boolean }): Promise<CampaignRunResult> {
