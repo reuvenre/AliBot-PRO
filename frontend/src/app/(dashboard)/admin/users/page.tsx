@@ -112,22 +112,22 @@ export default function AdminUsersPage() {
       </div>
 
       {smtpResult && (
-        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${smtpResult.ok
-          ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
-          : 'bg-red-500/10 border-red-500/25 text-red-300'}`} dir="rtl">
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${smtpResult.ok
+          ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+          : 'bg-red-500/15 border-red-400/50 text-red-100'}`} dir="rtl">
           {smtpResult.ok
             ? <>✅ חיבור ה-SMTP תקין ({smtpResult.host}:{smtpResult.port}) — המיילים אמורים להישלח.</>
-            : <>⚠️ בעיית SMTP: <span dir="ltr" className="font-mono text-xs">{smtpResult.error}</span></>}
+            : <>⚠️ בעיית SMTP: <span dir="ltr" className="font-mono text-xs bg-black/30 rounded px-1.5 py-0.5 text-white">{smtpResult.error}</span></>}
         </div>
       )}
 
       {wdResult && (
-        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${wdResult.ok
-          ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
-          : 'bg-red-500/10 border-red-500/25 text-red-300'}`} dir="rtl">
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${wdResult.ok
+          ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+          : 'bg-red-500/15 border-red-400/50 text-red-100'}`} dir="rtl">
           {wdResult.ok
             ? <>✅ נשלחה הודעת בדיקה לטלגרם — בדוק שקיבלת אותה בצ׳אט עם הבוט.</>
-            : <>⚠️ התראת Watchdog: <span dir="ltr" className="font-mono text-xs">{wdResult.error}</span></>}
+            : <>⚠️ התראת Watchdog: <span dir="ltr" className="font-mono text-xs bg-black/30 rounded px-1.5 py-0.5 text-white">{wdResult.error}</span></>}
         </div>
       )}
 
