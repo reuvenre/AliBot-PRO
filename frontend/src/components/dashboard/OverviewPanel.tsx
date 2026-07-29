@@ -46,9 +46,9 @@ function DeltaBadge({ pct }: { pct: number | null }) {
 }
 
 function Tile({
-  label, value, series, delta, icon: Icon, accent,
+  label, value, note, series, delta, icon: Icon, accent,
 }: {
-  label: string; value: string; series: number[]; delta: number | null;
+  label: string; value: string; note?: string; series: number[]; delta: number | null;
   icon: typeof Send; accent: string;
 }) {
   return (
@@ -57,7 +57,8 @@ function Tile({
         <p className="text-xs text-white/40">{label}</p>
         <Icon size={13} className={accent} />
       </div>
-      <p className="text-2xl font-bold text-white tracking-tight mb-2" dir="ltr">{value}</p>
+      <p className="text-2xl font-bold text-white tracking-tight" dir="ltr">{value}</p>
+      <p className="text-2xs text-white/30 h-4 mb-1">{note ?? ''}</p>
       <div className="flex items-center justify-between">
         <Sparkline points={series} positive={(delta ?? 0) >= 0} />
         <DeltaBadge pct={delta} />
@@ -84,7 +85,7 @@ function WeeklyBars({ series, weekStarts }: { series: number[]; weekStarts: stri
                 ? 'linear-gradient(180deg,#3b82f6,#6366f1)'
                 : 'linear-gradient(180deg,#3b82f6aa,#3b82f633)',
             }}
-            title={`${weekStarts[i] ?? ''} · ₪${v.toLocaleString('he-IL', { maximumFractionDigits: 2 })}`}
+            title={`${weekStarts[i] ?? ''} · $${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`}
           />
         );
       })}
@@ -124,7 +125,10 @@ export function OverviewPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <Tile
           label="עמלות" icon={BadgeDollarSign} accent="text-emerald-300"
-          value={`₪${commissions.toLocaleString('he-IL', { maximumFractionDigits: 0 })}`}
+          value={`$${commissions.toLocaleString('en-US', { maximumFractionDigits: 2 })}`}
+          note={data.ils_approx
+            ? `≈ ₪${(commissions * data.ils_approx.rate).toLocaleString('he-IL', { maximumFractionDigits: 0 })} בשער היום`
+            : undefined}
           series={m.commissions.series} delta={m.commissions.delta_pct}
         />
         <Tile
@@ -143,7 +147,7 @@ export function OverviewPanel() {
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold text-white/70">עמלות · {data.weeks} שבועות</p>
           <span className="text-xs text-white/35" dir="ltr">
-            ₪{m.commissions.total.toLocaleString('he-IL', { maximumFractionDigits: 0 })} סה״כ
+            ${m.commissions.total.toLocaleString('en-US', { maximumFractionDigits: 2 })} סה״כ
           </span>
         </div>
         {hasAnything ? (

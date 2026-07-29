@@ -659,10 +659,14 @@ export interface MetricSeries {
 }
 
 export interface OverviewStats {
-  currency: 'ILS';
+  /** Commissions are reported in USD — the currency AliExpress actually pays, and the only
+   *  one whose history is stable (commission_ils is recomputed at each sync's rate). */
+  currency: 'USD';
   weeks: number;
   /** Week-start dates (YYYY-MM-DD, Monday) aligned 1:1 with each metric's `series`. */
   week_starts: string[];
+  /** Today's rate + converted total, for readers who think in shekels. Explicitly approximate. */
+  ils_approx: { rate: number; total: number } | null;
   metrics: {
     commissions: MetricSeries;
     clicks: MetricSeries;

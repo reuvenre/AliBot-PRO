@@ -4,7 +4,8 @@ import { Repository } from 'typeorm';
 import { Earning } from '../earnings/earning.entity';
 import { LinkClick } from '../links/link-click.entity';
 import { Post } from '../posts/post.entity';
-import { densify, deltaPct, startOfWeekUtc, sum, weekKeys } from './stats.util';
+import { RatesService } from '../rates/rates.service';
+import { densify, deltaPct, sum, weekKeys } from './stats.util';
 
 export interface MetricSeries {
   total: number;
@@ -13,9 +14,13 @@ export interface MetricSeries {
 }
 
 export interface OverviewStats {
-  currency: 'ILS';
+  /** Commissions are reported in the currency the affiliate network actually pays. */
+  currency: 'USD';
   weeks: number;
   week_starts: string[];
+  /** Today's rate and the converted headline total — a convenience for a shekel-thinking
+   *  reader, explicitly approximate. Null when no rate is available. */
+  ils_approx: { rate: number; total: number } | null;
   metrics: {
     commissions: MetricSeries;
     clicks: MetricSeries;
@@ -33,6 +38,7 @@ export class StatsService {
     @InjectRepository(Earning) private readonly earnings: Repository<Earning>,
     @InjectRepository(LinkClick) private readonly clicks: Repository<LinkClick>,
     @InjectRepository(Post) private readonly posts: Repository<Post>,
+    private readonly rates: RatesService,
   ) {}
 
   /**
@@ -69,23 +75,42 @@ export class StatsService {
       };
     };
 
+    const commissions = build(commissionRows);
+
+    // Best-effort only: a missing rate must not fail the dashboard, it just drops the
+    // secondary line. RatesService already caches and falls back to the last good value.
+    const rate = await this.rates.getRate('USD_ILS').catch(() => 0);
+
     return {
-      currency: 'ILS',
+      currency: 'USD',
       weeks: n,
       week_starts: allKeys.slice(n),
+      ils_approx: rate > 0
+        ? { rate, total: Math.round(commissions.total * rate * 100) / 100 }
+        : null,
       metrics: {
-        commissions: build(commissionRows),
+        commissions,
         clicks: build(clickRows),
         posts: build(postRows),
       },
     };
   }
 
-  /** Cancelled commissions are excluded — they are revenue that evaporated, not revenue. */
+  /**
+   * Summed in USD, not ILS, and that choice is load-bearing.
+   *
+   * `commission_usd` is what AliExpress reported and never changes. `commission_ils` is
+   * derived at SYNC time — the sync fetches one rate per run and recomputes the shekel value
+   * of every row it touches, so an order from February that settles today is re-valued at
+   * today's rate. A trend chart built on that column silently rewrites its own history
+   * between page loads. USD is the only reproducible basis here.
+   *
+   * Cancelled commissions are excluded — they are revenue that evaporated, not revenue.
+   */
   private commissionsByWeek(userId: string, from: Date) {
     return this.earnings.createQueryBuilder('e')
       .select("to_char(date_trunc('week', e.order_date), 'YYYY-MM-DD')", 'bucket')
-      .addSelect('COALESCE(SUM(e.commission_ils), 0)', 'value')
+      .addSelect('COALESCE(SUM(e.commission_usd), 0)', 'value')
       .where('e.user_id = :userId', { userId })
       .andWhere('e.order_date >= :from', { from })
       .andWhere("e.status IN ('estimated', 'settled')")

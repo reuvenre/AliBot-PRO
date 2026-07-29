@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCart, TrendingUp, DollarSign, CheckCircle2, Clock, XCircle,
-  Loader2, AlertTriangle, Download,
+  Loader2, AlertTriangle, Download, CalendarRange,
 } from 'lucide-react';
 import { earningsApi } from '@/lib/api-client';
 import type { Earning, EarningStatus } from '@/types';
@@ -29,14 +29,33 @@ const FILTERS: { key: 'all' | EarningStatus; label: string }[] = [
 
 const LIMIT = 20;
 
+/**
+ * Calendar month `offset` months back, as the yyyy-mm-dd pair the date inputs and the API
+ * both speak. Built from local date parts rather than toISOString(), which would shift the
+ * boundary by the UTC offset and drop the 1st of the month for anyone east of Greenwich.
+ */
+function monthRange(offset: number): { from: string; to: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0); // day 0 = last of prev
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { from: fmt(start), to: fmt(end) };
+}
+
+const MONTH_LABEL = new Date().toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Earning[]>([]);
   const [total, setTotal] = useState(0);
   const [totals, setTotals] = useState({ amount_usd: 0, commission_usd: 0, commission_ils: 0, count: 0 });
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<'all' | EarningStatus>('all');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  // Default to the CURRENT MONTH, not all time. The totals above the table are the point of
+  // this screen, and an all-time figure answers a question nobody asks day to day — it just
+  // grows forever and makes "how am I doing this month?" unanswerable without manual filtering.
+  const [from, setFrom] = useState(monthRange(0).from);
+  const [to, setTo] = useState(monthRange(0).to);
   // 'paid' = filter by payment-completed time — the SAME definition as the AliExpress
   // portal's "Completed Payments Time", so counts match its screen 1:1.
   const [dateBasis, setDateBasis] = useState<'order' | 'paid'>('paid');
@@ -115,6 +134,15 @@ export default function OrdersPage() {
   const commRate = totalAmount > 0 ? (totalComm / totalAmount) * 100 : 0;
   const pages = Math.max(1, Math.ceil(total / LIMIT));
 
+  // Name the period the figures below cover. Without it a filtered total is indistinguishable
+  // from an all-time one, which is exactly the confusion this screen had.
+  const rangeLabel = (() => {
+    if (!from && !to) return 'כל הזמנים';
+    if (from === monthRange(0).from && to === monthRange(0).to) return MONTH_LABEL;
+    if (from === monthRange(1).from && to === monthRange(1).to) return 'החודש שעבר';
+    return `${from || '…'} — ${to || 'היום'}`;
+  })();
+
   const fmtDate = (d: string) =>
     new Date(d).toLocaleDateString('he-IL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -142,6 +170,12 @@ export default function OrdersPage() {
       )}
 
       {/* Stats */}
+      <div className="flex items-center gap-2 mb-2">
+        <CalendarRange size={13} className="text-white/30" />
+        <p className="text-xs text-white/45">
+          מציג נתונים עבור <span className="font-semibold text-white/70">{rangeLabel}</span>
+        </p>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'אחוז עמלה', value: totalAmount > 0 ? `${commRate.toFixed(1)}%` : '—', icon: TrendingUp, accent: 'blue' },
@@ -181,7 +215,25 @@ export default function OrdersPage() {
 
       {/* Date range */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
-        <span className="text-2xs text-white/40 ml-1">טווח תאריכים:</span>
+        <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-lg p-0.5 ml-1">
+          {([
+            { key: 'this', label: 'החודש', range: monthRange(0) },
+            { key: 'last', label: 'חודש שעבר', range: monthRange(1) },
+            { key: 'all', label: 'הכל', range: { from: '', to: '' } },
+          ] as const).map((p) => {
+            const active = from === p.range.from && to === p.range.to;
+            return (
+              <button key={p.key}
+                onClick={() => { setFrom(p.range.from); setTo(p.range.to); }}
+                className={`px-2.5 py-1 rounded-md text-2xs font-medium transition-all ${
+                  active ? 'bg-blue-600 text-white' : 'text-white/40 hover:text-white/70'
+                }`}>
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-2xs text-white/40 ml-1">טווח מותאם:</span>
         <input
           type="date" value={from} max={to || undefined}
           onChange={(e) => setFrom(e.target.value)}
@@ -195,12 +247,6 @@ export default function OrdersPage() {
           className="bg-surface-secondary border border-edge rounded-lg px-3 py-1.5 text-xs text-white/70 outline-none focus:border-blue-500/50"
           dir="ltr"
         />
-        {(from || to) && (
-          <button onClick={() => { setFrom(''); setTo(''); }}
-            className="text-2xs text-white/40 hover:text-white/70 underline underline-offset-2">
-            נקה טווח
-          </button>
-        )}
         {/* Date basis: 'paid' mirrors the AliExpress portal ("Completed Payments Time")
             so the count here matches its Live Order Tracking screen 1:1. */}
         <div className="flex items-center gap-1 mr-2 bg-surface-secondary border border-edge rounded-lg p-0.5">
