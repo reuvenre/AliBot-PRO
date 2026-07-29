@@ -135,6 +135,7 @@ export class MailService {
 
   /** Cheap authenticated GET against the chosen HTTP mail API — no message is sent. */
   private async verifyApi(provider: 'resend' | 'brevo'): Promise<MailProbe> {
+    const probe: MailProbe = { ok: true, transport: provider, host: `${provider} API` };
     try {
       if (provider === 'resend') {
         await axios.get('https://api.resend.com/domains', {
@@ -147,8 +148,14 @@ export class MailService {
           timeout: 12_000,
         });
       }
-      return { ok: true, transport: provider, host: `${provider} API` };
+      return probe;
     } catch (err: any) {
+      const status = err?.response?.status;
+      // A "Sending access" Resend key is REFUSED by /domains by design — it may only hit
+      // /emails. Failing here would reject a perfectly good key, so treat an auth refusal
+      // as inconclusive and let the real test send (which every caller performs next) be
+      // the verdict. A genuinely bad key fails there, with the provider's own message.
+      if (status === 401 || status === 403) return probe;
       const detail = err?.response?.data?.message || err?.response?.data?.error?.message || err?.message || String(err);
       this.logger.error(`${provider} verify failed: ${detail}`);
       return { ok: false, transport: provider, host: `${provider} API`, error: `${provider}: ${detail}` };
