@@ -2088,7 +2088,7 @@ export class PostsService {
     if (failed('Instagram')) {
       const body = await this.buildPostBody(post, creds, targets[0]);
       tasks.push(this.sendToInstagram(post, creds, body, userId, targets[0])
-        .catch((err: any) => { errors.push(`Instagram: ${err?.response?.data?.error?.message || err.message}`); }));
+        .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
     }
     if (!tasks.length) throw new BadRequestException('לא זוהתה פלטפורמה שנכשלה לניסיון חוזר');
 
@@ -2159,7 +2159,7 @@ export class PostsService {
       const body = await this.buildPostBody(post, creds, targetList[0]);
       tasks.push(this.sendToInstagram(post, creds, body, userId, targetList[0])
         .then(() => { anySuccess = true; })
-        .catch((err: any) => { errors.push(`Instagram: ${err?.response?.data?.error?.message || err.message}`); }));
+        .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
     }
     if (want.has('pinterest')) {
       const body = await this.buildPostBody(post, creds, targetList[0]);
@@ -2479,7 +2479,7 @@ export class PostsService {
       tasks.push(
         this.sendToInstagram(post, creds, body, post.user_id, targets[0])
           .then(() => { anySuccess = true; })
-          .catch((err: any) => { errors.push(`Instagram: ${err?.response?.data?.error?.message || err.message}`); }),
+          .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }),
       );
     }
 
@@ -2879,9 +2879,12 @@ export class PostsService {
     const res = await axios.post(
       `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/feed`,
       params.toString(),
-      // 8s is plenty for the Graph API — a longer timeout just makes an
-      // expired-token failure feel like the whole system is stuck.
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 8000 },
+      // 20s, not the 8s this used to be. A feed post carries `link`, and Graph fetches that
+      // URL to build the preview card BEFORE it answers — an AliExpress redirect chain
+      // regularly pushes the round trip past 8s. Timing out here is the worst outcome
+      // available: Facebook may have published anyway, so the post is marked failed while
+      // it exists on the page, and the retry duplicates it. Better to wait.
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 },
     );
     if (res.data?.error) throw new Error(res.data.error.message);
     // A 200 without a post id means nothing was actually published — treat it as a

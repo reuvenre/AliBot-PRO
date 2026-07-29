@@ -34,11 +34,37 @@ describe('facebookError', () => {
     expect(facebookError(graph(999, 'Some brand new failure')).message).toBe('Some brand new failure');
   });
 
-  it('survives a non-Graph error such as a socket timeout', () => {
-    expect(facebookError(new Error('ETIMEDOUT')).message).toBe('ETIMEDOUT');
+  it('passes through a non-Graph failure it has no mapping for', () => {
+    // Network-level errors carry no code; anything that isn't a recognised timeout keeps
+    // its text so an unfamiliar failure stays visible.
+    expect(facebookError(new Error('socket hang up')).message).toBe('socket hang up');
   });
 
   it('prefixes the code so a report stays traceable', () => {
     expect(facebookErrorText(graph(190, 'x'))).toMatch(/^\(#190\)/);
+  });
+
+  describe('#10 means different things per surface', () => {
+    const err = graph(10, 'Application does not have permission for this action');
+
+    it('points Instagram at the publishing permission it actually needs', () => {
+      const info = facebookError(err, 'instagram');
+      expect(info.message).toContain('instagram_content_publish');
+      // The account granted instagram_manage_events and assumed it covered publishing.
+      expect(info.message).toContain('instagram_manage_events');
+      expect(info.message).not.toContain('Page Access Token');
+    });
+
+    it('keeps the Page-token guidance for Facebook', () => {
+      expect(facebookError(err, 'facebook').message).toContain('Page Access Token');
+    });
+  });
+
+  it('treats a client timeout as transient, not as a settings problem', () => {
+    // Graph scrapes the attached link before answering, so a slow round trip is normal —
+    // sending the owner to re-issue a token for it would be a wild goose chase.
+    const info = facebookError(new Error('timeout of 8000ms exceeded'));
+    expect(info.needsUserAction).toBe(false);
+    expect(info.message).toContain('לא השיבה בזמן');
   });
 });

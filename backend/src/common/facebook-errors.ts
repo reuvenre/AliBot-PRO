@@ -16,16 +16,32 @@ export interface FacebookErrorInfo {
   needsUserAction: boolean;
 }
 
-export function facebookError(err: any): FacebookErrorInfo {
+export type MetaPlatform = 'facebook' | 'instagram';
+
+export function facebookError(err: any, platform: MetaPlatform = 'facebook'): FacebookErrorInfo {
   const e = err?.response?.data?.error ?? err?.error;
   const code: number | null = typeof e?.code === 'number' ? e.code : null;
   const raw = e?.message || err?.response?.data?.message || err?.message || 'שגיאה לא ידועה';
 
   const act = (message: string): FacebookErrorInfo => ({ code, message, needsUserAction: true });
 
+  // A timeout is not a Graph error and carries no code, but it is the most common failure
+  // when a post attaches a link: Graph fetches that URL to build the preview before it
+  // answers, so the round trip can outlast a short client timeout.
+  if (!code && /timeout|ETIMEDOUT|ECONNABORTED/i.test(String(raw))) {
+    return { code: null, message: 'פייסבוק לא השיבה בזמן. הפרסום יינסה שוב בריצה הבאה.', needsUserAction: false };
+  }
+
   switch (code) {
-    case 200:
     case 10:
+      // #10 means two different things depending on the surface, and the Facebook wording
+      // sent Instagram users to re-issue a Page token that was never the problem.
+      return act(platform === 'instagram'
+        ? 'חסרה ההרשאה instagram_content_publish. במסך האישור של פייסבוק יש לאשר פרסום תוכן באינסטגרם — '
+          + 'ההרשאה instagram_manage_events אינה מספיקה לפרסום.'
+        : 'אין הרשאת פרסום לדף. נדרש Page Access Token (לא טוקן משתמש) של אדמין הדף, '
+          + 'עם ההרשאות pages_manage_posts ו-pages_read_engagement.');
+    case 200:
       return act(
         'אין הרשאת פרסום לדף. נדרש Page Access Token (לא טוקן משתמש) של אדמין הדף, '
         + 'עם ההרשאות pages_manage_posts ו-pages_read_engagement.',
@@ -52,7 +68,7 @@ export function facebookError(err: any): FacebookErrorInfo {
 }
 
 /** One-line form for a post's error_message / the errors list shown in the UI. */
-export function facebookErrorText(err: any): string {
-  const { code, message } = facebookError(err);
+export function facebookErrorText(err: any, platform: MetaPlatform = 'facebook'): string {
+  const { code, message } = facebookError(err, platform);
   return code ? `(#${code}) ${message}` : message;
 }
