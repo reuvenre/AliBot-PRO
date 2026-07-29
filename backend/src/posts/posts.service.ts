@@ -55,6 +55,29 @@ export interface CampaignRunResult {
 const NON_LATIN_RE = /[\u0590-\u05FF\u0600-\u06FF]/;
 /** A product may repeat in a campaign, but not within this many days (cooldown). */
 const PRODUCT_REPEAT_COOLDOWN_DAYS = 14;
+/** How many extra keywords a run may try when its own slot keyword(s) return nothing.
+ *  Bounded so one dead run can't turn into a long chain of affiliate-API calls. */
+const KEYWORD_FALLBACK_ATTEMPTS = 5;
+
+/**
+ * Which keywords a run may fall back to, in order, when every keyword the rotation gave it
+ * came back dry. Continues the rotation from where this run's slots ended, so the campaign
+ * keeps walking the whole keyword list instead of always retrying the same neighbour, and
+ * never re-tries a keyword this run already searched. Bounded by `max`.
+ */
+export function fallbackKeywords(
+  kwList: string[], startIndex: number, exclude: Set<string>, max: number,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set(exclude);
+  for (let i = 0; i < kwList.length && out.length < max; i++) {
+    const kw = kwList[(startIndex + i) % kwList.length];
+    if (seen.has(kw)) continue;
+    seen.add(kw);
+    out.push(kw);
+  }
+  return out;
+}
 
 /**
  * Convert Markdown bold (**x** / __x__) to Telegram HTML (<b>x</b>). Models often
@@ -1436,8 +1459,10 @@ export class PostsService {
     const searchedBy = new Map<string, string>();
     const poolBy = new Map<string, any[]>();
     const kwErrors: string[] = [];
-    for (const kw of distinctKeywords) {
-      const needed = slotKeywords.filter((k) => k === kw).length;
+
+    /** Build the product pool for ONE keyword. Returns null when the keyword is dry;
+     *  the reason is recorded in kwErrors either way. */
+    const buildPool = async (kw: string, needed: number): Promise<any[] | null> => {
       try {
         const searched = await this.searchKeyword(kw, creds);
         searchedBy.set(kw, searched);
@@ -1502,17 +1527,46 @@ export class PostsService {
         }
         if (!pool.length) {
           kwErrors.push(`"${kw}": החיפוש לא החזיר מוצרים כלל`);
-          continue;
+          return null;
         }
         if (tier > 1) {
           this.logger.warn(`campaign ${campaign.id} kw "${kw}": pool via fallback tier ${tier} `
             + `(rating≥${minRating}, discount≥${minDiscount}%, ${PRODUCT_REPEAT_COOLDOWN_DAYS}d cooldown exhausted) — staying live instead of silent`);
         }
-        poolBy.set(kw, pool);
+        return pool;
       } catch (err: any) {
         kwErrors.push(`"${kw}": ${err?.message || 'החיפוש נכשל'}`);
+        return null;
+      }
+    };
+
+    for (const kw of distinctKeywords) {
+      const pool = await buildPool(kw, slotKeywords.filter((k) => k === kw).length);
+      if (pool) poolBy.set(kw, pool);
+    }
+
+    // A single dead keyword must NOT silence the whole run. The rotation hands each run
+    // one keyword per post slot, so a niche term that AliExpress returns nothing for
+    // ("holographic sight") used to abort the run and cost the campaign its entire hour —
+    // observed as a campaign publishing at half its configured rate. When every slot
+    // keyword came back dry, walk FORWARD through the rotation for a live one; the run
+    // publishes on time and the dead keyword is simply skipped this round (it is retried
+    // next time, so a temporary API failure still self-heals).
+    if (!poolBy.size) {
+      const candidates = fallbackKeywords(
+        kwList, baseCursor + perPost, new Set(distinctKeywords), KEYWORD_FALLBACK_ATTEMPTS,
+      );
+      for (const kw of candidates) {
+        const pool = await buildPool(kw, 1);
+        if (pool) {
+          poolBy.set(kw, pool);
+          this.logger.warn(`campaign ${campaign.id}: slot keyword(s) dry (${kwErrors.join(' | ')}) `
+            + `— fell back to "${kw}" instead of skipping the run`);
+          break;
+        }
       }
     }
+
     if (!poolBy.size) {
       throw new BadRequestException(
         `אף מילת מפתח לא החזירה מוצרים (${kwErrors.join(' | ')}). נסה מילות מפתח אחרות או הרחב את טווח המחירים (${campaign.min_price ?? 0}–${campaign.max_price ?? '∞'}).`,
