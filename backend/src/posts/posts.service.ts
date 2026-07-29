@@ -23,6 +23,7 @@ import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
 import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
+import { facebookErrorText } from '../common/facebook-errors';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
 
@@ -2076,7 +2077,7 @@ export class PostsService {
         if ((failed('Facebook') && !wantMake)) {
           const token = await this.resolveFacebookPageToken(userId, target, creds);
           tasks.push(this.sendToFacebook(post, creds, body, pageId, token)
-            .catch((err: any) => { errors.push(`Facebook: ${label}${err?.response?.data?.error?.message || err.message}`); }));
+            .catch((err: any) => { errors.push(`Facebook: ${label}${facebookErrorText(err)}`); }));
         }
         if (failed('Make') || (failed('Facebook') && wantMake)) {
           tasks.push(this.sendToMakeWebhook(post, creds, body, pageId)
@@ -2149,7 +2150,7 @@ export class PostsService {
             else await this.sendToFacebook(post, creds, body, pageId, await this.resolveFacebookPageToken(userId, target, creds));
             anySuccess = true;
           } catch (err: any) {
-            errors.push(`${wantMake ? 'Make' : 'Facebook'}: ${label}${err?.response?.data?.error?.message || err?.response?.data?.message || err.message}`);
+            errors.push(`${wantMake ? 'Make' : 'Facebook'}: ${label}${wantMake ? (err?.response?.data?.message || err?.message) : facebookErrorText(err)}`);
           }
         }
       })());
@@ -2452,7 +2453,7 @@ export class PostsService {
           tasks.push(
             this.sendToFacebook(post, creds, body, pageId, ownToken)
               .then(() => { anySuccess = true; markSent(); })
-              .catch((err: any) => { errors.push(`Facebook: ${label}${err?.response?.data?.error?.message || err.message}`); }),
+              .catch((err: any) => { errors.push(`Facebook: ${label}${facebookErrorText(err)}`); }),
           );
         } else if (makeRelay) {
           tasks.push(
@@ -2465,7 +2466,7 @@ export class PostsService {
           tasks.push(
             this.sendToFacebook(post, creds, body, pageId, token)
               .then(() => { anySuccess = true; markSent(); })
-              .catch((err: any) => { errors.push(`Facebook: ${label}${err?.response?.data?.error?.message || err.message}`); }),
+              .catch((err: any) => { errors.push(`Facebook: ${label}${facebookErrorText(err)}`); }),
           );
         }
       }

@@ -188,9 +188,46 @@ export class ChannelsService {
             : msg,
         };
       }
+      // Reaching the page by name proves the token covers it, but NOT that it may publish —
+      // that gap is why a channel could test green and then fail every post with #200.
+      // debug_token (a token can debug itself) exposes the type and granted scopes, so the
+      // misconfiguration surfaces here instead of in the owner's failed-post list.
+      const missing = await this.missingPublishScopes(token);
+      if (missing) return { ok: false, error: missing, page_name: res.data?.name || pageId };
+
       return { ok: true, page_name: res.data?.name || pageId };
     } catch (err: any) {
       return { ok: false, error: err?.response?.data?.error?.message || err?.message || 'הבדיקה נכשלה.' };
+    }
+  }
+
+  /**
+   * The publish permissions this token is missing, or null when it looks publishable.
+   *
+   * Deliberately fails OPEN: if debug_token is unreachable or returns an unexpected shape,
+   * it reports nothing missing. A connectivity blip must not tell the owner their working
+   * setup is broken — the real publish call remains the final authority.
+   */
+  private async missingPublishScopes(token: string): Promise<string | null> {
+    const REQUIRED = ['pages_manage_posts', 'pages_read_engagement'];
+    try {
+      const res = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`, {
+        params: { input_token: token, access_token: token },
+        timeout: 6000,
+        validateStatus: () => true,
+      });
+      const data = res.data?.data;
+      if (!data || !Array.isArray(data.scopes)) return null;
+
+      if (String(data.type || '').toUpperCase() === 'USER') {
+        return 'זהו טוקן משתמש (User Token) ולא Page Access Token. פרסום לדף מחייב את הטוקן של הדף עצמו — '
+          + 'קבל אותו מ-GET /me/accounts ושמור אותו כאן.';
+      }
+      const missing = REQUIRED.filter((s) => !data.scopes.includes(s));
+      if (!missing.length) return null;
+      return `לטוקן חסרות ההרשאות: ${missing.join(', ')}. יש להפיק מחדש Page Access Token של אדמין הדף עם ההרשאות האלה.`;
+    } catch {
+      return null;
     }
   }
 
