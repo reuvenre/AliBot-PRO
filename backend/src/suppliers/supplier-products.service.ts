@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupplierProduct } from './entities/supplier-product.entity';
@@ -27,6 +27,8 @@ const FLYLINK_REPEAT_COOLDOWN_MS = (Number(process.env.FLYLINK_REPEAT_COOLDOWN_H
 
 @Injectable()
 export class SupplierProductsService {
+  private readonly logger = new Logger(SupplierProductsService.name);
+
   constructor(
     @InjectRepository(SupplierProduct) private readonly repo: Repository<SupplierProduct>,
     private readonly catalogs: SupplierCatalogsService,
@@ -168,15 +170,20 @@ export class SupplierProductsService {
       // No hard block — the affiliate link is trusted as pasted (per-product generated).
     }
 
-    // Dedup by canonical SKU WITHIN THE SAME CATALOG — the same code in a different store
-    // is a different product (e.g. numeric mode maps LUN1463 and WT1463 both to "1463";
-    // scoping per-user wrongly flagged them as duplicates). If it already exists here,
-    // reuse it (refresh the FLYLINK link) instead of erroring — so "create post" always works.
+    // Identity is the ALBUM, not the code. Re-linking the same album is a refresh — attach
+    // the new affiliate link and keep going, so "create post" always works.
+    //
+    // Matching on the code alone was silently wrong: when two albums normalized to the same
+    // SKU, the second link was pinned onto the FIRST album's record and the post went out
+    // with the wrong product's images. That failure is invisible — the link is right, the
+    // pictures are not — so a code collision must never merge two albums.
+    const albumUrl = (item.album_url || dto.yupooUrl).trim();
+    const newLink = dto.flylinkUrl.trim();
+
     const existing = await this.repo.findOne({
-      where: { user_id: userId, supplier_catalog_id: catalog.id, sku: yupooCanon },
+      where: { user_id: userId, supplier_catalog_id: catalog.id, yupoo_url: albumUrl },
     });
     if (existing) {
-      const newLink = dto.flylinkUrl.trim();
       if (newLink && newLink !== existing.flylink_url) {
         existing.flylink_url = newLink;
         await this.repo.save(existing);
@@ -184,10 +191,26 @@ export class SupplierProductsService {
       return { ...existing, sku_verified };
     }
 
+    // A different album that normalizes to a code already in use. Keep both — they are
+    // different products — and store this one under a code that stays unique so the
+    // catalog's own de-dup can't collapse them later.
+    let sku = yupooCanon;
+    const clash = await this.repo.findOne({
+      where: { user_id: userId, supplier_catalog_id: catalog.id, sku: yupooCanon },
+    });
+    if (clash) {
+      const albumId = albumUrl.match(/albums\/(\d+)/)?.[1] || String(Date.now());
+      sku = `${yupooCanon}-${albumId}`;
+      this.logger.warn(
+        `supplier code collision in catalog ${catalog.id}: "${yupooCanon}" already used by `
+        + `${clash.yupoo_url} — storing the new album as "${sku}"`,
+      );
+    }
+
     const product = this.repo.create({
       user_id: userId,
       supplier_catalog_id: catalog.id,
-      sku: yupooCanon,
+      sku,
       title: item.title,
       description: item.description || null,
       image_url: item.images[0] || null,

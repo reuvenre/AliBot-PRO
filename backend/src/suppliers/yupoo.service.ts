@@ -31,13 +31,38 @@ export class YupooService {
   private readonly logger = new Logger(YupooService.name);
 
   /**
+   * A token that looks like a real product code: it carries letters AND a run of at least
+   * three digits — "ZT12681", "HE7160", "LUN1526", "MM-68SM2606", "MM-148A0B".
+   *
+   * The three-digit floor is what separates a code from the noise around it: brand words
+   * ("adidas", "AP", "POLO") have no digits, model words ("Pro3", "Buds4") have one, and a
+   * bare year ("2024") has no letters. Without it, a store that writes the price first and
+   * the brand before the code — "$110 AP ZT12681" — yielded "AP" as the product code, and
+   * every album of that brand then collapsed onto the same SKU.
+   */
+  private static readonly CODE_TOKEN = /^(?=.*[A-Za-z])(?=.*\d{3})[A-Za-z0-9][A-Za-z0-9\-_]*$/;
+
+  /**
+   * Pick the product code out of the tokens left after the price is removed. Falls back to
+   * the first token — the historical behaviour — when nothing looks like a code, so a store
+   * whose codes don't fit the shape keeps working exactly as before.
+   */
+  private pickCode(tokens: string[]): string {
+    const clean = tokens
+      .map((t) => t.replace(/^[$\-–—]+|[$\-–—]+$/g, ''))
+      .filter(Boolean);
+    return clean.find((t) => YupooService.CODE_TOKEN.test(t)) || clean[0] || '';
+  }
+
+  /**
    * Parse an album title into { code, price, description }. Stores format titles very
    * differently, e.g.:
    *   "LUN1526 $56.99 COACH"   (space-separated)
    *   "MM-68SM2606-$45"        (hyphen, no space, price stuck to the code)
    *   "MM-148A0B-$99.86 ADA"
-   * So we find the price by its `$` anchor ANYWHERE (either side), strip it out, and
-   * treat the first remaining token as the code and the rest as the description.
+   *   "$110 AP ZT12681"        (price first, brand before the code)
+   * So we find the price by its `$` anchor ANYWHERE (either side), strip it out, and pick
+   * the code-shaped token out of what remains.
    */
   private parseTitle(raw: string): { code: string; price: number; description: string } {
     const title = (raw || '').replace(/\s+/g, ' ').trim();
@@ -52,20 +77,22 @@ export class YupooService {
         .replace(/^[\s$\-–—]+|[\s$\-–—]+$/g, '')
         .replace(/\s+/g, ' ')
         .trim();
-      const [codeRaw, ...descParts] = rest.split(' ');
-      // Strip a separator left dangling on the code token (e.g. "MM-148A0B-" → "MM-148A0B");
+      // Separators left dangling on a token (e.g. "MM-148A0B-") are stripped by pickCode;
       // internal hyphens are kept.
-      const code = (codeRaw || '').replace(/^[$\-–—]+|[$\-–—]+$/g, '');
-      return { code: code || title, price, description: descParts.join(' ').trim() };
+      const tokens = rest.split(' ');
+      const code = this.pickCode(tokens);
+      const description = tokens.filter((t) => t !== code).join(' ').trim();
+      return { code: code || title, price, description };
     }
 
     // Legacy "CODE PRICE DESC" with no "$" (space-separated).
     const m = title.match(/^(\S+)\s+(\d+(?:[.,]\d+)?)\s+(.*)$/);
     if (m) return { code: m[1], price: parseFloat(m[2].replace(',', '.')) || 0, description: (m[3] || '').trim() };
 
-    // No price in the title — first token is the code.
-    const [code, ...rest] = title.split(' ');
-    return { code: code || title, price: 0, description: rest.join(' ') };
+    // No price in the title.
+    const tokens = title.split(' ');
+    const code = this.pickCode(tokens);
+    return { code: code || title, price: 0, description: tokens.filter((t) => t !== code).join(' ').trim() };
   }
 
   private base(url: string): string {
