@@ -12,6 +12,7 @@ import { MailService } from '../mail/mail.service';
 import { SecurityService } from '../security/security.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { ChannelsService } from '../channels/channels.service';
+import { formatTelegramAlert } from './alert-format';
 
 /** The tightest interval (minutes) a cron fires at — min gap over its next few fires.
  *  Hourly → 60, every-2h → 120. null when the expression can't be parsed. */
@@ -44,6 +45,25 @@ function cronBaseIntervalMin(expr: string): number | null {
  * Each anomaly key is throttled (6h) so a persisting condition doesn't spam,
  * and the GitHub reporter also dedupes against open '[watchdog]' issues.
  */
+/**
+ * One detected problem, carrying two audiences at once.
+ *
+ * `body` is for the GitHub issue: markdown, raw ids, investigation hints — written for
+ * whoever fixes the code. `details` is for the owner's Telegram: plain lines naming WHICH
+ * campaign or channel is affected, no markup (the DM is sent without parse_mode, so
+ * backticks and asterisks would show up literally) and no debugging pointers. Sending only
+ * the title, as this did before, told the owner something broke without saying what.
+ */
+export interface WatchdogAlert {
+  key: string;
+  title: string;
+  body: string;
+  /** Owner-facing lines, one per affected campaign/channel. */
+  details?: string[];
+  /** Set when only the user can fix it — surfaced prominently instead of "Claude will handle it". */
+  action?: string;
+}
+
 @Injectable()
 export class WatchdogService implements OnModuleInit {
   private readonly logger = new Logger(WatchdogService.name);
@@ -258,8 +278,8 @@ export class WatchdogService implements OnModuleInit {
 
   // ── Checks ────────────────────────────────────────────────────────────────
 
-  private async scan(): Promise<Array<{ key: string; title: string; body: string }>> {
-    const out: Array<{ key: string; title: string; body: string }> = [];
+  private async scan(): Promise<WatchdogAlert[]> {
+    const out: WatchdogAlert[] = [];
     const now = Date.now();
 
     // 1. Scheduled posts stuck: due for over 90 minutes. The backlog drip legitimately
@@ -297,6 +317,9 @@ export class WatchdogService implements OnModuleInit {
           '',
           'כיווני חקירה: findDueScheduledPosts (דריפ + lastTelegramSendToGroup), sendScheduled/markSent, sendScheduledPosts בסקדולר.',
         ].join('\n'),
+        details: stuck.slice(0, 5).map((p) =>
+          `קבוצה ${p.channel_override || 'ברירת מחדל'} · ממתין מאז ${this.hhmm(p.scheduled_at)}`
+            + (p.product_title ? ` · ${String(p.product_title).slice(0, 40)}` : '')),
       });
     }
 
@@ -323,6 +346,10 @@ export class WatchdogService implements OnModuleInit {
           'דוגמאות שגיאה:',
           ...samples.map((p) => `- \`${p.id}\`: ${String(p.error_message || '').slice(0, 160)}`),
         ].join('\n'),
+        // The owner needs the error text, not post ids — the same message repeated 8 times
+        // is one problem, and showing it once makes that obvious.
+        details: [...new Set(samples.map((p) => String(p.error_message || 'שגיאה לא ידועה').slice(0, 120)))]
+          .slice(0, 3),
       });
     }
 
@@ -345,6 +372,8 @@ export class WatchdogService implements OnModuleInit {
           '',
           'כיווני חקירה: runDueCampaigns (this.running נתקע?), markRun/CronTime, חריגות בלוגים של Render.',
         ].join('\n'),
+        details: dead.map((c) =>
+          `"${c.name}" · הריצה הבאה נתקעה מאז ${this.hhmm(c.next_run_at)}`),
       });
     }
 
@@ -360,6 +389,7 @@ export class WatchdogService implements OnModuleInit {
       .getMany()
       .catch(() => []);
     const silentHits: string[] = [];
+    const silentDetails: string[] = [];
     for (const c of silent.slice(0, 40)) {
       const row = await this.posts.createQueryBuilder('p')
         .select('MAX(p.sent_at)', 'max')
@@ -448,6 +478,7 @@ export class WatchdogService implements OnModuleInit {
       }
 
       silentHits.push(`- "${c.name}" \`${c.id}\` · ${hrs} שעות פעילות (בתוך חלון השליחה) ללא פרסום${reasons.length ? `\n   └ ${reasons.join('\n   └ ')}` : ''}`);
+      silentDetails.push(`"${c.name}" · ${hrs} שעות ללא פרסום${reasons.length ? ` — ${reasons[0]}` : ''}`);
     }
     if (silentHits.length) {
       out.push({
@@ -458,6 +489,7 @@ export class WatchdogService implements OnModuleInit {
           '',
           ...silentHits,
         ].join('\n'),
+        details: silentDetails,
       });
     }
 
@@ -468,6 +500,7 @@ export class WatchdogService implements OnModuleInit {
     //    the group interval and multiplied for fair-share siblings). Night gaps (window
     //    closed) are dropped so they don't masquerade as drift.
     const driftHits: string[] = [];
+    const driftDetails: string[] = [];
     for (const c of silent.slice(0, 40)) {
       const expectedCron = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
       if (!expectedCron) continue;
@@ -509,6 +542,7 @@ export class WatchdogService implements OnModuleInit {
       const median = gaps[Math.floor(gaps.length / 2)];
       if (median > expected * 1.7) {
         driftHits.push(`- "${c.name}" \`${c.id}\` · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'`);
+        driftDetails.push(`"${c.name}" · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'`);
       }
     }
     if (driftHits.length) {
@@ -522,6 +556,7 @@ export class WatchdogService implements OnModuleInit {
           '',
           'כיווני חקירה: nextGroupSlot (groupBusy/grace על גבול המרווח), findDueScheduledPosts, over-subscription/fair-share, חלון השליחה.',
         ].join('\n'),
+        details: driftDetails,
       });
     }
 
@@ -537,6 +572,7 @@ export class WatchdogService implements OnModuleInit {
       .getMany()
       .catch(() => []);
     const mismatchHits: string[] = [];
+    const mismatchDetails: string[] = [];
     const seenMismatch = new Set<string>();
     for (const c of activeCampaigns) {
       const cronMin = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
@@ -556,6 +592,7 @@ export class WatchdogService implements OnModuleInit {
       seenMismatch.add(dedupKey);
       const groupName = (await this.channels.getName(c.user_id, groupId).catch(() => null)) || groupId;
       mismatchHits.push(`- "${c.name}" \`${c.id}\` · הטייס מוגדר ל-~${cronMin} דק' בין פוסטים, אך מרווח הקבוצה "${groupName}" הוא ${groupMin} דק' → בפועל מפרסם כל ~${groupMin} דק'`);
+      mismatchDetails.push(`"${c.name}" · מוגדר ל-${cronMin} דק', אך הקבוצה "${groupName}" מגבילה ל-${groupMin} דק'`);
     }
     if (mismatchHits.length) {
       out.push({
@@ -568,6 +605,8 @@ export class WatchdogService implements OnModuleInit {
           '',
           '**נדרשת פעולת משתמש:** הגדרות ← קבוצות ← בחר את הקבוצה ← שנה את "מרווח בין פוסטים" כך שיתאים ל-cron של הקמפיין (או להיפך). זו תקלת תצורה שלא ניתן לתקן בקוד.',
         ].join('\n'),
+        details: mismatchDetails,
+        action: 'הגדרות ← קבוצות ← בחר את הקבוצה ← שנה את "מרווח בין פוסטים". זו תקלת תצורה — קוד לא יתקן אותה.',
       });
     }
 
@@ -632,15 +671,17 @@ export class WatchdogService implements OnModuleInit {
    * opened a private chat with the bot (/start) so it is allowed to DM them.
    * WATCHDOG_TELEGRAM_BOT_TOKEN overrides the bot when set.
    */
-  private async reportTelegram(a: { title: string; body: string }): Promise<void> {
-    const text = [
-      `⚠️ Nexlify Watchdog זיהה תקלה:`,
-      ``,
-      `${a.title}`,
-      ``,
-      `נפתח Issue אוטומטי ב-GitHub — Claude יטפל בבדיקה הקרובה, ותקבל כאן אישור "✅ טופל" כשזה ייסגר.`,
-    ].join('\n');
-    await this.sendTelegram(text);
+  private async reportTelegram(a: WatchdogAlert): Promise<void> {
+    await this.sendTelegram(formatTelegramAlert(a));
+  }
+
+  /** Local-time HH:MM for owner-facing lines — a full ISO timestamp is noise in a DM. */
+  private hhmm(d: Date | string | null | undefined): string {
+    if (!d) return 'לא ידוע';
+    return new Date(d).toLocaleTimeString('he-IL', {
+      hour: '2-digit', minute: '2-digit',
+      timeZone: process.env.SCHEDULER_TZ || 'Asia/Jerusalem',
+    });
   }
 
   /** Resolve the watchdog bot token: explicit override, else the admin's group bot. */
