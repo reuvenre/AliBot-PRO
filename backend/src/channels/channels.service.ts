@@ -179,14 +179,23 @@ export class ChannelsService {
       );
       if (res.data?.error) {
         const msg = res.data.error.message || 'unknown error';
-        // Object not found / wrong node type: usually the Page ID is the URL's profile.php
-        // number instead of the real Graph Page ID, or the token doesn't cover this page.
-        return {
-          ok: false,
-          error: /nonexisting|does not exist|Unsupported|cannot be loaded/i.test(msg)
-            ? `${msg} — ודא שה-Page ID הוא זה שחוזר מ-GET /me/accounts (לא המספר מכתובת ה-profile.php), ושהטוקן הוא ה-access_token של אותו דף.`
-            : msg,
-        };
+        // Object not found / wrong node type: usually the saved Page ID is stale, or is the
+        // profile.php number from the URL, or an Instagram id pasted into the wrong field.
+        if (/nonexisting|does not exist|Unsupported|cannot be loaded/i.test(msg)) {
+          // Offer the real ids when we can reach them. Pointing at /me/accounts is useless
+          // for a Business Portfolio account, where that endpoint answers with an empty list
+          // however correct the setup is — so name the Pages if possible, and otherwise say
+          // where to find the id in the UI rather than repeating an API call that won't help.
+          const pages = await this.listPagesForToken(token);
+          const hint = pages?.length
+            ? `הדפים הזמינים לך: ${pages.map((p) => `"${p.name}" (ID ${p.id})`).join(', ')}.`
+            : 'את ה-Page ID הנכון אפשר למצוא בדף עצמו ← מידע/שקיפות הדף, או ב-Meta Business Suite ← הגדרות ← דפים.';
+          return {
+            ok: false,
+            error: `הדף עם המזהה ${pageId} לא נמצא, או שהטוקן לא מכסה אותו. ${hint}`,
+          };
+        }
+        return { ok: false, error: msg };
       }
       const pageName = res.data?.name || pageId;
 
@@ -251,6 +260,48 @@ export class ChannelsService {
       const data = res.data?.data;
       if (!data || !Array.isArray(data.scopes)) return null;
       return { type: String(data.type || '').toUpperCase(), scopes: data.scopes as string[] };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Pages this token can see, best effort, or null when nothing could be enumerated.
+   *
+   * /me/accounts is the documented route and answers for classic admin roles. It returns an
+   * empty list for Pages held in a Business Portfolio, so that case falls through to the
+   * business endpoints — which need `business_management` and will simply fail without it.
+   * Returning null there is honest: "we could not list your Pages" is a different claim from
+   * "you have none", and the caller words the message accordingly.
+   */
+  private async listPagesForToken(token: string): Promise<Array<{ id: string; name: string }> | null> {
+    const get = async (path: string, params: Record<string, string>) => {
+      const res = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
+        params: { ...params, access_token: token }, timeout: 6000, validateStatus: () => true,
+      });
+      return res.data?.error || !Array.isArray(res.data?.data) ? null : res.data.data;
+    };
+    const asPages = (rows: any[]) =>
+      rows.map((p: any) => ({ id: String(p.id), name: String(p.name || p.id) }));
+
+    try {
+      const direct = await get('me/accounts', { fields: 'id,name' });
+      if (direct?.length) return asPages(direct).slice(0, 8);
+
+      const businesses = await get('me/businesses', { fields: 'id' });
+      if (!businesses?.length) return null;
+
+      const found: Array<{ id: string; name: string }> = [];
+      for (const b of businesses.slice(0, 3)) {
+        for (const edge of ['owned_pages', 'client_pages']) {
+          const rows = await get(`${b.id}/${edge}`, { fields: 'id,name' });
+          if (rows?.length) found.push(...asPages(rows));
+        }
+      }
+      // De-dupe: a Page can appear under both owned_pages and client_pages.
+      const seen = new Set<string>();
+      const unique = found.filter((p) => !seen.has(p.id) && seen.add(p.id));
+      return unique.length ? unique.slice(0, 8) : null;
     } catch {
       return null;
     }
