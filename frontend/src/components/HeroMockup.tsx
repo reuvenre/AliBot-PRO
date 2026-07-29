@@ -2,34 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { TrendingUp, Zap, BadgeDollarSign, Send } from 'lucide-react';
+import { useCountUp } from '@/lib/hooks/useCountUp';
 
 /**
  * Animated product mockup for the auth/landing heroes — a live-feeling dashboard
  * built entirely in code (no screenshot to go stale): counting stats, a growing
  * bar chart, a cycling activity feed and floating commission toasts.
  */
-
-/** Ease-out cubic count-up, respects reduced motion by jumping straight to target. */
-function useCountUp(target: number, duration = 1800): number {
-  const [value, setValue] = useState(0);
-  useEffect(() => {
-    if (typeof window !== 'undefined'
-      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      setValue(target);
-      return;
-    }
-    let raf = 0;
-    const t0 = performance.now();
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - t0) / duration);
-      setValue(Math.round(target * (1 - Math.pow(1 - p, 3))));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return value;
-}
 
 const BARS = [34, 48, 42, 62, 55, 78, 60, 88, 72, 96, 84, 100];
 
@@ -56,9 +35,10 @@ function Sparkline({ points, up }: { points: number[]; up: boolean }) {
 }
 
 export function HeroMockup() {
-  const posts = useCountUp(9241);
-  const clicks = useCountUp(14832);
-  const commissions = useCountUp(1576);
+  // The shared hook returns the raw eased value; these tiles want whole numbers.
+  const posts = Math.round(useCountUp(9241, 1800));
+  const clicks = Math.round(useCountUp(14832, 1800));
+  const commissions = Math.round(useCountUp(1576, 1800));
   const [feedIdx, setFeedIdx] = useState(0);
 
   useEffect(() => {

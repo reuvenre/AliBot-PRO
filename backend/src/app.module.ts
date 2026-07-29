@@ -38,6 +38,7 @@ import { RecoveryModule } from './recovery/recovery.module';
 import { PaymentsModule } from './payments/payments.module';
 import { OptimizerModule } from './optimizer/optimizer.module';
 import { SecurityModule } from './security/security.module';
+import { StatsModule } from './stats/stats.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -118,6 +119,7 @@ import { HealthController } from './health.controller';
     PaymentsModule,
     OptimizerModule,
     SecurityModule,
+    StatsModule,
   ],
   controllers: [HealthController],
   providers: [

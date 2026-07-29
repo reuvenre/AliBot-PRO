@@ -650,6 +650,26 @@ export interface Earning {
   settlement_date?: string;
 }
 
+/** One dashboard metric: the period total, its change vs the preceding period, and the
+ *  weekly series. `delta_pct` is null when there is no previous period to compare against. */
+export interface MetricSeries {
+  total: number;
+  delta_pct: number | null;
+  series: number[];
+}
+
+export interface OverviewStats {
+  currency: 'ILS';
+  weeks: number;
+  /** Week-start dates (YYYY-MM-DD, Monday) aligned 1:1 with each metric's `series`. */
+  week_starts: string[];
+  metrics: {
+    commissions: MetricSeries;
+    clicks: MetricSeries;
+    posts: MetricSeries;
+  };
+}
+
 export interface EarningsSummary {
   total_estimated: number;
   total_settled: number;

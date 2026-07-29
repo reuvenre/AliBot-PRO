@@ -12,6 +12,7 @@ import { campaignsApi, postsApi, earningsApi, credentialsApi, channelsApi, subsc
 import type { Post, EarningsSummary, SubscriptionStatus } from '@/types';
 import { AiUsagePanel } from '@/components/dashboard/AiUsagePanel';
 import { ClickleadRoiPanel } from '@/components/dashboard/ClickleadRoiPanel';
+import { OverviewPanel } from '@/components/dashboard/OverviewPanel';
 
 // ── Onboarding steps ──────────────────────────────────────────────────────────
 
@@ -242,6 +243,9 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Headline trend — commissions/clicks/posts over 12 weeks, one request */}
+      <OverviewPanel />
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">

@@ -13,6 +13,7 @@ import type {
   PostPreview,
   PostTemplate,
   EarningsSummary,
+  OverviewStats,
   Earning,
   Channel,
   CreateChannelInput,
@@ -589,6 +590,12 @@ export const pinterestApi = {
 };
 
 // ─── Earnings API ────────────────────────────────────────────────────────────
+
+export const statsApi = {
+  /** Dashboard headline — commissions, clicks and posts as weekly series with trends. */
+  overview: (weeks = 12) =>
+    http.get<OverviewStats>('/stats/overview', { params: { weeks } }).then(extract),
+};
 
 export const earningsApi = {
   summary: (params?: { period?: '7d' | '30d' | '90d' | 'all' }) =>
