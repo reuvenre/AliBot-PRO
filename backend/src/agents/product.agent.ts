@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { ProductsService } from '../products/products.service';
+import { AgentClient } from './agent-client.service';
 
 export interface RankedProduct {
   product_id: string;
@@ -19,11 +20,11 @@ export interface RankedProduct {
 @Injectable()
 export class ProductAgent {
   private readonly logger = new Logger(ProductAgent.name);
-  private readonly client: Anthropic;
 
-  constructor(private readonly products: ProductsService) {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
+  constructor(
+    private readonly products: ProductsService,
+    private readonly agentClient: AgentClient,
+  ) {}
 
   async findBestProducts(
     userId: string,
@@ -72,11 +73,12 @@ Format: [{ product_id, title, sale_price, original_price, discount_percent, orde
     let totalTokens = 0;
     let rankedProducts: RankedProduct[] = [];
     let iterCount = 0;
+    const { client, model } = await this.agentClient.for(userId);
 
     while (iterCount < 5) {
       iterCount++;
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6',
+      const response = await client.messages.create({
+        model,
         max_tokens: 2048,
         system: systemPrompt,
         tools,
@@ -84,6 +86,7 @@ Format: [{ product_id, title, sale_price, original_price, discount_percent, orde
       });
 
       totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+      this.agentClient.record(userId, response.usage);
 
       if (response.stop_reason === 'tool_use') {
         const assistantMessage: Anthropic.MessageParam = { role: 'assistant', content: response.content };

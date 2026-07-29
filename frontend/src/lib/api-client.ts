@@ -276,7 +276,10 @@ export const adminApi = {
 
   /** SMTP diagnostics — verifies connection+credentials and returns the REAL provider error. */
   smtpTest: () =>
-    http.post<{ ok: boolean; error?: string; host?: string; port?: number; secure?: boolean }>('/admin/smtp-test', {}, { timeout: 30000 }).then(extract),
+    http.post<{
+      ok: boolean; error?: string; hint?: string;
+      host?: string; port?: number; secure?: boolean; transport?: string;
+    }>('/admin/smtp-test', {}, { timeout: 30000 }).then(extract),
   /** Fire a Watchdog Telegram test alert; returns whether it reached Telegram. */
   watchdogTest: () =>
     http.post<{ ok: boolean; error?: string }>('/admin/watchdog-test', {}, { timeout: 20000 }).then(extract),
@@ -669,6 +672,18 @@ export const templatesApi = {
 
 export const ratesApi = {
   get: () => http.get<{ USD_ILS: number; USD_EUR: number; updated_at: string }>('/rates').then(extract),
+};
+
+// ─── Learning Optimizer API ──────────────────────────────────────────────────
+
+export const optimizerApi = {
+  /**
+   * Run the nightly pass now and get back the digest it would have sent. Scoring every
+   * keyword across every active campaign (plus the email) runs well past the 15s default.
+   */
+  run: () => http.post<{ ok: boolean; digest?: string; reason?: string }>(
+    '/optimizer/run', {}, { timeout: 180_000 },
+  ).then(extract),
 };
 
 // ─── Catalog API ─────────────────────────────────────────────────────────────

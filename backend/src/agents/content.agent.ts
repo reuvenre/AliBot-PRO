@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Post } from '../posts/post.entity';
 import { AiService } from '../ai/ai.service';
 import { DecryptedCredentials } from '../credentials/credentials.service';
+import { AgentClient } from './agent-client.service';
 
 export interface GeneratedContent {
   text: string;
@@ -15,15 +16,13 @@ export interface GeneratedContent {
 @Injectable()
 export class ContentAgent {
   private readonly logger = new Logger(ContentAgent.name);
-  private readonly client: Anthropic;
 
   constructor(
     @InjectRepository(Post)
     private readonly postRepo: Repository<Post>,
     private readonly ai: AiService,
-  ) {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
+    private readonly agentClient: AgentClient,
+  ) {}
 
   async generateOptimizedContent(
     userId: string,
@@ -114,11 +113,12 @@ ${productBrief}`,
     let totalTokens = 0;
     let generatedText = '';
     let iterCount = 0;
+    const { client, model } = await this.agentClient.for(userId);
 
     while (iterCount < 4) {
       iterCount++;
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6',
+      const response = await client.messages.create({
+        model,
         max_tokens: 1024,
         system: systemPrompt,
         tools,
@@ -126,6 +126,7 @@ ${productBrief}`,
       });
 
       totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+      this.agentClient.record(userId, response.usage);
 
       if (response.stop_reason === 'tool_use') {
         const assistantMessage: Anthropic.MessageParam = { role: 'assistant', content: response.content };

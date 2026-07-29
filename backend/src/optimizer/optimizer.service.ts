@@ -63,8 +63,15 @@ export class OptimizerService {
     }
   }
 
-  async runForUser(userId: string): Promise<void> {
-    if (!(await this.subscription.allows(userId, 'learning_optimizer'))) return;
+  /**
+   * One optimization pass for a user. Returns the digest text so a manual run can show it
+   * on screen immediately — waiting until tomorrow morning to find out whether the engine
+   * works is not a reasonable way to verify it.
+   */
+  async runForUser(userId: string): Promise<{ ok: boolean; digest?: string; reason?: string }> {
+    if (!(await this.subscription.allows(userId, 'learning_optimizer'))) {
+      return { ok: false, reason: 'המנוע הלומד זמין במסלול Autopilot ומעלה' };
+    }
 
     const active = await this.campaigns.find({
       where: { user_id: userId, status: 'active', source: 'aliexpress' },
@@ -90,6 +97,7 @@ export class OptimizerService {
     })).catch(() => {});
 
     await this.deliverDigest(userId, digest);
+    return { ok: true, digest };
   }
 
   /**

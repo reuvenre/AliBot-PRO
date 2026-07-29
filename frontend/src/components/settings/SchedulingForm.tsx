@@ -5,7 +5,7 @@ import {
   ListOrdered, Save, Loader2, CheckCircle2, Clock,
   Sun, Moon, Timer, Info, Zap,
 } from 'lucide-react';
-import { credentialsApi, campaignsApi } from '@/lib/api-client';
+import { credentialsApi, campaignsApi, optimizerApi } from '@/lib/api-client';
 import type { Campaign } from '@/types';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => {
@@ -42,6 +42,11 @@ export function SchedulingForm() {
   const [seasonalOn, setSeasonalOn] = useState(true);
   const [recycleOn, setRecycleOn] = useState(false);
   const [optimizerOn, setOptimizerOn] = useState(false);
+  // Manual optimizer run — the nightly pass is the only other way to see a digest, and
+  // "wait until tomorrow morning" is a poor way to find out whether it works.
+  const [optimizerRunning, setOptimizerRunning] = useState(false);
+  const [optimizerDigest, setOptimizerDigest] = useState<string | null>(null);
+  const [optimizerError, setOptimizerError] = useState<string | null>(null);
   const [recycleMinClicks, setRecycleMinClicks] = useState(10);
   // Sales recovery: when orders drop below a threshold, auto-push extra hot products.
   const [recoveryOn, setRecoveryOn] = useState(false);
@@ -119,6 +124,26 @@ export function SchedulingForm() {
       setError('שגיאה בשמירה. נסה שוב.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Run the optimizer on demand. The pass can take a while on an account with many
+   * campaigns, so the digest is rendered inline when it returns — the same text the
+   * morning email carries.
+   */
+  async function runOptimizerNow() {
+    setOptimizerRunning(true);
+    setOptimizerError(null);
+    setOptimizerDigest(null);
+    try {
+      const res = await optimizerApi.run();
+      if (res.ok && res.digest) setOptimizerDigest(res.digest);
+      else setOptimizerError(res.reason || 'המנוע לא החזיר דו״ח — ודא שיש קמפיינים פעילים.');
+    } catch (err: any) {
+      setOptimizerError(err?.response?.data?.message || 'הרצת המנוע נכשלה. נסה שוב.');
+    } finally {
+      setOptimizerRunning(false);
     }
   }
 
@@ -311,7 +336,7 @@ export function SchedulingForm() {
             <p className="text-xs text-white/35 mt-1">
               כל לילה המנוע מדרג את מילות המפתח לפי קליקים ועמלות אמיתיות: מוציא מהרוטציה מילים
               שקיבלו הזדמנות הוגנת בלי קליק אחד (נשמרות ב"בארכיון" וניתנות להחזרה), מכפיל את המילה
-              שמייצרת עמלות, ושולח לך כל בוקר דו"ח לטלגרם ולמייל — מה שונה ולמה.
+              שמייצרת עמלות, ושולח לך כל בוקר למייל דו"ח — מה שונה ולמה.
             </p>
           </div>
           <button
@@ -321,6 +346,40 @@ export function SchedulingForm() {
           >
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${optimizerOn ? 'right-0.5' : 'right-4'}`} />
           </button>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-edge">
+          <button
+            type="button"
+            disabled={optimizerRunning}
+            onClick={runOptimizerNow}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all
+                       bg-violet-500/15 text-violet-300 hover:bg-violet-500/25 disabled:opacity-50"
+          >
+            {optimizerRunning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+            {optimizerRunning ? 'המנוע רץ…' : 'הרץ עכשיו וקבל דו״ח'}
+          </button>
+          <p className="text-[11px] text-white/30 mt-2">
+            מריץ את אותה ריצה של 03:15 — כולל השינויים במילות המפתח ושליחת המייל.
+          </p>
+
+          {optimizerError && (
+            <div className="mt-3 rounded-xl border px-3 py-2 text-xs font-medium
+                            bg-red-50 border-red-300 text-red-900
+                            dark:bg-red-500/15 dark:border-red-400/50 dark:text-red-100">
+              ⚠️ {optimizerError}
+            </div>
+          )}
+
+          {optimizerDigest && (
+            <pre className="mt-3 rounded-xl border p-3 text-[11px] leading-relaxed whitespace-pre-wrap
+                            font-sans overflow-x-auto
+                            bg-violet-50 border-violet-300 text-violet-950
+                            dark:bg-violet-500/10 dark:border-violet-400/30 dark:text-violet-50"
+                 dir="rtl">
+              {optimizerDigest}
+            </pre>
+          )}
         </div>
       </div>
 

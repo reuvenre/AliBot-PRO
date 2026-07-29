@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { Campaign } from '../campaigns/campaign.entity';
 import { Post } from '../posts/post.entity';
+import { AgentClient } from './agent-client.service';
 
 export interface CampaignHealth {
   status: 'healthy' | 'degraded' | 'paused';
@@ -15,16 +16,14 @@ export interface CampaignHealth {
 @Injectable()
 export class CampaignAgent {
   private readonly logger = new Logger(CampaignAgent.name);
-  private readonly client: Anthropic;
 
   constructor(
     @InjectRepository(Campaign)
     private readonly campaignRepo: Repository<Campaign>,
     @InjectRepository(Post)
     private readonly postRepo: Repository<Post>,
-  ) {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
+    private readonly agentClient: AgentClient,
+  ) {}
 
   async evaluateAndOptimize(
     userId: string,
@@ -121,11 +120,12 @@ Check the stats and failed posts, then decide if any corrective action is needed
       tokens: 0,
     };
     let iterCount = 0;
+    const { client, model } = await this.agentClient.for(userId);
 
     while (iterCount < 5) {
       iterCount++;
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6',
+      const response = await client.messages.create({
+        model,
         max_tokens: 1024,
         system: systemPrompt,
         tools,
@@ -133,6 +133,7 @@ Check the stats and failed posts, then decide if any corrective action is needed
       });
 
       totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+      this.agentClient.record(userId, response.usage);
 
       if (response.stop_reason === 'tool_use') {
         const assistantMessage: Anthropic.MessageParam = { role: 'assistant', content: response.content };

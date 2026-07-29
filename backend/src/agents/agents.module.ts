@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgentRun } from './agent-run.entity';
+import { AgentClient } from './agent-client.service';
 import { ProductAgent } from './product.agent';
 import { ContentAgent } from './content.agent';
 import { CampaignAgent } from './campaign.agent';
@@ -28,6 +29,7 @@ import { SubscriptionModule } from '../subscription/subscription.module';
     AiModule,
   ],
   providers: [
+    AgentClient,
     ProductAgent,
     ContentAgent,
     CampaignAgent,
