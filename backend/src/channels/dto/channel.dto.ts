@@ -35,6 +35,11 @@ export class CreateChannelDto {
   @IsOptional()
   @IsString()
   facebook_page_token?: string;
+
+  /** Instagram Business account for this group; blank = the account's global one. */
+  @IsOptional()
+  @IsString()
+  instagram_business_id?: string;
 }
 
 export class UpdateChannelDto {
@@ -73,6 +78,10 @@ export class UpdateChannelDto {
   @IsOptional()
   @IsString()
   facebook_page_token?: string;
+
+  @IsOptional()
+  @IsString()
+  instagram_business_id?: string;
 
   // ── Per-group send queue (explicit null = inherit the user's global schedule) ──
   @IsOptional()

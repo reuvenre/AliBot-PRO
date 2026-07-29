@@ -50,6 +50,18 @@ export class Channel {
   @Column({ nullable: true })
   facebook_page_token_enc: string;
 
+  /**
+   * Instagram Business account id for THIS group. A second brand has its own Instagram,
+   * and the account-wide id can only ever point at one of them — so a post routed here
+   * publishes to this group's account. Null → the user's global Instagram.
+   *
+   * Publishing uses the Page token from the SAME group (an Instagram Business account is
+   * reached through the Facebook Page it is linked to), which is why the two are set
+   * together rather than independently.
+   */
+  @Column({ nullable: true })
+  instagram_business_id: string;
+
   @Column({ default: true })
   is_active: boolean;
 

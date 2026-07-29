@@ -21,6 +21,7 @@ function ChannelFormFields({
   showToken, setShowToken,
   footerTemplateId, setFooterTemplateId, footerTemplates,
   facebookPageId, setFacebookPageId,
+  instagramBusinessId, setInstagramBusinessId,
   facebookPageToken, setFacebookPageToken, hasFbToken,
   isEdit,
 }: {
@@ -32,6 +33,7 @@ function ChannelFormFields({
   footerTemplateId: string; setFooterTemplateId: (v: string) => void;
   footerTemplates: PostTemplate[];
   facebookPageId: string; setFacebookPageId: (v: string) => void;
+  instagramBusinessId: string; setInstagramBusinessId: (v: string) => void;
   facebookPageToken: string; setFacebookPageToken: (v: string) => void;
   hasFbToken?: boolean;
   isEdit?: boolean;
@@ -134,6 +136,23 @@ function ChannelFormFields({
         </p>
       </div>
 
+      {/* An Instagram Business account is reached THROUGH its linked Facebook Page, so this
+          id is only usable together with that page's token in the field below. */}
+      <div>
+        <label className="block text-xs text-white/50 mb-1.5">אינסטגרם של הקבוצה (Instagram Business ID)</label>
+        <input
+          value={instagramBusinessId}
+          onChange={(e) => setInstagramBusinessId(e.target.value)}
+          placeholder="למשל: 17841474637683257"
+          className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+          dir="ltr"
+        />
+        <p className="text-2xs text-white/25 mt-1">
+          פוסט שיוצא לקבוצה הזו יתפרסם לחשבון האינסטגרם הזה. חובה למלא גם את טוקן דף הפייסבוק
+          שמתחת — האינסטגרם מתפרסם דרך העמוד שאליו הוא מקושר. ריק = חשבון האינסטגרם הכללי.
+        </p>
+      </div>
+
       {/* Per-channel Facebook Page token — a Page token is page-specific, so a group on a
           DIFFERENT page needs its own. Blank = use the account's global token. */}
       <div>
@@ -212,6 +231,7 @@ function AddChannelModal({ onClose, onAdd, footerTemplates }: { onClose: () => v
   const [description, setDescription] = useState('');
   const [footerTemplateId, setFooterTemplateId] = useState('');
   const [facebookPageId, setFacebookPageId] = useState('');
+  const [instagramBusinessId, setInstagramBusinessId] = useState('');
   const [facebookPageToken, setFacebookPageToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -231,6 +251,7 @@ function AddChannelModal({ onClose, onAdd, footerTemplates }: { onClose: () => v
         description: description || undefined,
         footer_template_id: footerTemplateId || undefined,
         facebook_page_id: facebookPageId || undefined,
+        instagram_business_id: instagramBusinessId || undefined,
         facebook_page_token: facebookPageToken || undefined,
       } as CreateChannelInput);
       onAdd(channel);
@@ -255,6 +276,7 @@ function AddChannelModal({ onClose, onAdd, footerTemplates }: { onClose: () => v
             showToken={showToken} setShowToken={setShowToken}
             footerTemplateId={footerTemplateId} setFooterTemplateId={setFooterTemplateId} footerTemplates={footerTemplates}
             facebookPageId={facebookPageId} setFacebookPageId={setFacebookPageId}
+            instagramBusinessId={instagramBusinessId} setInstagramBusinessId={setInstagramBusinessId}
             facebookPageToken={facebookPageToken} setFacebookPageToken={setFacebookPageToken}
           />
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -294,6 +316,7 @@ function EditChannelModal({
   const [description, setDescription] = useState(channel.description);
   const [footerTemplateId, setFooterTemplateId] = useState(channel.footer_template_id || '');
   const [facebookPageId, setFacebookPageId] = useState(channel.facebook_page_id || '');
+  const [instagramBusinessId, setInstagramBusinessId] = useState(channel.instagram_business_id || '');
   const [facebookPageToken, setFacebookPageToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -324,6 +347,7 @@ function EditChannelModal({
         description,
         footer_template_id: footerTemplateId,
         facebook_page_id: facebookPageId,
+        instagram_business_id: instagramBusinessId,
         // null = inherit the global schedule; false on schedule_enabled = skip this
         // group's auto-queue entirely.
         schedule_enabled: inQueue ? null : false,
@@ -373,6 +397,7 @@ function EditChannelModal({
             showToken={showToken} setShowToken={setShowToken}
             footerTemplateId={footerTemplateId} setFooterTemplateId={setFooterTemplateId} footerTemplates={footerTemplates}
             facebookPageId={facebookPageId} setFacebookPageId={setFacebookPageId}
+            instagramBusinessId={instagramBusinessId} setInstagramBusinessId={setInstagramBusinessId}
             facebookPageToken={facebookPageToken} setFacebookPageToken={setFacebookPageToken} hasFbToken={channel.has_fb_token}
             isEdit
           />

@@ -50,6 +50,7 @@ export class ChannelsService {
       body_template_id: dto.body_template_id || null,
       footer_template_id: dto.footer_template_id || null,
       facebook_page_id: dto.facebook_page_id?.trim() || null,
+      instagram_business_id: dto.instagram_business_id?.trim() || null,
       bot_token_enc: dto.bot_token ? encrypt(dto.bot_token) : null,
       facebook_page_token_enc: dto.facebook_page_token?.trim() ? encrypt(dto.facebook_page_token.trim()) : null,
     });
@@ -66,6 +67,7 @@ export class ChannelsService {
     if (dto.body_template_id !== undefined) channel.body_template_id = dto.body_template_id || null;
     if (dto.footer_template_id !== undefined) channel.footer_template_id = dto.footer_template_id || null;
     if (dto.facebook_page_id !== undefined) channel.facebook_page_id = dto.facebook_page_id?.trim() || null;
+    if (dto.instagram_business_id !== undefined) channel.instagram_business_id = dto.instagram_business_id?.trim() || null;
     if (dto.bot_token?.trim()) channel.bot_token_enc = encrypt(dto.bot_token.trim());
     // Only overwrite the FB token when a new one is actually provided (the form sends the
     // field blank unless the user re-enters it), so editing other fields never wipes it.
@@ -493,6 +495,12 @@ export class ChannelsService {
     return c?.facebook_page_token_enc ? decrypt(c.facebook_page_token_enc) : null;
   }
 
+  /** The per-channel Instagram Business id. Null → use the account's global account. */
+  async getInstagramBusinessId(userId: string, channelId: string): Promise<string | null> {
+    const c = await this.repo.findOne({ where: { user_id: userId, channel_id: channelId } });
+    return c?.instagram_business_id || null;
+  }
+
   /** Every group of a user, for the per-group queue cron. */
   async listForSchedule(userId: string): Promise<Channel[]> {
     return this.repo.find({ where: { user_id: userId }, order: { created_at: 'ASC' } });
@@ -605,6 +613,7 @@ export class ChannelsService {
       body_template_id: c.body_template_id || null,
       footer_template_id: c.footer_template_id || null,
       facebook_page_id: c.facebook_page_id || '',
+      instagram_business_id: c.instagram_business_id || '',
       // FB token status only — never return the token itself; masked for display.
       has_fb_token: !!c.facebook_page_token_enc,
       fb_token_masked: c.facebook_page_token_enc ? mask(decrypt(c.facebook_page_token_enc)) : null,

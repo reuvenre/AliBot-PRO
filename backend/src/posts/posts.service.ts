@@ -2060,7 +2060,7 @@ export class PostsService {
     }
     if (failed('Instagram')) {
       const body = await this.buildPostBody(post, creds, targets[0]);
-      tasks.push(this.sendToInstagram(post, creds, body)
+      tasks.push(this.sendToInstagram(post, creds, body, userId, targets[0])
         .catch((err: any) => { errors.push(`Instagram: ${err?.response?.data?.error?.message || err.message}`); }));
     }
     if (!tasks.length) throw new BadRequestException('לא זוהתה פלטפורמה שנכשלה לניסיון חוזר');
@@ -2130,7 +2130,7 @@ export class PostsService {
     }
     if (want.has('instagram')) {
       const body = await this.buildPostBody(post, creds, targetList[0]);
-      tasks.push(this.sendToInstagram(post, creds, body)
+      tasks.push(this.sendToInstagram(post, creds, body, userId, targetList[0])
         .then(() => { anySuccess = true; })
         .catch((err: any) => { errors.push(`Instagram: ${err?.response?.data?.error?.message || err.message}`); }));
     }
@@ -2445,11 +2445,12 @@ export class PostsService {
       }
     }
 
-    // Instagram: a single business account (no per-group fan-out).
+    // Instagram: one account per post — the target group's own when it has one, else the
+    // account's global account. (Still no fan-out to several Instagram accounts at once.)
     if (wantInstagram) {
       const body = await this.buildPostBody(post, creds, targets[0]);
       tasks.push(
-        this.sendToInstagram(post, creds, body)
+        this.sendToInstagram(post, creds, body, post.user_id, targets[0])
           .then(() => { anySuccess = true; })
           .catch((err: any) => { errors.push(`Instagram: ${err?.response?.data?.error?.message || err.message}`); }),
       );
@@ -2890,9 +2891,35 @@ export class PostsService {
     return `${kept}\n\n🛍️ לרכישה — הלינק בביו 🔗`.trim();
   }
 
-  private async sendToInstagram(post: Post, creds: DecryptedCredentials, message: string) {
-    const igId = creds?.instagram_business_id;
-    const token = creds?.facebook_page_token;
+  /**
+   * Publish to the Instagram Business account for this post's group, falling back to the
+   * account's global one. An Instagram account is reached through the Facebook Page it is
+   * linked to, so a group that brings its own Instagram must bring that page's token too —
+   * the global token cannot publish to a different brand's account, and silently trying it
+   * produces an opaque Graph error instead of a fixable one.
+   */
+  private async sendToInstagram(
+    post: Post, creds: DecryptedCredentials, message: string,
+    userId?: string, channelOverride?: string,
+  ) {
+    let igId = creds?.instagram_business_id;
+    let token = creds?.facebook_page_token;
+
+    if (userId && channelOverride) {
+      const ownIg = await this.channels.getInstagramBusinessId(userId, channelOverride).catch(() => null);
+      if (ownIg) {
+        const ownToken = await this.channels.getFacebookPageToken(userId, channelOverride).catch(() => null);
+        if (!ownToken) {
+          throw new Error(
+            'לקבוצה הזו הוגדר חשבון אינסטגרם משלה אך לא הוגדר טוקן לדף הפייסבוק שלה — '
+            + 'הוסף Page Access Token של אותו דף בהגדרות הקבוצה',
+          );
+        }
+        igId = ownIg;
+        token = ownToken;
+      }
+    }
+
     if (!igId || !token) throw new Error('Missing Instagram credentials');
 
     // First gallery image, else the main product image.

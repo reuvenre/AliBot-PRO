@@ -684,6 +684,8 @@ export interface Channel {
   body_template_id: string | null;
   footer_template_id: string | null;
   facebook_page_id: string;
+  /** Instagram Business account for this group; '' = the account's global one. */
+  instagram_business_id: string;
   /** Whether this channel has its own Facebook Page token (never the token itself). */
   has_fb_token: boolean;
   fb_token_masked: string | null;
@@ -738,6 +740,7 @@ export interface CreateChannelInput {
   footer_template_id?: string;
   facebook_page_id?: string;
   facebook_page_token?: string;
+  instagram_business_id?: string;
 }
 
 export interface UpdateChannelInput {
@@ -750,6 +753,7 @@ export interface UpdateChannelInput {
   footer_template_id?: string;
   facebook_page_id?: string;
   facebook_page_token?: string;
+  instagram_business_id?: string;
   /** Per-group send queue. Send null to clear an override (back to the global schedule). */
   schedule_enabled?: boolean | null;
   schedule_interval_minutes?: number | null;
