@@ -134,7 +134,12 @@ export default function AdminUsersPage() {
             <>✅ שליחת המיילים תקינה ({smtpResult.host}{smtpResult.port ? `:${smtpResult.port}` : ''}) — נשלח מייל בדיקה לתיבה שלך.</>
           ) : (
             <>
-              <div>⚠️ בעיית שליחת מיילים: <code dir="ltr" className={CODE_CHIP}>{smtpResult.error}</code></div>
+              {/* Name the transport that actually ran — otherwise a Resend failure reads
+                  like an SMTP failure and sends you tuning the wrong settings. */}
+              <div>
+                ⚠️ בעיית שליחת מיילים{smtpResult.transport ? ` (${smtpResult.transport})` : ''}:{' '}
+                <code dir="ltr" className={CODE_CHIP}>{smtpResult.error}</code>
+              </div>
               {/* The raw provider string says WHAT broke; the hint says which knob to turn. */}
               {smtpResult.hint && <div className={HINT_CLASS}>{smtpResult.hint}</div>}
             </>

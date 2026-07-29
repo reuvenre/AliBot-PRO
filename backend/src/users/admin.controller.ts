@@ -221,12 +221,12 @@ export class AdminController {
       return {
         ok: false,
         error: `${err?.message || err}`,
-        // The #1 cause of "connects fine, send rejected" on Gmail: SMTP_FROM points at an
-        // address that isn't the authenticated account and wasn't verified as an alias.
-        hint: 'החיבור תקין אך השליחה נדחתה. אם SMTP_FROM שונה מ-SMTP_USER — אמת אותו ב-Gmail תחת '
-          + 'Settings → Accounts → "Send mail as", או פשוט הגדר SMTP_FROM לכתובת ה-Gmail עצמה.',
+        // MailService owns the explanation — only it knows WHICH transport actually ran,
+        // and the advice for a rejected send differs completely between SMTP and an API.
+        hint: this.mail.sendFailureHint(err),
         host: conn.host,
         port: conn.port,
+        transport: conn.transport,
       };
     }
   }

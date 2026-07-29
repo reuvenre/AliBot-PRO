@@ -163,6 +163,42 @@ export class MailService {
   }
 
   /**
+   * Explain a failure that happened during an actual SEND (the connection was fine).
+   * Transport-aware: the SMTP advice — verify the sender as a Gmail alias — is nonsense
+   * once mail goes out over an HTTP API, where the sender is governed by which domains
+   * are verified in the provider's dashboard.
+   */
+  sendFailureHint(err: any): string {
+    const provider = this.apiProvider();
+    const msg = String(err?.message || err).toLowerCase();
+    const from = this.parseFrom().email;
+
+    if (!provider) {
+      const user = this.config.get<string>('SMTP_USER');
+      if (from && user && from.toLowerCase() !== user.toLowerCase()) {
+        return `החיבור תקין אך השליחה נדחתה. SMTP_FROM (${from}) שונה מ-SMTP_USER (${user}) — `
+          + 'אמת את הכתובת ב-Gmail תחת Settings → Accounts → "Send mail as", או הגדר את SMTP_FROM לכתובת ה-Gmail עצמה.';
+      }
+      return 'החיבור תקין אך השרת דחה את ההודעה. בדוק את כתובת השולח ואת מגבלות השליחה בחשבון.';
+    }
+
+    const name = provider === 'resend' ? 'Resend' : 'Brevo';
+    if (msg.includes('api key') || msg.includes('unauthorized') || msg.includes('invalid token')) {
+      return `${name} דחה את המפתח. ודא ש-${provider === 'resend' ? 'RESEND_API_KEY' : 'BREVO_API_KEY'} ב-Render הועתק במלואו `
+        + '(בלי רווחים בהתחלה או בסוף), ושלא נמחק מאז שנוצר.';
+    }
+    if (msg.includes('not verified') || msg.includes('domain')) {
+      return `כתובת השולח ${from} אינה מאושרת ב-${name}. הדומיין שלה חייב להופיע כ-Verified תחת Domains — `
+        + 'ודא ש-SMTP_FROM משתמש בדיוק באותו דומיין שאימת.';
+    }
+    if (msg.includes('testing') || msg.includes('own email')) {
+      return `${name} עדיין במצב בדיקה עבור המפתח הזה ומרשה לשלוח רק לכתובת שאיתה נרשמת. `
+        + 'ודא שהדומיין מאומת ושהמפתח משויך אליו.';
+    }
+    return `${name} דחה את ההודעה. ההודעה המלאה מהספק מופיעה למעלה — היא מציינת את הסיבה המדויקת.`;
+  }
+
+  /**
    * Single delivery path for every email in the app. Routes to the HTTP API when one is
    * configured, otherwise to SMTP. Throws on failure so callers can surface the reason.
    */
