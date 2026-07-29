@@ -103,4 +103,9 @@ export class CampaignDto {
   @IsOptional()
   @IsBoolean()
   use_agents?: boolean;
+
+  /** Opt this campaign into the commercial calendar's seasonal search keywords. */
+  @IsOptional()
+  @IsBoolean()
+  seasonal_keywords?: boolean;
 }

@@ -418,6 +418,8 @@ export interface Campaign {
   window_tz?: string | null;
   markup_percent: number;
   post_template?: string;
+  /** Opt-in to the commercial calendar's seasonal search keywords for this campaign. */
+  seasonal_keywords?: boolean;
   last_run_at?: string;
   next_run_at?: string;
   posts_count: number;
@@ -447,6 +449,7 @@ export interface CampaignInput {
   window_tz?: string | null;
   markup_percent?: number;
   post_template?: string;
+  seasonal_keywords?: boolean;
 }
 
 /** What a "run now" actually did. `searched` differs from `keyword` when a Hebrew

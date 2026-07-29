@@ -139,6 +139,16 @@ export class Campaign {
   @Column({ default: false })
   use_agents: boolean;
 
+  /**
+   * Let the commercial calendar add its seasonal SEARCH keywords to this campaign's
+   * rotation. Off by default: seasonal keywords change which products are found, and a
+   * niche channel (tactical gear, baby goods) has no use for "beach and pool accessories"
+   * just because it is July. The seasonal copy HINT is unaffected — it only angles the
+   * wording of a product the campaign chose on its own.
+   */
+  @Column({ default: false })
+  seasonal_keywords: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

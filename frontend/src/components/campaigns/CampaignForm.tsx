@@ -501,6 +501,28 @@ export function CampaignForm({
           </div>
         </div>
 
+        {/* Seasonal search keywords: opt-in, because they change WHICH products are found.
+            A niche channel does not want beach gear in July just because it is summer. */}
+        <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 pl-4">
+              <h2 className="text-sm font-semibold text-white">🗓️ מילות מפתח עונתיות</h2>
+              <p className="text-xs text-white/35 mt-1">
+                בתקופת חג או עונה, הלוח המסחרי יוסיף לרוטציה של הקמפיין הזה מילות חיפוש
+                מתאימות (למשל "אביזרי ים ובריכה" בקיץ). מומלץ רק לקמפיינים כלליים —
+                בערוץ ממוקד נושא זה יביא מוצרים לא קשורים.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, seasonal_keywords: !f.seasonal_keywords }))}
+              className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${form.seasonal_keywords ? 'bg-blue-500' : 'bg-white/15'}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${form.seasonal_keywords ? 'right-0.5' : 'right-4'}`} />
+            </button>
+          </div>
+        </div>
+
         {/* Per-campaign send window in its own timezone — a US-audience Pinterest campaign
             publishes on New-York evening hours while everything else stays on Israel time. */}
         <div className="bg-surface-secondary border border-edge rounded-xl p-5">

@@ -1322,16 +1322,22 @@ export class PostsService {
     const kwList = campaign.keywords.map((k) => k?.trim()).filter(Boolean);
     if (!kwList.length) throw new BadRequestException('לקמפיין אין מילות מפתח');
 
-    // Commercial-calendar seasonality (on by default, kill-switch in Settings ← תזמון):
-    // during an event window, its product-search keywords JOIN the rotation for the
-    // matching audience (he→IL events, en→US) — capped so they never swamp the
-    // campaign's own list — and the copywriter gets a one-line seasonal context.
-    // Window closes → they drop out on their own.
+    // Commercial-calendar seasonality (account kill-switch in Settings ← תזמון). During an
+    // event window the copywriter gets a one-line seasonal CONTEXT for the audience that
+    // matches the campaign language (he→IL events, en→US); the window closing drops it.
+    //
+    // The event's search KEYWORDS are a separate, per-campaign opt-in. They decide which
+    // products get found, so injecting them everywhere put "beach and pool accessories"
+    // into a tactical-gear channel every July — off-brand posts the owner never asked for.
+    // A campaign that wants seasonal stock sets `seasonal_keywords`; the hint costs nothing
+    // either way, because it only angles the wording of a product the campaign chose itself.
     let seasonHint: string | null = null;
     if (creds.seasonal_enabled !== false
       && (await this.subscription.allows(userId, 'seasonal_calendar').catch(() => true))) {
-      for (const kw of seasonalKeywords(campaign.language || 'he')) {
-        if (!kwList.includes(kw)) kwList.push(kw);
+      if (campaign.seasonal_keywords) {
+        for (const kw of seasonalKeywords(campaign.language || 'he')) {
+          if (!kwList.includes(kw)) kwList.push(kw);
+        }
       }
       seasonHint = seasonalHint(campaign.language || 'he');
     }
