@@ -188,28 +188,60 @@ export class ChannelsService {
             : msg,
         };
       }
+      const pageName = res.data?.name || pageId;
+
       // Reaching the page by name proves the token covers it, but NOT that it may publish —
       // that gap is why a channel could test green and then fail every post with #200.
       // debug_token (a token can debug itself) exposes the type and granted scopes, so the
       // misconfiguration surfaces here instead of in the owner's failed-post list.
-      const missing = await this.missingPublishScopes(token);
-      if (missing) return { ok: false, error: missing, page_name: res.data?.name || pageId };
+      const info = await this.tokenInfo(token);
+      if (!info) return { ok: true, page_name: pageName }; // lookup down — publish stays the authority
 
-      return { ok: true, page_name: res.data?.name || pageId };
+      if (info.type === 'USER') {
+        // Self-heal rather than send the owner back to Graph Explorer. A user token that can
+        // already read the page can also read that page's OWN token from the page node, and
+        // that works even when /me/accounts comes back empty — which is what happens when the
+        // pages live in a Business Portfolio rather than under a classic admin role.
+        const derived = await this.derivePageToken(token, pageId);
+        if (derived) {
+          await this.repo.update(channel.id, { facebook_page_token_enc: encrypt(derived) });
+          return {
+            ok: true,
+            page_name: pageName,
+            note: 'נשמר טוקן משתמש — הומר אוטומטית ל-Page Access Token של הדף. הפרסום אמור לעבוד כעת.',
+          };
+        }
+        return {
+          ok: false,
+          page_name: pageName,
+          error: 'זהו טוקן משתמש (User Token) ולא Page Access Token, ולא הצלחנו להמיר אותו אוטומטית. '
+            + 'ודא שבמסך האישור של פייסבוק סומן הדף הזה ואושרה ההרשאה "Create and manage content on your Page".',
+        };
+      }
+
+      const missing = ['pages_manage_posts', 'pages_read_engagement'].filter((s) => !info.scopes.includes(s));
+      if (missing.length) {
+        return {
+          ok: false,
+          page_name: pageName,
+          error: `לטוקן חסרות ההרשאות: ${missing.join(', ')}. יש להפיק מחדש Page Access Token של אדמין הדף עם ההרשאות האלה.`,
+        };
+      }
+
+      return { ok: true, page_name: pageName };
     } catch (err: any) {
       return { ok: false, error: err?.response?.data?.error?.message || err?.message || 'הבדיקה נכשלה.' };
     }
   }
 
   /**
-   * The publish permissions this token is missing, or null when it looks publishable.
+   * What a token actually is, per Graph debug_token (a token can debug itself).
    *
-   * Deliberately fails OPEN: if debug_token is unreachable or returns an unexpected shape,
-   * it reports nothing missing. A connectivity blip must not tell the owner their working
-   * setup is broken — the real publish call remains the final authority.
+   * Returns null when the lookup fails or answers in an unexpected shape — callers treat
+   * that as "no opinion" and let the real publish call decide. A connectivity blip must
+   * never tell the owner their working setup is broken.
    */
-  private async missingPublishScopes(token: string): Promise<string | null> {
-    const REQUIRED = ['pages_manage_posts', 'pages_read_engagement'];
+  private async tokenInfo(token: string): Promise<{ type: string; scopes: string[] } | null> {
     try {
       const res = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`, {
         params: { input_token: token, access_token: token },
@@ -218,46 +250,30 @@ export class ChannelsService {
       });
       const data = res.data?.data;
       if (!data || !Array.isArray(data.scopes)) return null;
-
-      if (String(data.type || '').toUpperCase() === 'USER') {
-        // "Copy it from /me/accounts" is a dead end when that returns an empty list — which
-        // is the common case, because Facebook's consent dialog grants the scopes even when
-        // no Page is ticked. Ask the token what Pages it can actually see and say so.
-        const pages = await this.listPagesForToken(token);
-        if (pages === null) {
-          return 'זהו טוקן משתמש (User Token) ולא Page Access Token. פרסום לדף מחייב את הטוקן של הדף עצמו — '
-            + 'קבל אותו מ-GET /me/accounts ושמור אותו כאן.';
-        }
-        if (!pages.length) {
-          return 'זהו טוקן משתמש (User Token), ובנוסף GET /me/accounts מחזיר רשימה ריקה — '
-            + 'הטוקן לא רואה אף דף פייסבוק. בדרך כלל הסיבה היא שבמסך האישור של פייסבוק לא סומן אף דף '
-            + '(ההרשאות ניתנות גם כך), או שאין דף עסקי בחשבון. צור/בחר דף והפק את הטוקן מחדש.';
-        }
-        return 'זהו טוקן משתמש (User Token) ולא Page Access Token. הדפים הזמינים לך: '
-          + pages.map((p) => `"${p.name}" (ID ${p.id})`).join(', ')
-          + '. שמור כאן את ה-access_token של הדף הרצוי, לא את טוקן המשתמש.';
-      }
-      const missing = REQUIRED.filter((s) => !data.scopes.includes(s));
-      if (!missing.length) return null;
-      return `לטוקן חסרות ההרשאות: ${missing.join(', ')}. יש להפיק מחדש Page Access Token של אדמין הדף עם ההרשאות האלה.`;
+      return { type: String(data.type || '').toUpperCase(), scopes: data.scopes as string[] };
     } catch {
       return null;
     }
   }
 
   /**
-   * Pages this user token administers, or null if the lookup itself failed (which is a
-   * different thing from "you have no Pages" and must not be reported as such).
+   * The Page's own access token, read from the page node with a user token.
+   *
+   * This is the reliable path. The documented route — GET /me/accounts — returns an empty
+   * list when the Pages belong to a Business Portfolio instead of a classic admin role, even
+   * though the user has full access and the consent dialog granted everything. Asking the
+   * page directly for `access_token` works in both arrangements, so the owner never has to
+   * discover which one they are in.
    */
-  private async listPagesForToken(token: string): Promise<Array<{ id: string; name: string }> | null> {
+  private async derivePageToken(userToken: string, pageId: string): Promise<string | null> {
     try {
-      const res = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`, {
-        params: { fields: 'id,name', access_token: token },
+      const res = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}`, {
+        params: { fields: 'access_token', access_token: userToken },
         timeout: 6000,
         validateStatus: () => true,
       });
-      if (res.data?.error || !Array.isArray(res.data?.data)) return null;
-      return res.data.data.slice(0, 5).map((p: any) => ({ id: String(p.id), name: String(p.name || p.id) }));
+      const t = res.data?.access_token;
+      return typeof t === 'string' && t.length > 20 ? t : null;
     } catch {
       return null;
     }

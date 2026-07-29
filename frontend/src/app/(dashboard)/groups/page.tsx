@@ -490,14 +490,14 @@ function ChannelCard({
   footerName?: string | null;
   onDelete: (id: string) => void;
   onTest: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  onTestFacebook: (id: string) => Promise<{ ok: boolean; error?: string; page_name?: string }>;
+  onTestFacebook: (id: string) => Promise<{ ok: boolean; error?: string; page_name?: string; note?: string }>;
   onToggle: (id: string, active: boolean) => void;
   onEdit: (channel: Channel) => void;
 }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [fbTesting, setFbTesting] = useState(false);
-  const [fbResult, setFbResult] = useState<{ ok: boolean; error?: string; page_name?: string } | null>(null);
+  const [fbResult, setFbResult] = useState<{ ok: boolean; error?: string; page_name?: string; note?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const handleTest = async () => {
@@ -618,7 +618,7 @@ function ChannelCard({
         {fbResult && (
           <div className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg w-full ${fbResult.ok ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}`}>
             {fbResult.ok
-              ? <><CheckCircle2 size={12} className="shrink-0" /> מחובר לדף: {fbResult.page_name}</>
+              ? <><CheckCircle2 size={12} className="shrink-0" /> מחובר לדף: {fbResult.page_name}{fbResult.note ? ` · ${fbResult.note}` : ''}</>
               : <><XCircle size={12} className="shrink-0" /> {fbResult.error || 'שגיאה'}</>}
           </div>
         )}
