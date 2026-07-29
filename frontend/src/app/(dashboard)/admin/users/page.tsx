@@ -24,7 +24,9 @@ export default function AdminUsersPage() {
   // REAL provider error — a bad setup otherwise only shows as a generic failure on the
   // forgot-password screen.
   const [smtpTesting, setSmtpTesting] = useState(false);
-  const [smtpResult, setSmtpResult] = useState<{ ok: boolean; error?: string; host?: string; port?: number } | null>(null);
+  const [smtpResult, setSmtpResult] = useState<
+    { ok: boolean; error?: string; hint?: string; host?: string; port?: number; transport?: string } | null
+  >(null);
 
   const testSmtp = async () => {
     setSmtpTesting(true);
@@ -115,9 +117,20 @@ export default function AdminUsersPage() {
         <div className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${smtpResult.ok
           ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
           : 'bg-red-500/15 border-red-400/50 text-red-100'}`} dir="rtl">
-          {smtpResult.ok
-            ? <>✅ חיבור ה-SMTP תקין ({smtpResult.host}:{smtpResult.port}) — המיילים אמורים להישלח.</>
-            : <>⚠️ בעיית SMTP: <span dir="ltr" className="font-mono text-xs bg-black/30 rounded px-1.5 py-0.5 text-white">{smtpResult.error}</span></>}
+          {smtpResult.ok ? (
+            <>✅ שליחת המיילים תקינה ({smtpResult.host}{smtpResult.port ? `:${smtpResult.port}` : ''}) — נשלח מייל בדיקה לתיבה שלך.</>
+          ) : (
+            <>
+              <div>
+                ⚠️ בעיית שליחת מיילים:{' '}
+                <span dir="ltr" className="font-mono text-xs bg-black/30 rounded px-1.5 py-0.5 text-white">
+                  {smtpResult.error}
+                </span>
+              </div>
+              {/* The raw provider string says WHAT broke; the hint says which knob to turn. */}
+              {smtpResult.hint && <div className="mt-2 text-red-50/90 font-normal leading-relaxed">{smtpResult.hint}</div>}
+            </>
+          )}
         </div>
       )}
 

@@ -218,7 +218,16 @@ export class AdminController {
       );
       return { ...conn, sent_to: to };
     } catch (err: any) {
-      return { ok: false, error: `החיבור תקין אך השליחה נדחתה: ${err?.message || err}`, host: conn.host, port: conn.port };
+      return {
+        ok: false,
+        error: `${err?.message || err}`,
+        // The #1 cause of "connects fine, send rejected" on Gmail: SMTP_FROM points at an
+        // address that isn't the authenticated account and wasn't verified as an alias.
+        hint: 'החיבור תקין אך השליחה נדחתה. אם SMTP_FROM שונה מ-SMTP_USER — אמת אותו ב-Gmail תחת '
+          + 'Settings → Accounts → "Send mail as", או פשוט הגדר SMTP_FROM לכתובת ה-Gmail עצמה.',
+        host: conn.host,
+        port: conn.port,
+      };
     }
   }
 
