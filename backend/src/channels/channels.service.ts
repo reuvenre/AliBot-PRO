@@ -220,12 +220,44 @@ export class ChannelsService {
       if (!data || !Array.isArray(data.scopes)) return null;
 
       if (String(data.type || '').toUpperCase() === 'USER') {
-        return 'זהו טוקן משתמש (User Token) ולא Page Access Token. פרסום לדף מחייב את הטוקן של הדף עצמו — '
-          + 'קבל אותו מ-GET /me/accounts ושמור אותו כאן.';
+        // "Copy it from /me/accounts" is a dead end when that returns an empty list — which
+        // is the common case, because Facebook's consent dialog grants the scopes even when
+        // no Page is ticked. Ask the token what Pages it can actually see and say so.
+        const pages = await this.listPagesForToken(token);
+        if (pages === null) {
+          return 'זהו טוקן משתמש (User Token) ולא Page Access Token. פרסום לדף מחייב את הטוקן של הדף עצמו — '
+            + 'קבל אותו מ-GET /me/accounts ושמור אותו כאן.';
+        }
+        if (!pages.length) {
+          return 'זהו טוקן משתמש (User Token), ובנוסף GET /me/accounts מחזיר רשימה ריקה — '
+            + 'הטוקן לא רואה אף דף פייסבוק. בדרך כלל הסיבה היא שבמסך האישור של פייסבוק לא סומן אף דף '
+            + '(ההרשאות ניתנות גם כך), או שאין דף עסקי בחשבון. צור/בחר דף והפק את הטוקן מחדש.';
+        }
+        return 'זהו טוקן משתמש (User Token) ולא Page Access Token. הדפים הזמינים לך: '
+          + pages.map((p) => `"${p.name}" (ID ${p.id})`).join(', ')
+          + '. שמור כאן את ה-access_token של הדף הרצוי, לא את טוקן המשתמש.';
       }
       const missing = REQUIRED.filter((s) => !data.scopes.includes(s));
       if (!missing.length) return null;
       return `לטוקן חסרות ההרשאות: ${missing.join(', ')}. יש להפיק מחדש Page Access Token של אדמין הדף עם ההרשאות האלה.`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Pages this user token administers, or null if the lookup itself failed (which is a
+   * different thing from "you have no Pages" and must not be reported as such).
+   */
+  private async listPagesForToken(token: string): Promise<Array<{ id: string; name: string }> | null> {
+    try {
+      const res = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`, {
+        params: { fields: 'id,name', access_token: token },
+        timeout: 6000,
+        validateStatus: () => true,
+      });
+      if (res.data?.error || !Array.isArray(res.data?.data)) return null;
+      return res.data.data.slice(0, 5).map((p: any) => ({ id: String(p.id), name: String(p.name || p.id) }));
     } catch {
       return null;
     }
