@@ -203,6 +203,18 @@ function ChannelFormFields({
               </ol>
             </div>
 
+            {/* Instagram publishing fails with "(#10) Application does not have permission"
+                whenever the token carries only the pages_* scopes — the two instagram_*
+                permissions are separate, and instagram_manage_events is not one of them. */}
+            <div className="bg-violet-500/[0.08] border border-violet-500/25 rounded-md p-2 mb-1">
+              <p className="text-violet-300 font-medium mb-0.5">מפרסם גם לאינסטגרם?</p>
+              <ol className="list-decimal pr-4 space-y-0.5">
+                <li>ודא שהמארח בסרגל העליון הוא <span dir="ltr" className="font-mono">graph.facebook.com</span> — לא <span dir="ltr" className="font-mono">graph.instagram.com</span> (זה API אחר שלא מקבל את הטוקן הזה).</li>
+                <li>הוסף לטוקן גם <span dir="ltr" className="font-mono">instagram_basic</span> ו-<span dir="ltr" className="font-mono">instagram_content_publish</span>. בלעדיהן הפרסום נכשל עם <span dir="ltr">(#10)</span>.</li>
+                <li>בחר את ה<b>עמוד</b> ב-<b>User or Page</b>, ואז הרץ <span dir="ltr" className="font-mono">GET /me?fields=instagram_business_account&#123;id,username&#125;</span> — ה-<span dir="ltr" className="font-mono">id</span> שיחזור הוא ה-Instagram Business ID לשדה כאן.</li>
+              </ol>
+            </div>
+
             <p className="text-white/45">או ידנית:</p>
             <ol className="list-decimal pr-4 space-y-1">
               <li>ב-<b>Graph API Explorer</b>, בתפריט <b>User or Page</b> למעלה בחר את ה<b>עמוד</b> (Page) — כך נוצר Page Access Token לאותו עמוד (ולא טוקן משתמש).</li>
