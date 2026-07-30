@@ -21,6 +21,7 @@ export type MetaPlatform = 'facebook' | 'instagram';
 export function facebookError(err: any, platform: MetaPlatform = 'facebook'): FacebookErrorInfo {
   const e = err?.response?.data?.error ?? err?.error;
   const code: number | null = typeof e?.code === 'number' ? e.code : null;
+  const subcode: number | null = typeof e?.error_subcode === 'number' ? e.error_subcode : null;
   const raw = e?.message || err?.response?.data?.message || err?.message || 'שגיאה לא ידועה';
 
   const act = (message: string): FacebookErrorInfo => ({ code, message, needsUserAction: true });
@@ -47,6 +48,29 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
         + 'עם ההרשאות pages_manage_posts ו-pages_read_engagement.',
       );
     case 190:
+      // #190 covers four different owner actions, and the generic "renew the token" wording
+      // sent the account owner to re-paste a token from a session Facebook had already killed
+      // — which fails identically, every time. The subcode is the only thing that says which
+      // action actually helps, so it decides the message.
+      if (subcode === 460) {
+        return act(
+          'הסשן של פייסבוק בוטל בעקבות שינוי סיסמה או איפוס אבטחה. '
+          + 'העתקה מחדש של אותו טוקן לא תעזור — כל הטוקנים מהסשן הקודם מתו. '
+          + 'יש להתחבר מחדש לפייסבוק, להפיק Page Access Token חדש לכל דף בנפרד, ולעדכן כל קבוצה.',
+        );
+      }
+      if (subcode === 458) {
+        return act(
+          'האפליקציה הוסרה מחשבון הפייסבוק. יש לאשר אותה מחדש במסך האישור של פייסבוק '
+          + '(ולסמן שם את הדפים הרלוונטיים) ואז להפיק Page Access Token חדש.',
+        );
+      }
+      if (subcode === 492) {
+        return act(
+          'המשתמש שהפיק את הטוקן אינו אדמין של הדף הזה. יש להפיק Page Access Token '
+          + 'ממשתמש עם הרשאת אדמין על הדף.',
+        );
+      }
       return act('טוקן הפייסבוק פג תוקף או בוטל. יש לחדש אותו בהגדרות ← אינטגרציות.');
     case 100:
     case 803:

@@ -1,6 +1,7 @@
 import { facebookError, facebookErrorText } from './facebook-errors';
 
-const graph = (code: number, message: string) => ({ response: { data: { error: { code, message } } } });
+const graph = (code: number, message: string, error_subcode?: number) =>
+  ({ response: { data: { error: { code, message, ...(error_subcode ? { error_subcode } : {}) } } } });
 
 describe('facebookError', () => {
   it('replaces the #200 permissions essay with the one action that fixes it', () => {
@@ -20,6 +21,33 @@ describe('facebookError', () => {
 
   it('flags an expired token as the owner\'s to renew', () => {
     expect(facebookError(graph(190, 'Session has expired')).needsUserAction).toBe(true);
+  });
+
+  describe('#190 subcodes each need a different owner action', () => {
+    it('says a password change killed every old token, so re-pasting one is pointless', () => {
+      // The generic "renew the token" wording had the owner re-paste a token from the very
+      // session Facebook invalidated — it fails identically every time.
+      const info = facebookError(graph(190,
+        'Error validating access token: The session has been invalidated because the user '
+        + 'changed their password or Facebook has changed the session for security reasons.',
+        460,
+      ));
+      expect(info.message).toContain('שינוי סיסמה');
+      expect(info.message).toContain('להתחבר מחדש');
+      expect(info.needsUserAction).toBe(true);
+    });
+
+    it('points a de-authorized app at the consent screen, not at a token field', () => {
+      expect(facebookError(graph(190, 'App not authorized', 458)).message).toContain('האפליקציה הוסרה');
+    });
+
+    it('names the admin problem when the token holder is not a page admin', () => {
+      expect(facebookError(graph(190, 'Not an admin', 492)).message).toContain('אינו אדמין');
+    });
+
+    it('keeps the generic renew message when no subcode narrows it down', () => {
+      expect(facebookError(graph(190, 'Session has expired')).message).toContain('פג תוקף או בוטל');
+    });
   });
 
   it('does not send the owner to Settings for a rate limit', () => {

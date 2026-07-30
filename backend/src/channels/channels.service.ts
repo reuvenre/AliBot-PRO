@@ -7,6 +7,7 @@ import { CreateChannelDto, UpdateChannelDto } from './dto/channel.dto';
 import { encrypt, decrypt, mask, normalizeTelegramChatId } from '../common/crypto';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { CredentialsService, GRAPH_VERSION } from '../credentials/credentials.service';
+import { facebookErrorText } from '../common/facebook-errors';
 
 @Injectable()
 export class ChannelsService {
@@ -195,7 +196,10 @@ export class ChannelsService {
             error: `הדף עם המזהה ${pageId} לא נמצא, או שהטוקן לא מכסה אותו. ${hint}`,
           };
         }
-        return { ok: false, error: msg };
+        // Anything else: reuse the publish path's Hebrew mapping instead of echoing Graph's
+        // English paragraph. The owner reads this button's answer far more often than a failed
+        // post's error, so it must say the same actionable sentence.
+        return { ok: false, error: facebookErrorText({ error: res.data.error }) };
       }
       const pageName = res.data?.name || pageId;
 
