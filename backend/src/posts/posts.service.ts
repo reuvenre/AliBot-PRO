@@ -9,6 +9,8 @@ import FormData = require('form-data');
 import { Post } from './post.entity';
 import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
+import { mentionsPrice, priceProofBlock } from './price-block';
+import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsService, DecryptedCredentials, GRAPH_VERSION } from '../credentials/credentials.service';
@@ -59,6 +61,8 @@ const PRODUCT_REPEAT_COOLDOWN_DAYS = 14;
 /** How many extra keywords a run may try when its own slot keyword(s) return nothing.
  *  Bounded so one dead run can't turn into a long chain of affiliate-API calls. */
 const KEYWORD_FALLBACK_ATTEMPTS = 5;
+/** Window the weighted rotation scores keywords over — matches the optimizer's. */
+const KEYWORD_SCORE_WINDOW_DAYS = 14;
 
 /**
  * Which keywords a run may fall back to, in order, when every keyword the rotation gave it
@@ -1385,6 +1389,46 @@ export class PostsService {
     return { slot: new Date(slotMs), skip };
   }
 
+  /**
+   * What each of a campaign's keywords produced over the scoring window: products posted,
+   * the clicks those posts drew, and commissions on those products. Feeds the weighted
+   * rotation; a query failure degrades to an empty map, i.e. plain round-robin.
+   *
+   * Revenue is matched on product_id, the same heuristic the optimizer and the attribution
+   * report use. Note it is a WEAK signal here in practice — most orders on this account are
+   * for products the autopilot never posted — so clicks carry the ranking.
+   */
+  private async keywordPerformance(campaignId: string): Promise<Map<string, KeywordPerformance>> {
+    const rows: any[] = await this.repo.query(
+      `SELECT pp.keyword,
+              count(DISTINCT pp.product_id)::int          AS posts,
+              coalesce(sum(p.clicks_count), 0)::int        AS clicks,
+              coalesce((
+                SELECT sum(e.commission_ils) FROM earnings e
+                WHERE e.product_id IN (
+                  SELECT pp2.product_id FROM campaign_posted_products pp2
+                  WHERE pp2.campaign_id = $1 AND pp2.keyword = pp.keyword
+                    AND pp2.created_at > now() - ($2 || ' days')::interval)
+              ), 0)::float                                 AS revenue
+       FROM campaign_posted_products pp
+       LEFT JOIN posts p
+         ON p.campaign_id = pp.campaign_id AND p.product_id = pp.product_id AND p.status = 'sent'
+       WHERE pp.campaign_id = $1 AND pp.keyword IS NOT NULL
+         AND pp.created_at > now() - ($2 || ' days')::interval
+       GROUP BY pp.keyword`,
+      [campaignId, String(KEYWORD_SCORE_WINDOW_DAYS)],
+    );
+    const out = new Map<string, KeywordPerformance>();
+    for (const r of rows || []) {
+      out.set(String(r.keyword), {
+        posts: Number(r.posts) || 0,
+        clicks: Number(r.clicks) || 0,
+        revenue: Number(r.revenue) || 0,
+      });
+    }
+    return out;
+  }
+
   async runCampaign(campaign: Campaign, userId: string, opts?: { fromScheduler?: boolean }): Promise<CampaignRunResult> {
     const creds = await this.credentials.getRaw(userId);
     if (!creds) throw new BadRequestException('חסרים פרטי חיבור — הגדר אותם במסך ההגדרות');
@@ -1430,9 +1474,18 @@ export class PostsService {
     const baseCursor = campaign.keyword_cursor ?? 0;
     this.campaignRepo.increment({ id: campaign.id }, 'keyword_cursor', perPost).catch(() => {});
 
+    // Bias the rotation toward keywords that actually produced something. A blind cursor
+    // gave a keyword that never earned a single click the same airtime as one that sells,
+    // permanently — the rotation now repeats proven keywords while still reaching every
+    // keyword each cycle (an unproven keyword needs its chance to BE measured, and retiring
+    // one is the optimizer's job, where it is capped and reversible).
+    const perf = await this.keywordPerformance(campaign.id).catch(() => new Map());
+    const rotation = weightedRotation(kwList, perf);
+    const rotationList = rotation.length ? rotation : kwList;
+
     // One keyword per post SLOT (repeats when there are fewer keywords than posts).
     const slotKeywords: string[] = [];
-    for (let i = 0; i < perPost; i++) slotKeywords.push(kwList[(baseCursor + i) % kwList.length]);
+    for (let i = 0; i < perPost; i++) slotKeywords.push(rotationList[(baseCursor + i) % rotationList.length]);
     const distinctKeywords = Array.from(new Set(slotKeywords));
 
     // Products this campaign already posted — from the DURABLE de-dup table (survives
@@ -3564,7 +3617,22 @@ export class PostsService {
         + `for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
     }
 
-    return text || this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
+    if (!text) return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
+
+    // Numbers are data, not prose: the price anchor and the social proof are rendered from
+    // the same facts the model was given, so they can't come out unfilled, invented or
+    // silently omitted. Appended only when the copy didn't state the price itself, so the
+    // owner's existing price-bearing templates are untouched and migrate by simply dropping
+    // their price line.
+    const facts = {
+      symbol, priceLocal, originalLocal, discount, language,
+      rating: product?.rating, ordersCount: product?.orders_count,
+    };
+    if (!mentionsPrice(text, symbol, priceLocal)) {
+      const block = priceProofBlock(facts);
+      if (block) text = `${text}\n\n${block}`;
+    }
+    return text;
   }
 
   private defaultSystemPrompt(language: string): string {
