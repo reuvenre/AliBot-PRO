@@ -300,6 +300,22 @@ export class PostsService {
   }
 
   /**
+   * The body template a post to THIS group should be written with: the group's own template
+   * when it has one, otherwise the account default. Same precedence the footer already uses.
+   *
+   * Publishing by hand used to pass no template at all, so a manual post to a group came out
+   * in the generic built-in voice while the autopilot's posts to the same group used the
+   * owner's template — the same product looked like two different channels depending on
+   * whether a cron fired it or a human clicked the button.
+   */
+  private async bodyTemplateFor(
+    userId: string, creds: DecryptedCredentials, channelId?: string,
+  ): Promise<string> {
+    const own = await this.resolveBodyTemplate(userId, channelId).catch(() => '');
+    return own || await this.getBodyText(userId, creds).catch(() => '');
+  }
+
+  /**
    * Footer for a post: when routed to a specific saved channel that has its OWN footer
    * template (each group has its own join link), use that; otherwise the global default.
    */
@@ -524,9 +540,11 @@ export class PostsService {
       || await this.getAffiliateLink(productId, creds);
 
     const parts = this.priceParts(product, rate);
+    // Write in the voice of the group this is going to, exactly as a campaign post would.
+    const template = textOverride ? '' : await this.bodyTemplateFor(userId, creds, channels?.[0] || channelOverride);
     const text = textOverride || await this.generateText(
       product || { title: productId, sale_price: 0, original_price: 0, discount_percent: 0, orders_count: 0, rating: 0, currency: 'USD' },
-      'he', rate, creds, undefined, parts.localOverride, undefined, undefined, false,
+      'he', rate, creds, template || undefined, parts.localOverride, undefined, undefined, false,
       promoNorm ? { promo: { discount: promoNorm.discount, endsLabel: this.promoEndsLabel(promo?.ends_at) } } : undefined,
     );
 
@@ -586,9 +604,11 @@ export class PostsService {
       || await this.getAffiliateLink(productId, creds);
 
     const parts = this.priceParts(product, rate);
+    // Same group voice as an immediate publish — a scheduled post must not read differently.
+    const template = textOverride ? '' : await this.bodyTemplateFor(userId, creds, channels?.[0] || channelOverride);
     const text = textOverride || await this.generateText(
       product || { title: productId, sale_price: 0, original_price: 0, discount_percent: 0, orders_count: 0, rating: 0, currency: 'USD' },
-      'he', rate, creds, undefined, parts.localOverride, undefined, undefined, false,
+      'he', rate, creds, template || undefined, parts.localOverride, undefined, undefined, false,
       promoNorm ? { promo: { discount: promoNorm.discount, endsLabel: this.promoEndsLabel(promo?.ends_at) } } : undefined,
     );
 
