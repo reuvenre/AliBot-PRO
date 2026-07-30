@@ -33,6 +33,12 @@ export default function EditCampaignPage() {
         min_discount: c.min_discount,
         min_rating: c.min_rating,
         post_template: c.post_template,
+        // Every field the form can EDIT has to be hydrated here, or the control renders at
+        // its empty default and the owner reads a saved setting as lost. These two toggles
+        // were added to the form without being added to this list, so a campaign with them
+        // on always reopened showing them off — the value was in the database the whole time.
+        seasonal_keywords: c.seasonal_keywords,
+        learn_from_orders: c.learn_from_orders,
       }))
       .catch(() => router.push('/campaigns'));
   }, [id, router]);
