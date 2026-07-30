@@ -108,4 +108,9 @@ export class CampaignDto {
   @IsOptional()
   @IsBoolean()
   seasonal_keywords?: boolean;
+
+  /** Opt this campaign into order-driven keyword learning (top-selling categories). */
+  @IsOptional()
+  @IsBoolean()
+  learn_from_orders?: boolean;
 }

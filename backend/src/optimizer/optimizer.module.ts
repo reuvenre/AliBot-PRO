@@ -7,6 +7,7 @@ import { OptimizerController } from './optimizer.controller';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { MailModule } from '../mail/mail.module';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
   imports: [
@@ -14,6 +15,8 @@ import { MailModule } from '../mail/mail.module';
     CredentialsModule,
     SubscriptionModule,
     MailModule,
+    // Resolves a sold product id to its real AliExpress category (productdetail.get).
+    ProductsModule,
   ],
   controllers: [OptimizerController],
   providers: [OptimizerService],

@@ -149,6 +149,19 @@ export class Campaign {
   @Column({ default: false })
   seasonal_keywords: boolean;
 
+  /**
+   * Opt this campaign into order-driven keyword learning: the optimizer resolves the products
+   * that actually SOLD to their AliExpress categories and adds the top earners to this
+   * campaign's rotation (capped per run, and never a keyword it previously retired).
+   *
+   * Off by default. The learning is account-wide — most orders come from traffic the autopilot
+   * never posted — so a winning category reflects whoever buys through the owner's links, not
+   * this channel's audience. With the flag off the winners still appear in the daily digest as
+   * suggestions, so nothing is hidden; only publishing them is opt-in.
+   */
+  @Column({ default: false })
+  learn_from_orders: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

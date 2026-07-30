@@ -8,9 +8,15 @@ import { OptimizerRun } from './optimizer-run.entity';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { MailService } from '../mail/mail.service';
+import { ProductsService } from '../products/products.service';
+import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 
 interface KeywordScore { keyword: string; posts: number; clicks: number; revenue_ils: number }
-interface CampaignActions { campaign: string; retired: string[]; boosted: string | null; unboosted: string[] }
+interface CampaignActions {
+  campaign: string; retired: string[]; boosted: string | null; unboosted: string[];
+  /** Categories added to this campaign from what actually sold (opt-in per campaign). */
+  learned: string[];
+}
 
 /** Scoring window — long enough for commissions to land, short enough to track trends. */
 const WINDOW_DAYS = 14;
@@ -20,6 +26,15 @@ const MIN_POSTS_TO_JUDGE = 5;
 const MIN_ACTIVE_KEYWORDS = 5;
 /** At most this many retirements per campaign per day — slow, reversible pressure. */
 const MAX_RETIRE_PER_DAY = 3;
+/** How far back ORDERS are read for category learning. Wider than the keyword window:
+ *  commissions are sparse, and a category needs several sales before it means anything. */
+const ORDER_LEARNING_WINDOW_DAYS = 90;
+/** Top-earning sold products resolved per run — bounds the affiliate API calls. */
+const MAX_PRODUCTS_TO_RESOLVE = 40;
+/** Product ids per productdetail.get call (the endpoint rejects very long id lists). */
+const RESOLVE_CHUNK = 20;
+/** Categories a campaign may GAIN per run — each one changes what reaches a real channel. */
+const MAX_LEARNED_PER_RUN = 2;
 
 /**
  * The learning loop: publish → measure → LEARN → adjust. Runs every morning, scores each
@@ -42,6 +57,7 @@ export class OptimizerService {
     private readonly credentials: CredentialsService,
     private readonly subscription: SubscriptionService,
     private readonly mail: MailService,
+    private readonly products: ProductsService,
   ) {}
 
   /** 03:15 UTC = morning Israel — after the nightly earnings sync, before the day's posts. */
@@ -79,21 +95,29 @@ export class OptimizerService {
     const allActions: CampaignActions[] = [];
     const allScores: Record<string, KeywordScore[]> = {};
 
+    // What actually SOLD, ranked by category. Computed once for the account: orders are not
+    // reliably attributable to a campaign (most are for products the autopilot never posted),
+    // so this is account-level knowledge that each campaign may opt into.
+    const soldCategories = await this.learnFromOrders(userId).catch((err: any) => {
+      this.logger.warn(`order learning failed for ${userId}: ${err.message}`);
+      return [] as CategoryScore[];
+    });
+
     for (const c of active) {
       const scores = await this.scoreKeywords(userId, c.id);
       allScores[c.name] = scores;
-      const actions = await this.applyActions(c, scores);
-      if (actions.retired.length || actions.boosted || actions.unboosted.length) {
+      const actions = await this.applyActions(c, scores, soldCategories);
+      if (actions.retired.length || actions.boosted || actions.unboosted.length || actions.learned.length) {
         allActions.push(actions);
       }
     }
 
     const stats = await this.digestStats(userId);
-    const digest = this.buildDigest(stats, allActions);
+    const digest = this.buildDigest(stats, allActions, soldCategories, active);
 
     await this.runs.save(this.runs.create({
       user_id: userId,
-      summary_json: JSON.stringify({ scores: allScores, actions: allActions, stats }),
+      summary_json: JSON.stringify({ scores: allScores, actions: allActions, stats, soldCategories }),
     })).catch(() => {});
 
     await this.deliverDigest(userId, digest);
@@ -139,9 +163,64 @@ export class OptimizerService {
     }));
   }
 
+  /**
+   * The products that actually sold, resolved to their AliExpress categories and ranked.
+   *
+   * Per-post attribution is not usable here: of the products sold on this account only a
+   * handful were ever published by the autopilot, so "which of my posts earned" sees a
+   * couple of percent of reality. Categories aggregate across ALL orders — including the
+   * owner's other traffic on the same tracking id — which is where the signal lives.
+   *
+   * Bounded on purpose: the top earners by commission, in chunks, so a daily run costs a
+   * predictable couple of affiliate API calls.
+   */
+  private async learnFromOrders(userId: string): Promise<CategoryScore[]> {
+    const rows: any[] = await this.campaigns.query(
+      `SELECT product_id,
+              count(*)::int                            AS orders,
+              coalesce(sum(commission_ils), 0)::float  AS commission_ils
+       FROM earnings
+       WHERE user_id = $1 AND product_id IS NOT NULL
+         AND order_date > now() - ($2 || ' days')::interval
+       GROUP BY product_id
+       ORDER BY commission_ils DESC, orders DESC
+       LIMIT $3`,
+      [userId, String(ORDER_LEARNING_WINDOW_DAYS), MAX_PRODUCTS_TO_RESOLVE],
+    ).catch(() => []);
+    if (!rows.length) return [];
+
+    const ids = rows.map((r) => String(r.product_id));
+    const resolved = new Map<string, any>();
+    for (let i = 0; i < ids.length; i += RESOLVE_CHUNK) {
+      const chunk = ids.slice(i, i + RESOLVE_CHUNK);
+      const batch = await this.products.refreshPricesBatch(userId, chunk).catch(() => new Map());
+      for (const [id, product] of batch) resolved.set(String(id), product);
+    }
+
+    const sold: SoldProduct[] = rows.map((r) => {
+      const product = resolved.get(String(r.product_id));
+      return {
+        productId: String(r.product_id),
+        orders: Number(r.orders) || 0,
+        commissionIls: Number(r.commission_ils) || 0,
+        category: product?.category ?? null,
+        subcategory: product?.subcategory ?? null,
+      };
+    });
+
+    const scored = scoreCategories(sold);
+    if (scored.length) {
+      this.logger.log(`order learning [${userId}]: ${scored.length} categories from `
+        + `${sold.length} sold products — top: ${scored.slice(0, 3).map((s) => `${s.keyword} (₪${s.commissionIls})`).join(', ')}`);
+    }
+    return scored;
+  }
+
   /** Small, safe, reversible adjustments to the campaign's keyword rotation. */
-  private async applyActions(c: Campaign, scores: KeywordScore[]): Promise<CampaignActions> {
-    const out: CampaignActions = { campaign: c.name, retired: [], boosted: null, unboosted: [] };
+  private async applyActions(
+    c: Campaign, scores: KeywordScore[], soldCategories: CategoryScore[] = [],
+  ): Promise<CampaignActions> {
+    const out: CampaignActions = { campaign: c.name, retired: [], boosted: null, unboosted: [], learned: [] };
     const byKw = new Map(scores.map((s) => [s.keyword, s]));
     let kws = [...(c.keywords || [])];
     const distinct = () => Array.from(new Set(kws));
@@ -177,11 +256,25 @@ export class OptimizerService {
       if (copies === 1) { kws.push(top.keyword); out.boosted = top.keyword; }
     }
 
-    if (out.retired.length || out.boosted || out.unboosted.length) {
+    // 4) LEARN from what sold: add the top-earning categories this campaign doesn't already
+    //    search. Opt-in per campaign, because the categories are learned account-wide and a
+    //    winner from the owner's other traffic can be plainly off-brand for this channel —
+    //    the exact mistake seasonal keywords made before they became per-campaign too.
+    if (c.learn_from_orders && soldCategories.length) {
+      const additions = newKeywordsFor(
+        soldCategories, kws, c.retired_keywords || [], MAX_LEARNED_PER_RUN,
+      );
+      for (const a of additions) {
+        kws.push(a.keyword);
+        out.learned.push(a.keyword);
+      }
+    }
+
+    if (out.retired.length || out.boosted || out.unboosted.length || out.learned.length) {
       c.keywords = kws;
       await this.campaigns.save(c).catch((err: any) =>
         this.logger.warn(`optimizer save failed for campaign ${c.id}: ${err.message}`));
-      this.logger.log(`optimizer [${c.name}]: retired=${out.retired.join(',') || '—'} boosted=${out.boosted || '—'} unboosted=${out.unboosted.join(',') || '—'}`);
+      this.logger.log(`optimizer [${c.name}]: retired=${out.retired.join(',') || '—'} boosted=${out.boosted || '—'} unboosted=${out.unboosted.join(',') || '—'} learned=${out.learned.join(',') || '—'}`);
     }
     return out;
   }
@@ -218,7 +311,12 @@ export class OptimizerService {
     };
   }
 
-  private buildDigest(stats: Awaited<ReturnType<OptimizerService['digestStats']>>, actions: CampaignActions[]): string {
+  private buildDigest(
+    stats: Awaited<ReturnType<OptimizerService['digestStats']>>,
+    actions: CampaignActions[],
+    soldCategories: CategoryScore[] = [],
+    campaigns: Campaign[] = [],
+  ): string {
     const lines: string[] = [];
     lines.push('🧠 דו"ח הבוקר של המנוע הלומד');
     lines.push('');
@@ -232,10 +330,25 @@ export class OptimizerService {
         if (a.boosted) lines.push(`  • [${a.campaign}] הכפלתי את "${a.boosted}" — היא מייצרת עמלות`);
         for (const kw of a.retired) lines.push(`  • [${a.campaign}] הוצאתי את "${kw}" — ${MIN_POSTS_TO_JUDGE}+ פוסטים בלי קליק אחד`);
         for (const kw of a.unboosted) lines.push(`  • [${a.campaign}] החזרתי את "${kw}" למינון רגיל — ההכנסות מהחלון האחרון התייבשו`);
+        for (const kw of a.learned) lines.push(`  • [${a.campaign}] הוספתי "${kw}" — קטגוריה שמייצרת מכירות בפועל`);
       }
     } else {
       lines.push('');
       lines.push('🔧 הלילה לא נדרש כוונון — הרוטציה מאוזנת.');
+    }
+
+    // What the ORDERS say, always — including for campaigns that haven't opted in, so the
+    // knowledge is never hidden behind a flag. Only acting on it is opt-in.
+    if (soldCategories.length) {
+      lines.push('');
+      lines.push(`💰 הקטגוריות שבאמת נמכרו (${ORDER_LEARNING_WINDOW_DAYS} ימים):`);
+      for (const c of soldCategories.slice(0, 5)) {
+        lines.push(`  • ${c.keyword} — ₪${c.commissionIls} · ${c.orders} הזמנות`);
+      }
+      const optedOut = campaigns.filter((c) => !c.learn_from_orders).map((c) => c.name);
+      if (optedOut.length) {
+        lines.push(`  ↳ לא מתווספות אוטומטית ל: ${optedOut.join(', ')} — הפעל "לימוד מהזמנות" בקמפיין כדי שכן.`);
+      }
     }
     return lines.join('\n');
   }

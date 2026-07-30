@@ -420,6 +420,8 @@ export interface Campaign {
   post_template?: string;
   /** Opt-in to the commercial calendar's seasonal search keywords for this campaign. */
   seasonal_keywords?: boolean;
+  /** Opt-in to order-driven keyword learning (top-selling categories) for this campaign. */
+  learn_from_orders?: boolean;
   last_run_at?: string;
   next_run_at?: string;
   posts_count: number;
@@ -450,6 +452,7 @@ export interface CampaignInput {
   markup_percent?: number;
   post_template?: string;
   seasonal_keywords?: boolean;
+  learn_from_orders?: boolean;
 }
 
 /** What a "run now" actually did. `searched` differs from `keyword` when a Hebrew

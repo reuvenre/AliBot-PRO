@@ -523,6 +523,32 @@ export function CampaignForm({
           </div>
         </div>
 
+        {/* Order-driven learning. Off by default and per-campaign for the same reason the
+            seasonal toggle is: the winning categories are learned from ALL orders on the
+            account, including traffic the autopilot never posted, so a top earner can be
+            plainly off-brand for one channel. The winners appear in the daily digest either
+            way — only adding them to this campaign's rotation is opt-in. */}
+        <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 pl-4">
+              <h2 className="text-sm font-semibold text-white">💰 לימוד מהזמנות</h2>
+              <p className="text-xs text-white/35 mt-1">
+                המנוע הלומד יבדוק כל בוקר אילו קטגוריות באמת הניבו מכירות, ויוסיף את
+                המרוויחות ביותר לרוטציה של הקמפיין הזה (עד 2 ביום, ולא מילה שהוצאה בעבר).
+                הקטגוריות המנצחות מדווחות בדו"ח היומי בכל מקרה — גם כשזה כבוי.
+                שים לב: הלמידה היא חשבונית, ולכן קטגוריה מנצחת עלולה לא להתאים לערוץ ממוקד.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, learn_from_orders: !f.learn_from_orders }))}
+              className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${form.learn_from_orders ? 'bg-blue-500' : 'bg-white/15'}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${form.learn_from_orders ? 'right-0.5' : 'right-4'}`} />
+            </button>
+          </div>
+        </div>
+
         {/* Per-campaign send window in its own timezone — a US-audience Pinterest campaign
             publishes on New-York evening hours while everything else stays on Israel time. */}
         <div className="bg-surface-secondary border border-edge rounded-xl p-5">
