@@ -8,6 +8,7 @@ import axios from 'axios';
 import FormData = require('form-data');
 import { Post } from './post.entity';
 import { PostedProduct } from './posted-product.entity';
+import { copyDefect } from './copy-guard';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsService, DecryptedCredentials, GRAPH_VERSION } from '../credentials/credentials.service';
@@ -3535,17 +3536,34 @@ export class PostsService {
         ? this.buildPinterestPrompt(language, product, symbol, priceLocal, originalLocal, discount)
         : this.buildUserPrompt(language, product, symbol, priceLocal, originalLocal, discount);
 
-    const result = await this.ai.generate(creds, {
-      system: systemPrompt,
-      prompt: userPrompt,
-      images: visionImages,
-      // Custom templates often produce longer, structured posts → give more room
-      // and lower the temperature so the model adheres to the exact structure.
-      maxTokens: hasTemplate ? 900 : 400,
-      temperature: hasTemplate ? 0.7 : 0.85,
-    });
+    // A model that deliberates instead of writing copy must NEVER reach a channel. This
+    // path used to accept anything non-empty, so a post went out to a live group carrying
+    // the model's own scratchpad ("Wait, what if the instruction literally means…"), a quote
+    // of this very system prompt, and a mid-word truncation. Validate the output; a rejected
+    // draft gets ONE cooler retry (not billed again — the credit was consumed above for this
+    // post, and charging twice to repair our own bad draft would be wrong), then the
+    // deterministic template copy takes over.
+    let text = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await this.ai.generate(creds, {
+        system: systemPrompt,
+        prompt: userPrompt,
+        images: visionImages,
+        // Custom templates often produce longer, structured posts → give more room
+        // and lower the temperature so the model adheres to the exact structure.
+        maxTokens: hasTemplate ? 900 : 400,
+        // The retry runs cold: rambling is a sampling failure, so a low temperature is the
+        // single most effective change to get structured copy on the second try.
+        temperature: attempt === 0 ? (hasTemplate ? 0.7 : 0.85) : 0.2,
+      });
 
-    const text = result?.text ? mdBoldToHtml(result.text) : '';
+      const candidate = result?.text ? mdBoldToHtml(result.text) : '';
+      const defect = copyDefect(candidate);
+      if (!defect) { text = candidate; break; }
+      this.logger.warn(`generateText rejected ${result?.provider || 'ai'} draft (${defect}) `
+        + `for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
+    }
+
     return text || this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
   }
 
