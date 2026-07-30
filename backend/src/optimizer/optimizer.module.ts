@@ -8,6 +8,7 @@ import { CredentialsModule } from '../credentials/credentials.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
+import { EarningsModule } from '../earnings/earnings.module';
 
 @Module({
   imports: [
@@ -17,6 +18,8 @@ import { ProductsModule } from '../products/products.module';
     MailModule,
     // Resolves a sold product id to its real AliExpress category (productdetail.get).
     ProductsModule,
+    // Pulls fresh orders right before the digest, so it reports the day AliExpress just closed.
+    EarningsModule,
   ],
   controllers: [OptimizerController],
   providers: [OptimizerService],

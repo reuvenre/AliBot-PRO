@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
@@ -9,6 +9,7 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
+import { EarningsService } from '../earnings/earnings.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 
 interface KeywordScore { keyword: string; posts: number; clicks: number; revenue_ils: number }
@@ -58,11 +59,34 @@ export class OptimizerService {
     private readonly subscription: SubscriptionService,
     private readonly mail: MailService,
     private readonly products: ProductsService,
+    // Optional so the module still boots if earnings are ever unwired — the digest degrades
+    // to whatever the standing 3-hourly sync last pulled instead of failing.
+    @Optional() private readonly earnings?: EarningsService,
   ) {}
 
-  /** 03:15 UTC = morning Israel — after the nightly earnings sync, before the day's posts. */
-  @Cron('0 15 3 * * *')
+  /**
+   * 10:10 Israel time, ten minutes after AliExpress closes its accounting day at 10:00 —
+   * only then does the previous day's order data stop moving, so a digest sent earlier
+   * reported a day that wasn't finished yet.
+   *
+   * The zone is explicit rather than a UTC hour because Israel observes DST: a hardcoded
+   * 07:10 UTC would be 10:10 in summer and 09:10 in winter, drifting off the boundary this
+   * schedule exists to sit behind.
+   */
+  @Cron('0 10 10 * * *', { timeZone: 'Asia/Jerusalem' })
   async runDaily(): Promise<void> {
+    // Pull orders FIRST. The standing sync runs every 3 hours on a UTC grid, so the most
+    // recent one before this fires landed at 09:20 Israel — BEFORE the 10:00 close, which
+    // would have made the whole point of moving this schedule moot. Best-effort: a sync
+    // failure must not cost the owner the digest.
+    if (this.earnings) {
+      const r = await this.earnings.syncAllUsers().catch((err: any) => {
+        this.logger.warn(`optimizer pre-digest earnings sync failed: ${err.message}`);
+        return null;
+      });
+      if (r) this.logger.log(`optimizer pre-digest sync: ${r.synced} new, ${r.updated} updated across ${r.users} users`);
+    }
+
     let userIds: string[] = [];
     try {
       userIds = await this.credentials.listUserIdsWithOptimizer();
@@ -320,7 +344,9 @@ export class OptimizerService {
     const lines: string[] = [];
     lines.push('🧠 דו"ח הבוקר של המנוע הלומד');
     lines.push('');
-    lines.push(`📊 אתמול: ${stats.posts_yesterday} פוסטים · ${stats.clicks_yesterday} קליקים · ${stats.orders_yesterday} הזמנות (₪${stats.revenue_yesterday_ils})`);
+    // "24 השעות האחרונות", not "אתמול": the window is rolling and now ends at the AliExpress
+    // 10:00 close, so it covers the day that just shut rather than a calendar yesterday.
+    lines.push(`📊 24 השעות האחרונות (עד סגירת היום באלי אקספרס): ${stats.posts_yesterday} פוסטים · ${stats.clicks_yesterday} קליקים · ${stats.orders_yesterday} הזמנות (₪${stats.revenue_yesterday_ils})`);
     if (stats.top_product) lines.push(`🏆 המוביל השבוע: ${stats.top_product} (${stats.top_product_clicks} קליקים)`);
     if (stats.golden_hours.length) lines.push(`⏰ שעות הזהב שלך: ${stats.golden_hours.join(', ')}`);
     if (actions.length) {
