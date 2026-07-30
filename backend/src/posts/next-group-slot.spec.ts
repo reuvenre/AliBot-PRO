@@ -81,4 +81,45 @@ describe('PostsService.nextGroupSlot', () => {
     const { skip } = await svc.nextGroupSlot('u1', GROUP, new Date(now), MINE);
     expect(skip).toBe(true);
   });
+
+  it('queues behind a sibling campaign instead of skipping the run', async () => {
+    // Watchdog #26: the 3-hourly FLYLINK campaign fires the same minute as the hourly
+    // campaign sharing its group. The hourly one books first, and treating ANY booking as
+    // "group busy" skipped FLYLINK on every single run — 13 hours silent while the sibling
+    // published hourly. It must take the NEXT slot, not lose the run.
+    const now = Date.now();
+    const siblingSlot = now + 2 * MIN;
+    const svc = serviceWith([
+      { campaign_id: SIBLING, pending: iso(siblingSlot), sent: null },
+    ]);
+
+    const { slot, skip } = await svc.nextGroupSlot('u1', GROUP, new Date(now), MINE);
+    expect(skip).toBe(false);
+    // One full interval after the sibling's post — the group still publishes 1/hour.
+    expect(slot.getTime()).toBe(siblingSlot + 60 * MIN);
+  });
+
+  it('does not stack a second post when this campaign is already booked', async () => {
+    // The anti-pile-up invariant: at most ONE booked post per campaign per group, which is
+    // what keeps the queue depth bounded now that a sibling's booking no longer blocks.
+    const now = Date.now();
+    const svc = serviceWith([
+      { campaign_id: MINE, pending: iso(now + 20 * MIN), sent: null },
+    ]);
+
+    const { skip } = await svc.nextGroupSlot('u1', GROUP, new Date(now), MINE);
+    expect(skip).toBe(true);
+  });
+
+  it('skips when this campaign itself published within the interval', async () => {
+    // Its own cadence is already satisfied — this is the halving guard, and it must not be
+    // loosened by the sibling fix above.
+    const now = Date.now();
+    const svc = serviceWith([
+      { campaign_id: MINE, pending: null, sent: iso(now - 10 * MIN) },
+    ]);
+
+    const { skip } = await svc.nextGroupSlot('u1', GROUP, new Date(now), MINE);
+    expect(skip).toBe(true);
+  });
 });

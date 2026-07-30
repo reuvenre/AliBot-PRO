@@ -1282,28 +1282,61 @@ export class PostsService {
     let pendingSoon = false;
     let lastSentMs = 0;
     const lastSentByCampaign = new Map<string, number>();
+    // Split out what belongs to THIS campaign, and what belongs to a manual post: those two
+    // must block it outright, while a sibling CAMPAIGN's booking is merely something to
+    // queue behind (see groupBusy below).
+    let myPendingMs = 0;
+    let mySentMs = 0;
+    let manualPendingSoon = false;
     for (const r of rows) {
+      const cid = String(r.campaign_id ?? '');
       const pend = r.pending ? new Date(r.pending).getTime() : 0;
       const sent = r.sent ? new Date(r.sent).getTime() : 0;
       // An overdue pending post (pend < now) still occupies the group — it's the far-future
       // one we ignore. Re-spaced backlog lands at now + 1·interval, so the nearest queued
       // post stays inside the horizon and the anti-pile-up back-pressure is preserved.
-      if (pend && pend <= horizonMs) { pendingSoon = true; latestMs = Math.max(latestMs, pend); }
-      if (sent) { lastSentMs = Math.max(lastSentMs, sent); latestMs = Math.max(latestMs, sent); }
-      lastSentByCampaign.set(String(r.campaign_id ?? ''), Math.max(pend, sent));
+      if (pend && pend <= horizonMs) {
+        pendingSoon = true;
+        latestMs = Math.max(latestMs, pend);
+        if (!cid) manualPendingSoon = true;
+        if (campaignId && cid === campaignId) myPendingMs = Math.max(myPendingMs, pend);
+      }
+      if (sent) {
+        lastSentMs = Math.max(lastSentMs, sent);
+        latestMs = Math.max(latestMs, sent);
+        if (campaignId && cid === campaignId) mySentMs = Math.max(mySentMs, sent);
+      }
+      lastSentByCampaign.set(cid, Math.max(pend, sent));
     }
 
     if (!latestMs) return { slot: notBefore, skip: false };
     const slotMs = Math.max(latestMs + intervalMin * 60_000, notBefore.getTime());
 
-    // Group is BUSY when work is already booked inside the horizon, or it published within
-    // the interval MINUS a small grace. The grace is essential: a campaign whose cron matches
-    // the group interval (hourly campaign + 60-min group) sends a few seconds SHY of a full
-    // interval before its next run, so a strict "< interval" check marked the group busy and
-    // skipped every OTHER run → the group posted every 2 hours instead of every hour. The
-    // grace (15% of the interval) absorbs that cron/send jitter.
+    // The grace is essential: a campaign whose cron matches the group interval (hourly
+    // campaign + 60-min group) sends a few seconds SHY of a full interval before its next
+    // run, so a strict "< interval" check marked the group busy and skipped every OTHER run
+    // → the group posted every 2 hours instead of every hour. The grace (15% of the
+    // interval) absorbs that cron/send jitter.
     const graceMs = intervalMin * 0.15 * 60_000;
-    const groupBusy = pendingSoon || (lastSentMs > 0 && now - lastSentMs < intervalMin * 60_000 - graceMs);
+    const withinInterval = (ms: number) => ms > 0 && now - ms < intervalMin * 60_000 - graceMs;
+
+    // Is the group too busy for THIS caller?
+    //
+    // `slotMs` above is already the group's next FREE slot (latest + interval) and the caller
+    // stores it as scheduled_at — so the group's one-post-per-interval rate is enforced by
+    // the SLOT, not by refusing to run. What this gate must prevent is narrower: a campaign
+    // stacking a second post of its own on the group, and a manual one-off losing the slot it
+    // occupies (a one-off has no cadence to take turns with).
+    //
+    // Treating ANY booking as busy is what starved a shared group: the 3-hourly
+    // "FLYLINK — מאמא מותגים" campaign fires the same minute as the hourly campaign sharing
+    // its group, the hourly one books first, and FLYLINK was skipped on EVERY run — silent
+    // for 13 hours while its sibling published hourly. A sibling's booking now just moves
+    // this campaign to the following slot; fair-share below still decides who goes first,
+    // and one-booking-per-campaign keeps the queue depth bounded by the campaign count.
+    const groupBusy = campaignId
+      ? myPendingMs > 0 || withinInterval(mySentMs) || manualPendingSoon
+      : pendingSoon || withinInterval(lastSentMs);
 
     // FAIR-SHARE: when several campaigns publish to one group, the group's single rate is
     // split between them — the MOST-BEHIND campaign (oldest last-post, or never posted) wins
@@ -1340,8 +1373,9 @@ export class PostsService {
     if (skip) {
       // Name the gate that closed. A silent skip is indistinguishable from "nothing to post",
       // which is what made a cadence regression here take hours to localise.
-      const why = pendingSoon ? 'post already booked within the interval'
-        : groupBusy ? `published ${Math.round((now - lastSentMs) / 60_000)}m ago (interval ${intervalMin}m)`
+      const why = myPendingMs > 0 ? 'this campaign already has a post booked on the group'
+        : manualPendingSoon ? 'a manual post occupies this interval'
+        : groupBusy ? `published ${Math.round((now - (campaignId ? mySentMs : lastSentMs)) / 60_000)}m ago (interval ${intervalMin}m)`
         : notMyTurn ? 'another campaign on this group is further behind'
         : `slot ${slotHour}:00 is outside the ${startHour}:00-${endHour}:00 window`;
       this.logger.log(`nextGroupSlot skip · group ${groupId}${campaignId ? ` · campaign ${campaignId}` : ''} · ${why}`);
