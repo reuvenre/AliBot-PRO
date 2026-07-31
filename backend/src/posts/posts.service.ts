@@ -2126,6 +2126,28 @@ export class PostsService {
     return post;
   }
 
+  /**
+   * The post's trackable /r/<code> URL, falling back to the raw affiliate link.
+   *
+   * Every place a shopper can click through to the product must use this. A link that
+   * skips it is not just an uncounted click — it makes the whole post look dead to the
+   * optimizer, which retires keywords that "drew no clicks" and boosts ones that did.
+   *
+   * Tracking must never block publishing: any failure returns the raw affiliate link.
+   */
+  private async trackedLink(post: Post): Promise<string> {
+    try {
+      const code = await this.links.ensureCode(post);
+      if (code) {
+        // Persist a durable code→URL mapping so this link keeps resolving to the product
+        // even if the post is later deleted (the link lives forever in the published ad).
+        void this.links.recordTarget(code, post.affiliate_url, post.user_id);
+        return this.links.shortUrl(code);
+      }
+    } catch { /* fall back to the raw affiliate link */ }
+    return post.affiliate_url;
+  }
+
   /** Composes the final message body: affiliate link + per-channel footer + HTML
    *  normalisation. Shared by the publisher and the failed-channel retry. */
   private async buildPostBody(post: Post, creds: DecryptedCredentials, channelOverride?: string): Promise<string> {
@@ -2135,16 +2157,7 @@ export class PostsService {
     // dedicated `link` field with the DIRECT affiliate URL (redirects in that field risk
     // pin rejection), and Instagram strips body links entirely. Tracking must never
     // block publishing: on any failure we fall back to the raw link.
-    let link = post.affiliate_url;
-    try {
-      const code = await this.links.ensureCode(post);
-      if (code) {
-        link = this.links.shortUrl(code);
-        // Persist a durable code→URL mapping so this link keeps resolving to the product
-        // even if the post is later deleted (the link lives forever in the published ad).
-        void this.links.recordTarget(code, post.affiliate_url, post.user_id);
-      }
-    } catch { /* fall back to the raw affiliate link */ }
+    const link = await this.trackedLink(post);
 
     // Legacy copy (and verbatim REPOSTS of it) embeds the raw affiliate URL inside the
     // text. In-place substitution left a bare URL in the body — which escapes the pretty
@@ -3051,9 +3064,15 @@ export class PostsService {
 
     // Facebook does not render Telegram-style HTML tags — strip them for the FB body.
     const plain = message.replace(/<\/?[^>]+>/g, '');
+    // The preview CARD, not the URL in the text, is what a Facebook reader actually taps —
+    // so `link` has to be the tracked one too. It used to carry the raw affiliate URL,
+    // which meant essentially every Facebook click was invisible: the optimizer saw those
+    // posts draw nothing and judged their keywords dead on a channel it could not see.
+    // Facebook's scraper follows the 302 and still builds the card from the product page,
+    // and its own fetch is filtered out of the click count as a crawler.
     const params = new URLSearchParams({
       message: plain,
-      link: post.affiliate_url || '',
+      link: (await this.trackedLink(post)) || '',
       access_token: token,
     });
 
@@ -3357,7 +3376,9 @@ export class PostsService {
       image: images[0] || post.product_image || '',
       images,                      // full gallery (plain URLs) for multi-image posts
       photos,                      // same gallery pre-shaped for Facebook's photos array
-      link: post.affiliate_url || '',
+      // Tracked, for the same reason the Graph path is: this link becomes the album's
+      // call-to-action, and an untracked one hides the whole channel from the optimizer.
+      link: (await this.trackedLink(post)) || '',
       price_ils: post.price_ils || 0,
       facebook_page_id: pageId,
       post_id: post.id,

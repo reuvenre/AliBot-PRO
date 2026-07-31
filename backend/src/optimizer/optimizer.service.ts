@@ -26,10 +26,24 @@ interface CampaignActions {
   learned: FittedCategory[];
   /** Account winners this group was NOT given, because they do not suit its audience. */
   rejected: string[];
+  /** The campaign drew too few clicks in the window to call any keyword dead. */
+  tooQuietToJudge: boolean;
 }
 
 /** Scoring window — long enough for commissions to land, short enough to track trends. */
 const WINDOW_DAYS = 14;
+/** Fallback window for a campaign too quiet to judge over the normal one. Sparse data is
+ *  not the same as bad data: look further back before concluding anything. */
+const SPARSE_WINDOW_DAYS = 30;
+/**
+ * Clicks a campaign must have drawn IN TOTAL before any of its keywords can be called dead.
+ *
+ * Retirement asks "did this keyword fail?", but on a low-traffic campaign the honest answer
+ * is usually "nobody clicked anything this week" — a fact about the account, not about the
+ * keyword. Without this floor the rule fires on silence: every keyword looks dead, three
+ * are retired a day, and the rotation grinds down to the minimum for no reason at all.
+ */
+const MIN_CAMPAIGN_CLICKS_TO_JUDGE = 10;
 /** A keyword must have had this many posted products before it can be judged dead. */
 const MIN_POSTS_TO_JUDGE = 5;
 /** Never optimize a campaign below this many distinct active keywords. */
@@ -149,14 +163,22 @@ export class OptimizerService {
     const claimed = new Set<string>();
 
     for (const c of active) {
-      const scores = await this.scoreKeywords(userId, c.id);
+      let scores = await this.scoreKeywords(userId, c.id, WINDOW_DAYS);
+      let window = WINDOW_DAYS;
+      // Too quiet to judge over the normal window? Look further back before deciding
+      // anything — a keyword that drew nothing in a slow fortnight may have earned in the
+      // month behind it, and the wider window is what tells those two apart.
+      if (this.totalClicks(scores) < MIN_CAMPAIGN_CLICKS_TO_JUDGE) {
+        scores = await this.scoreKeywords(userId, c.id, SPARSE_WINDOW_DAYS);
+        window = SPARSE_WINDOW_DAYS;
+      }
       allScores[c.name] = scores;
       const actions = await this.applyActions(
-        userId, c, scores, soldCategories, channelsById, claimed,
+        userId, c, scores, soldCategories, channelsById, claimed, window,
       );
       for (const l of actions.learned) claimed.add(l.keyword.toLowerCase());
       if (actions.retired.length || actions.boosted || actions.unboosted.length
-        || actions.learned.length || actions.rejected.length) {
+        || actions.learned.length || actions.rejected.length || actions.tooQuietToJudge) {
         allActions.push(actions);
       }
     }
@@ -179,7 +201,9 @@ export class OptimizerService {
    * out. Attribution is heuristic (same product, order after post) — the same signal the
    * attribution report uses; good enough to rank keywords, not an accounting statement.
    */
-  private async scoreKeywords(userId: string, campaignId: string): Promise<KeywordScore[]> {
+  private async scoreKeywords(
+    userId: string, campaignId: string, windowDays: number,
+  ): Promise<KeywordScore[]> {
     const rows: any[] = await this.campaigns.query(
       `SELECT pp.keyword,
               count(DISTINCT pp.product_id)::int                    AS posts,
@@ -202,7 +226,7 @@ export class OptimizerService {
          AND pp.keyword IS NOT NULL
          AND pp.created_at > now() - ($3 || ' days')::interval
        GROUP BY pp.keyword`,
-      [userId, campaignId, String(WINDOW_DAYS)],
+      [userId, campaignId, String(windowDays)],
     ).catch(() => []);
     return rows.map((r) => ({
       keyword: String(r.keyword),
@@ -210,6 +234,12 @@ export class OptimizerService {
       clicks: Number(r.clicks) || 0,
       revenue_ils: +(Number(r.revenue_ils) || 0).toFixed(2),
     }));
+  }
+
+  /** Everything this campaign's keywords drew in the window — the measure of whether the
+   *  campaign produced enough signal to judge any single keyword by. */
+  private totalClicks(scores: KeywordScore[]): number {
+    return scores.reduce((n, s) => n + s.clicks, 0);
   }
 
   /**
@@ -269,9 +299,11 @@ export class OptimizerService {
   private async applyActions(
     userId: string, c: Campaign, scores: KeywordScore[], soldCategories: CategoryScore[] = [],
     channelsById: Map<string, Channel> = new Map(), claimed: Set<string> = new Set(),
+    windowDays: number = WINDOW_DAYS,
   ): Promise<CampaignActions> {
     const out: CampaignActions = {
       campaign: c.name, retired: [], boosted: null, unboosted: [], learned: [], rejected: [],
+      tooQuietToJudge: false,
     };
     const byKw = new Map(scores.map((s) => [s.keyword, s]));
     let kws = [...(c.keywords || [])];
@@ -289,15 +321,26 @@ export class OptimizerService {
 
     // 2) Retire dead keywords: a fair chance (≥MIN_POSTS_TO_JUDGE products posted) and not
     //    a single click. Into retired_keywords (visible, restorable), never below the floor.
-    const dead = scores
-      .filter((s) => s.posts >= MIN_POSTS_TO_JUDGE && s.clicks === 0 && s.revenue_ils <= 0)
-      .map((s) => s.keyword)
-      .filter((kw) => kws.includes(kw));
-    for (const kw of dead.slice(0, MAX_RETIRE_PER_DAY)) {
-      if (distinct().length <= MIN_ACTIVE_KEYWORDS) break;
-      kws = kws.filter((k) => k !== kw);
-      c.retired_keywords = Array.from(new Set([...(c.retired_keywords || []), kw]));
-      out.retired.push(kw);
+    //
+    //    But only when the campaign drew enough clicks IN TOTAL to tell a dead keyword from
+    //    a quiet window. Below that floor every keyword scores zero and the rule would fire
+    //    on all of them — retiring the good ones right along with the bad, and calling the
+    //    account's silence a verdict on the rotation. Nothing is retired instead.
+    out.tooQuietToJudge = this.totalClicks(scores) < MIN_CAMPAIGN_CLICKS_TO_JUDGE;
+    if (out.tooQuietToJudge) {
+      this.logger.log(`optimizer [${c.name}]: ${this.totalClicks(scores)} clicks over `
+        + `${windowDays}d — below the floor to judge a keyword dead, retiring nothing`);
+    } else {
+      const dead = scores
+        .filter((s) => s.posts >= MIN_POSTS_TO_JUDGE && s.clicks === 0 && s.revenue_ils <= 0)
+        .map((s) => s.keyword)
+        .filter((kw) => kws.includes(kw));
+      for (const kw of dead.slice(0, MAX_RETIRE_PER_DAY)) {
+        if (distinct().length <= MIN_ACTIVE_KEYWORDS) break;
+        kws = kws.filter((k) => k !== kw);
+        c.retired_keywords = Array.from(new Set([...(c.retired_keywords || []), kw]));
+        out.retired.push(kw);
+      }
     }
 
     // 3) Boost the top earner: double its slot in the round-robin (cap 2×) so it posts
@@ -474,6 +517,10 @@ export class OptimizerService {
         // rather than never having looked.
         if (a.rejected.length) {
           lines.push(`  • [${a.campaign}] לא הוספתי: ${a.rejected.join(', ')} — לא מתאימות לקהל של הקבוצה`);
+        }
+        // Saying "I chose not to decide" beats quietly retiring good keywords on silence.
+        if (a.tooQuietToJudge) {
+          lines.push(`  • [${a.campaign}] לא הדחתי אף מילה — פחות מ-${MIN_CAMPAIGN_CLICKS_TO_JUDGE} קליקים ב-${SPARSE_WINDOW_DAYS} ימים, אין מספיק דאטה כדי לקבוע שמילה מתה`);
         }
       }
     } else {

@@ -5,6 +5,7 @@ import { randomBytes } from 'crypto';
 import { Post } from '../posts/post.entity';
 import { LinkClick } from './link-click.entity';
 import { LinkTarget } from './link-target.entity';
+import { isBotAgent } from './bot-agents';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // no 0/O/1/l/I
 const CODE_LENGTH = 8;
@@ -80,6 +81,12 @@ export class LinksService {
       const target = await this.targets.findOne({ where: { code: clean } }).catch(() => null);
       return target?.url || null;
     }
+
+    // Preview crawlers are redirected like anyone else, but never counted. Facebook,
+    // Telegram and WhatsApp all fetch a posted URL to build its card seconds after
+    // publishing — counting those would hand every post a click it never earned, and the
+    // optimizer would then retire and boost keywords based on our own preview traffic.
+    if (isBotAgent(userAgent)) return post.affiliate_url;
 
     void (async () => {
       try {
