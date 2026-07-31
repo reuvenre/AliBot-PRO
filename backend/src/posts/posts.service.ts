@@ -12,6 +12,7 @@ import { copyDefect } from './copy-guard';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError } from './telegram-retry';
+import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsService, DecryptedCredentials, GRAPH_VERSION } from '../credentials/credentials.service';
@@ -1753,6 +1754,11 @@ export class PostsService {
         : null);
     const times = this.campaignScheduleTimes(toPost.length, creds, window || undefined);
 
+    // How each copy angle has performed for THIS campaign — the bandit's evidence. Read
+    // once per run; a handful of posts will not move it, and a failure here only means the
+    // run keeps exploring evenly, which is the correct default anyway.
+    const variantStats = await this.variantStats(campaign.id);
+
     let skipped = 0;
     for (let i = 0; i < toPost.length; i++) {
       const { product, kw: slotKeyword } = toPost[i];
@@ -1778,10 +1784,16 @@ export class PostsService {
         // is exactly what made these posts fail. Do NOT prefer it.
         const affiliateUrl = await this.getAffiliateLink(product.product_id, creds);
         const parts = this.priceParts(product, rate);
+        // The copy angle this post is written in. Picked per post, not per run, so the
+        // explore share is spread across the campaign instead of landing in one burst.
+        const variant = pickVariant(variantStats, Math.random());
         const text = await this.generateText(
           product, campaign.language, rate, creds, template || undefined, parts.localOverride,
           undefined, undefined, false,
-          { currencyPair, style: pinterestOnly ? 'pinterest' : undefined, seasonHint },
+          {
+            currencyPair, style: pinterestOnly ? 'pinterest' : undefined, seasonHint,
+            copyHint: variantHint(variant, campaign.language),
+          },
         );
 
         // SCHEDULE at the campaign's cadence (not the shared queue) so an "every 3h"
@@ -1798,6 +1810,9 @@ export class PostsService {
           price_ils: parts.priceIls,
           generated_text: text,
           keyword: slotKeyword,
+          // Recorded even when a template suppressed the hint — writing down an angle the
+          // copy was not actually written in would poison the very stats that pick it.
+          copy_variant: template ? null : variant.id,
           status: 'scheduled',
           scheduled_at: scheduledAt,
         });
@@ -2124,6 +2139,30 @@ export class PostsService {
     await this.repo.save(post);
     await this.sendToTelegram(post, creds, post.channel_override || undefined);
     return post;
+  }
+
+  /**
+   * Clicks per copy angle for one campaign — what the bandit picks the next angle from.
+   *
+   * Only SENT posts count: a post that never published cannot have drawn a click, and
+   * counting it would punish its angle for a delivery failure. Best-effort — an empty
+   * result simply means the run explores the angles evenly.
+   */
+  private async variantStats(campaignId: string): Promise<VariantStat[]> {
+    const rows: any[] = await this.repo.query(
+      `SELECT copy_variant                          AS variant,
+              count(*)::int                         AS posts,
+              coalesce(sum(clicks_count), 0)::int   AS clicks
+       FROM posts
+       WHERE campaign_id = $1 AND status = 'sent' AND copy_variant IS NOT NULL
+       GROUP BY copy_variant`,
+      [campaignId],
+    ).catch(() => []);
+    return rows.map((r) => ({
+      variant: String(r.variant),
+      posts: Number(r.posts) || 0,
+      clicks: Number(r.clicks) || 0,
+    }));
   }
 
   /**
@@ -3551,7 +3590,7 @@ export class PostsService {
 
   // ── OpenAI text generation ────────────────────────────────────────────────
 
-  private async generateText(product: any, language: string, rate: number, creds: DecryptedCredentials, template?: string, priceLocalOverride?: number, images?: GenerateImage[], hint?: string, forceVision = false, opts?: { currencyPair?: string; style?: 'pinterest'; seasonHint?: string | null; promo?: { discount?: number | null; endsLabel?: string | null } }): Promise<string> {
+  private async generateText(product: any, language: string, rate: number, creds: DecryptedCredentials, template?: string, priceLocalOverride?: number, images?: GenerateImage[], hint?: string, forceVision = false, opts?: { currencyPair?: string; style?: 'pinterest'; seasonHint?: string | null; copyHint?: string | null; promo?: { discount?: number | null; endsLabel?: string | null } }): Promise<string> {
     // Use direct local price if already converted, otherwise multiply by rate
     const priceLocal = priceLocalOverride !== undefined
       ? priceLocalOverride.toFixed(0)
@@ -3606,6 +3645,13 @@ export class PostsService {
     // Seasonal context (commercial calendar): a single line that lets the copy ride the
     // season when relevant. Applied for template posts too — it's context, not structure,
     // so it doesn't fight the template's fixed lines.
+    // The copy ANGLE for this post — a nudge on how to open, chosen by the bandit from what
+    // this group actually clicks. Never applied under a custom template: that template is
+    // the owner's own wording, and an angle instruction would fight its fixed structure.
+    if (opts?.copyHint && !hasTemplate) {
+      systemPrompt += `\n\n${opts.copyHint}`;
+    }
+
     if (opts?.seasonHint) {
       systemPrompt += `\n\n${opts.seasonHint}`;
     }

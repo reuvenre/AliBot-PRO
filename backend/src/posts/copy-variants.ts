@@ -1,0 +1,162 @@
+/**
+ * Learning HOW to write, not just what to post.
+ *
+ * The optimizer learns which products and categories to publish. It never had an opinion
+ * about the copy — every post was written in one voice forever, so the one thing the
+ * audience actually reads was the one thing that never improved.
+ *
+ * This is a bandit over a handful of copy angles. Each campaign post is written in one of
+ * them, the angle is recorded on the post, and clicks per post per angle say which one that
+ * group responds to. Mostly the engine writes in the angle that wins for that group; some of
+ * the time it deliberately tries another, because an angle that is never used can never be
+ * discovered to be better.
+ *
+ * Two rules keep it honest, both learned from the keyword loop:
+ *   • Nothing is declared a winner on a handful of clicks. Below the evidence floor the
+ *     engine keeps exploring rather than locking onto noise.
+ *   • The angle is a nudge to the copywriter, never a replacement for it — and it is
+ *     skipped entirely for a group with its own template, whose wording is the owner's.
+ */
+
+/** One copy angle: an id stored on the post, and the nudge handed to the copywriter. */
+export interface CopyVariant {
+  id: string;
+  /** Short Hebrew label for the digest. */
+  label: string;
+  /** The instruction appended to the system prompt, per language. */
+  hint: Record<string, string>;
+}
+
+/**
+ * The angles. Deliberately few and clearly distinct — a bandit over twenty near-identical
+ * options would need traffic this account does not have to tell any of them apart.
+ */
+export const COPY_VARIANTS: CopyVariant[] = [
+  {
+    id: 'benefit',
+    label: 'תועלת',
+    hint: {
+      he: 'זווית כתיבה: פתח/י במה שהמוצר עושה עבור הקורא בחיי היום-יום — התועלת הקונקרטית, לא המפרט.',
+      en: 'Copy angle: open with what the product does for the reader day to day — the concrete benefit, not the spec sheet.',
+      ar: 'زاوية الكتابة: ابدأ بما يقدمه المنتج للقارئ في حياته اليومية — الفائدة الملموسة وليس المواصفات.',
+    },
+  },
+  {
+    id: 'problem',
+    label: 'כאב',
+    hint: {
+      he: 'זווית כתיבה: פתח/י בתיאור קצר של המצב המעצבן שהמוצר פותר, ורק אחר כך הצג/י אותו כפתרון.',
+      en: 'Copy angle: open with the small everyday annoyance this product solves, then present it as the fix.',
+      ar: 'زاوية الكتابة: ابدأ بوصف قصير للمشكلة اليومية التي يحلها المنتج، ثم قدّمه كحل.',
+    },
+  },
+  {
+    id: 'curiosity',
+    label: 'סקרנות',
+    hint: {
+      he: 'זווית כתיבה: פתח/י בשורה שמעוררת סקרנות או בשאלה קצרה שגורמת לקורא לרצות לראות את המוצר. בלי קליקבייט ובלי הבטחות שאינן נכונות.',
+      en: 'Copy angle: open with a curiosity hook or a short question that makes the reader want to look. No clickbait, no promises that are not true.',
+      ar: 'زاوية الكتابة: ابدأ بجملة تثير الفضول أو بسؤال قصير يدفع القارئ للاطلاع. بلا مبالغة وبلا وعود غير صحيحة.',
+    },
+  },
+  {
+    id: 'value',
+    label: 'מחיר',
+    hint: {
+      he: 'זווית כתיבה: הדגש/י מוקדם את העסקה עצמה — כמה זה עולה מול מה שמקבלים. ענייני, בלי לחץ מלאכותי.',
+      en: 'Copy angle: lead with the deal itself — what it costs against what you get. Matter-of-fact, no artificial pressure.',
+      ar: 'زاوية الكتابة: ابدأ بالصفقة نفسها — الثمن مقابل ما تحصل عليه. بشكل واقعي وبلا ضغط مصطنع.',
+    },
+  },
+];
+
+/** Clicks and posts recorded for one angle, in one campaign. */
+export interface VariantStat {
+  variant: string;
+  posts: number;
+  clicks: number;
+}
+
+/** An angle ranked by how well it actually performed for this group. */
+export interface VariantScore extends VariantStat {
+  /** Clicks per post — the comparable number, since angles get unequal airtime. */
+  clicksPerPost: number;
+}
+
+/** Posts an angle needs before its rate means anything at all. */
+export const MIN_POSTS_PER_VARIANT = 8;
+/** Clicks a campaign needs across all angles before any of them can be called the winner.
+ *  Same principle as the keyword loop: silence is not a verdict. */
+export const MIN_CLICKS_TO_PICK_WINNER = 15;
+/** How often to write in an angle other than the leader, once there IS a leader. Without
+ *  this the first lucky angle wins forever and the rest are never measured again. */
+export const EXPLORE_RATE = 0.25;
+
+/** Rank the angles for one campaign by clicks per post, best first. */
+export function scoreVariants(stats: VariantStat[]): VariantScore[] {
+  return (stats || [])
+    .filter((s) => s && s.posts > 0)
+    .map((s) => ({
+      variant: s.variant,
+      posts: s.posts,
+      clicks: s.clicks,
+      clicksPerPost: +(s.clicks / s.posts).toFixed(3),
+    }))
+    .sort((a, b) => (b.clicksPerPost - a.clicksPerPost) || (b.posts - a.posts));
+}
+
+/**
+ * The angle that has earned the right to be called this group's best — or null when the
+ * evidence does not support naming one yet.
+ *
+ * Requires three things together: enough clicks across the campaign to be measuring
+ * something, enough posts behind the leader for its rate to be real, and at least one click.
+ * Any of them missing means there is no winner, only a front-runner, and the caller keeps
+ * exploring.
+ */
+export function bestVariant(stats: VariantStat[]): VariantScore | null {
+  const scored = scoreVariants(stats);
+  if (!scored.length) return null;
+  const totalClicks = scored.reduce((n, s) => n + s.clicks, 0);
+  if (totalClicks < MIN_CLICKS_TO_PICK_WINNER) return null;
+  const top = scored[0];
+  if (top.posts < MIN_POSTS_PER_VARIANT || top.clicks === 0) return null;
+  return top;
+}
+
+/**
+ * Choose the angle for the next post.
+ *
+ * An angle that has not had its fair chance yet is always taken first — the bandit cannot
+ * compare options it has never tried. After that it writes in the winner, except for an
+ * explore share that keeps the others measured and lets a better angle overtake a stale one.
+ *
+ * `roll` is the caller's random draw, passed in so this stays a pure function.
+ */
+export function pickVariant(stats: VariantStat[], roll: number): CopyVariant {
+  const byId = new Map((stats || []).map((s) => [s.variant, s]));
+  const pool = COPY_VARIANTS;
+
+  // Anything under-sampled goes first, so every angle gets a real trial before any
+  // comparison between them is allowed to mean something.
+  const untried = pool.filter((v) => (byId.get(v.id)?.posts || 0) < MIN_POSTS_PER_VARIANT);
+  if (untried.length) return untried[Math.floor(roll * untried.length) % untried.length];
+
+  const winner = bestVariant(stats);
+  if (!winner || roll < EXPLORE_RATE) {
+    return pool[Math.floor(roll * pool.length) % pool.length];
+  }
+  return pool.find((v) => v.id === winner.variant) || pool[0];
+}
+
+/** The copywriter nudge for an angle, in the post's language (English is the fallback). */
+export function variantHint(variant: CopyVariant, language: string): string {
+  const lang = (language || 'he').toLowerCase().slice(0, 2);
+  return variant.hint[lang] || variant.hint.en;
+}
+
+/** An angle by id — for turning a stored post value back into something displayable. */
+export function variantById(id: string | null | undefined): CopyVariant | null {
+  if (!id) return null;
+  return COPY_VARIANTS.find((v) => v.id === id) || null;
+}

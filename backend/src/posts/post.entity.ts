@@ -83,6 +83,12 @@ export class Post {
   @Column({ nullable: true, type: 'varchar' })
   keyword: string | null;
 
+  /** Which copy ANGLE this post was written in (see copy-variants.ts). Clicks per post per
+   *  angle are how the engine learns which voice a group responds to. null for posts written
+   *  before the bandit existed, and for groups whose own template owns the wording. */
+  @Column({ nullable: true, type: 'varchar' })
+  copy_variant: string | null;
+
   /** Set when this post is an automatic WINNER RECYCLE of another post (proven clicks/
    *  revenue → republished with fresh AI copy). Points at the original. */
   @Column({ type: 'uuid', nullable: true })

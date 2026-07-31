@@ -17,6 +17,10 @@ import {
   CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
   buildFitPrompt, lexicalFit, parseFitVerdicts, rankFitted,
 } from './campaign-fit';
+import {
+  MIN_CLICKS_TO_PICK_WINNER, MIN_POSTS_PER_VARIANT, VariantScore, VariantStat,
+  bestVariant, scoreVariants, variantById,
+} from '../posts/copy-variants';
 
 interface KeywordScore { keyword: string; posts: number; clicks: number; revenue_ils: number }
 interface CampaignActions {
@@ -184,7 +188,8 @@ export class OptimizerService {
     }
 
     const stats = await this.digestStats(userId);
-    const digest = this.buildDigest(stats, allActions, soldCategories, active);
+    const copyAngles = await this.copyAngleReport(userId);
+    const digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles);
 
     await this.runs.save(this.runs.create({
       user_id: userId,
@@ -487,11 +492,38 @@ export class OptimizerService {
     };
   }
 
+  /**
+   * How the copy ANGLES are performing account-wide — the "how we write" half of the loop.
+   *
+   * Reported whether or not a winner has emerged: seeing four angles at similar rates is
+   * itself the finding, and it is what stops the owner reading an early front-runner as a
+   * conclusion the numbers do not yet support.
+   */
+  private async copyAngleReport(userId: string): Promise<{ scored: VariantScore[]; winner: VariantScore | null }> {
+    const rows: any[] = await this.campaigns.query(
+      `SELECT copy_variant                          AS variant,
+              count(*)::int                         AS posts,
+              coalesce(sum(clicks_count), 0)::int   AS clicks
+       FROM posts
+       WHERE user_id = $1 AND status = 'sent' AND copy_variant IS NOT NULL
+         AND sent_at > now() - ($2 || ' days')::interval
+       GROUP BY copy_variant`,
+      [userId, String(ORDER_LEARNING_WINDOW_DAYS)],
+    ).catch(() => []);
+    const stats: VariantStat[] = rows.map((r) => ({
+      variant: String(r.variant),
+      posts: Number(r.posts) || 0,
+      clicks: Number(r.clicks) || 0,
+    }));
+    return { scored: scoreVariants(stats), winner: bestVariant(stats) };
+  }
+
   private buildDigest(
     stats: Awaited<ReturnType<OptimizerService['digestStats']>>,
     actions: CampaignActions[],
     soldCategories: CategoryScore[] = [],
     campaigns: Campaign[] = [],
+    copyAngles: { scored: VariantScore[]; winner: VariantScore | null } = { scored: [], winner: null },
   ): string {
     const lines: string[] = [];
     lines.push('🧠 דו"ח הבוקר של המנוע הלומד');
@@ -537,6 +569,23 @@ export class OptimizerService {
         lines.push(`  • ${c.keyword} — ₪${c.commissionIls} · ${c.orders} הזמנות`);
       }
       lines.push('  ↳ כל קטגוריה נבחנת מול הקהל של כל קבוצה בנפרד — לא כל קבוצה מקבלת את אותן מילים.');
+    }
+
+    // The "how we write" half of the loop.
+    if (copyAngles.scored.length) {
+      lines.push('');
+      lines.push('✍️ סגנונות הכתיבה (קליקים לפוסט):');
+      for (const s of copyAngles.scored) {
+        const label = variantById(s.variant)?.label || s.variant;
+        lines.push(`  • ${label} — ${s.clicksPerPost} (${s.clicks} קליקים ב-${s.posts} פוסטים)`);
+      }
+      if (copyAngles.winner) {
+        const label = variantById(copyAngles.winner.variant)?.label || copyAngles.winner.variant;
+        lines.push(`  ↳ רוב הפוסטים נכתבים עכשיו בסגנון "${label}", וחלק קטן ממשיך לבדוק את השאר.`);
+      } else {
+        // Explicitly NOT a winner yet — so an early front-runner is not read as a verdict.
+        lines.push(`  ↳ עוד אין מנצח מובהק — צריך ${MIN_CLICKS_TO_PICK_WINNER}+ קליקים ו-${MIN_POSTS_PER_VARIANT}+ פוסטים לסגנון. עד אז הכתיבה מתחלקת שווה בשווה.`);
+      }
       const optedOut = campaigns.filter((c) => !c.learn_from_orders).map((c) => c.name);
       if (optedOut.length) {
         lines.push(`  ↳ לא מתווספות אוטומטית ל: ${optedOut.join(', ')} — הפעל "לימוד מהזמנות" בקמפיין כדי שכן.`);
