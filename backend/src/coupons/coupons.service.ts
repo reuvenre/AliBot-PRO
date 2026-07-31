@@ -279,8 +279,16 @@ export class CouponsService {
    */
   couponLine(coupon: Coupon, qualifies: boolean, money?: { rate: number; symbol: string }): string {
     const { discount, minSpend, symbol } = this.couponAmounts(coupon, money);
-    const base = `🎟️ קוד קופון: ${coupon.code} — ${symbol}${discount} הנחה בקנייה מעל ${symbol}${minSpend}`;
-    return qualifies ? base : `${base}\n💡 הוסף עוד פריט לסל כדי לנצל את ההנחה`;
+    // Two lines, in the order a shopper actually needs them: first WHAT they get and from
+    // what basket, then the code to type. Packed onto one line — "קוד קופון: ILAFF3 — ₪25
+    // הנחה בקנייה מעל ₪204" — the code sat in the middle of the sentence and the eye had
+    // nothing to separate the offer from the thing to copy.
+    const lines = [
+      `🎟️ הנחה של ${symbol}${discount} בקנייה מעל ${symbol}${minSpend}`,
+      `🔑 קוד לקופה: ${coupon.code}`,
+    ];
+    if (!qualifies) lines.push('💡 הוסף עוד פריט לסל כדי לנצל את ההנחה');
+    return lines.join('\n');
   }
 
   /**

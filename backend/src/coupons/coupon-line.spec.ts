@@ -47,6 +47,24 @@ describe('couponLine', () => {
     expect(svc.couponLine(coupon(), true, ils)).toContain('ILAFF3');
   });
 
+  it('separates the offer from the code, offer first', () => {
+    // Packed onto one line the code sat mid-sentence and the eye had nothing to separate
+    // what you get from the thing you have to copy.
+    const [offer, code] = svc.couponLine(coupon(), true, ils).split('\n');
+    expect(offer).toContain('₪25');
+    expect(offer).toContain('₪204');
+    expect(offer).not.toContain('ILAFF3');
+    expect(code).toContain('ILAFF3');
+    // The code line carries nothing but the code — nothing to misread as part of it.
+    expect(code).not.toContain('₪');
+  });
+
+  it('puts the add-an-item nudge last, after the code', () => {
+    const lines = svc.couponLine(coupon(), false, ils).split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain('הוסף עוד פריט');
+  });
+
   it('keeps the add-an-item nudge when the order is below the tier', () => {
     const line = svc.couponLine(coupon(), false, ils);
     expect(line).toContain('הוסף עוד פריט');
