@@ -11,6 +11,7 @@ import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
+import { isTelegramConnectionError } from './telegram-retry';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { CredentialsService, DecryptedCredentials, GRAPH_VERSION } from '../credentials/credentials.service';
@@ -2832,11 +2833,11 @@ export class PostsService {
     }
     const url = `https://api.telegram.org/bot${token}/sendPhoto`;
     try {
-      const res = await axios.post(
+      const res = await this.tgRetryOnce('photo', () => axios.post(
         url,
         { chat_id: channel, photo: image, caption: mediaCaption, parse_mode: 'HTML' },
         { timeout: 15000 },
-      );
+      ));
       this.assertTelegramDelivered(res, 'photo');
       post.telegram_message_id = res.data?.result?.message_id;
       await sendOverflow();
@@ -2873,6 +2874,24 @@ export class PostsService {
    * delivered — a post shown as sent but missing from the group. Throw so it reads as
    * failed and can be retried.
    */
+  /**
+   * Run a Telegram send, and give it ONE more attempt if it died at the connection level.
+   *
+   * Anything else — an API rejection, a caption that won't parse, an unconfirmed delivery —
+   * rethrows untouched so the existing handling (plain-text fallback, hard failure) still
+   * decides. See `isTelegramConnectionError` for why the line sits exactly there.
+   */
+  private async tgRetryOnce<T>(what: string, send: () => Promise<T>): Promise<T> {
+    try {
+      return await send();
+    } catch (err: any) {
+      if (!isTelegramConnectionError(err)) throw err;
+      this.logger.warn(`telegram ${what} · ${err.code} — connection never reached Telegram, retrying once`);
+      await new Promise((r) => setTimeout(r, 1500));
+      return send();
+    }
+  }
+
   private assertTelegramDelivered(res: any, what: string): void {
     const data = res?.data;
     const result = data?.result;
@@ -2886,9 +2905,9 @@ export class PostsService {
   private async sendTelegramText(token: string, channel: string, text: string) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     try {
-      const res = await axios.post(url, {
+      const res = await this.tgRetryOnce('text', () => axios.post(url, {
         chat_id: channel, text, parse_mode: 'HTML', disable_web_page_preview: true,
-      }, { timeout: 15000 });
+      }, { timeout: 15000 }));
       this.assertTelegramDelivered(res, 'text');
     } catch (err: any) {
       const desc: string = err?.response?.data?.description || '';
@@ -2912,7 +2931,7 @@ export class PostsService {
       ...(i === 0 ? { caption, ...(withHtml ? { parse_mode: 'HTML' } : {}) } : {}),
     }));
     try {
-      const res = await axios.post(url, { chat_id: channel, media: build(true) }, { timeout: 20000 });
+      const res = await this.tgRetryOnce('album', () => axios.post(url, { chat_id: channel, media: build(true) }, { timeout: 20000 }));
       this.assertTelegramDelivered(res, 'album');
       post.telegram_message_id = res.data?.result?.[0]?.message_id;
     } catch (err: any) {
@@ -2956,7 +2975,7 @@ export class PostsService {
       return axios.post(url, form, { headers: form.getHeaders(), timeout: 120_000, maxBodyLength: Infinity, maxContentLength: Infinity });
     };
     try {
-      const res = await send(true);
+      const res = await this.tgRetryOnce('album-upload', () => send(true));
       this.assertTelegramDelivered(res, 'album-upload');
       post.telegram_message_id = res.data?.result?.[0]?.message_id;
     } catch (err: any) {
@@ -2984,7 +3003,7 @@ export class PostsService {
       return axios.post(url, form, { headers: form.getHeaders(), timeout: 90_000, maxBodyLength: Infinity, maxContentLength: Infinity });
     };
     try {
-      const res = await send(true);
+      const res = await this.tgRetryOnce('photo-upload', () => send(true));
       this.assertTelegramDelivered(res, 'photo-upload');
       post.telegram_message_id = res.data?.result?.message_id;
     } catch (err: any) {
