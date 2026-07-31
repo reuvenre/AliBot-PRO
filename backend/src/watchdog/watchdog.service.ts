@@ -13,6 +13,15 @@ import { SecurityService } from '../security/security.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { ChannelsService } from '../channels/channels.service';
 import { formatTelegramAlert } from './alert-format';
+import {
+  CtrRegression, MIN_BASELINE_CLICKS, MIN_DROP_PERCENT, MIN_POSTS_PER_WINDOW,
+  detectCtrRegressions, regressionLine,
+} from './regression';
+
+/** The window a campaign is judged on, and the stretch of its own past it is judged against.
+ *  Three weeks of baseline absorbs a single odd week; one week of "recent" still reacts fast. */
+const RECENT_DAYS = 7;
+const BASELINE_DAYS = 21;
 
 /** The tightest interval (minutes) a cron fires at — min gap over its next few fires.
  *  Hourly → 60, every-2h → 120. null when the expression can't be parsed. */
@@ -277,6 +286,45 @@ export class WatchdogService implements OnModuleInit {
   }
 
   // ── Checks ────────────────────────────────────────────────────────────────
+
+  /**
+   * Click-through per campaign in the recent window against the baseline behind it.
+   *
+   * Only SENT posts are counted — an unpublished post cannot draw a click, and counting it
+   * would manufacture a "drop" out of a delivery problem another check already reports.
+   */
+  private async ctrRegressions(): Promise<CtrRegression[]> {
+    const rows: any[] = await this.campaigns.query(
+      `SELECT c.id                                                        AS "campaignId",
+              c.name                                                      AS "campaignName",
+              c.user_id                                                   AS "userId",
+              count(*) FILTER (WHERE p.sent_at > now() - ($1 || ' days')::interval)::int
+                                                                          AS "recentPosts",
+              coalesce(sum(p.clicks_count) FILTER (
+                WHERE p.sent_at > now() - ($1 || ' days')::interval), 0)::int
+                                                                          AS "recentClicks",
+              count(*) FILTER (WHERE p.sent_at <= now() - ($1 || ' days')::interval)::int
+                                                                          AS "baselinePosts",
+              coalesce(sum(p.clicks_count) FILTER (
+                WHERE p.sent_at <= now() - ($1 || ' days')::interval), 0)::int
+                                                                          AS "baselineClicks"
+       FROM campaigns c
+       JOIN posts p ON p.campaign_id = c.id AND p.status = 'sent'
+       WHERE c.status = 'active'
+         AND p.sent_at > now() - ($2 || ' days')::interval
+       GROUP BY c.id, c.name, c.user_id`,
+      [String(RECENT_DAYS), String(RECENT_DAYS + BASELINE_DAYS)],
+    );
+    return detectCtrRegressions(rows.map((r) => ({
+      campaignId: String(r.campaignId),
+      campaignName: String(r.campaignName || ''),
+      userId: String(r.userId),
+      recentPosts: Number(r.recentPosts) || 0,
+      recentClicks: Number(r.recentClicks) || 0,
+      baselinePosts: Number(r.baselinePosts) || 0,
+      baselineClicks: Number(r.baselineClicks) || 0,
+    })));
+  }
 
   private async scan(): Promise<WatchdogAlert[]> {
     const out: WatchdogAlert[] = [];
@@ -610,7 +658,38 @@ export class WatchdogService implements OnModuleInit {
       });
     }
 
-    // 7. Security anomalies (brute-force, privilege escalation) from the audit log.
+    // 7. Business regression: a campaign that still publishes fine but stopped converting.
+    //    Every other check answers "is the machine broken?" — this one catches the failure
+    //    that costs money while nothing raises an error at all: posts go out, Telegram
+    //    accepts them, and the group quietly stops clicking after a template edit or a
+    //    change of voice. Compared against the campaign's OWN recent past, never another's.
+    const regressions = await this.ctrRegressions().catch((err: any) => {
+      this.logger.warn(`watchdog ctr scan failed: ${err?.message}`);
+      return [] as CtrRegression[];
+    });
+    if (regressions.length) {
+      out.push({
+        // Keyed by campaign so a second group regressing later is its own alert rather
+        // than being swallowed by the first one's 6h throttle.
+        key: `ctr_regression:${regressions.map((r) => r.campaignId).sort().join(',').slice(0, 80)}`,
+        title: `${regressions.length} קמפיינים שההמרה שלהם צנחה (הגרוע: ${regressions[0].campaignName} — ${regressions[0].dropPercent}%)`,
+        body: [
+          `**בדיקה:** קליקים לפוסט ב-${RECENT_DAYS} הימים האחרונים מול ${BASELINE_DAYS} הימים שלפניהם, לכל קמפיין מול עצמו.`,
+          `**סף:** ירידה של ${MIN_DROP_PERCENT}%+, עם ${MIN_POSTS_PER_WINDOW}+ פוסטים בכל חלון ו-${MIN_BASELINE_CLICKS}+ קליקים בבסיס.`,
+          '',
+          ...regressions.map((r) =>
+            `- "${r.campaignName}" \`${r.campaignId}\` · ${r.recentRate} קליקים/פוסט (${r.recentClicks}/${r.recentPosts})`
+            + ` מול ${r.baselineRate} (${r.baselineClicks}/${r.baselinePosts}) → **-${r.dropPercent}%**`),
+          '',
+          'זו אינה תקלה טכנית — הפרסום עובד. כיווני חקירה: שינוי תבנית/פוטר לקבוצה, מילות מפתח שהוחלפו',
+          'לאחרונה (retired_keywords / learned), סגנון כתיבה (copy_variant), שינוי בשעות הפרסום,',
+          'או ירידה אמיתית בפעילות הקבוצה. השווה מול התאריך שבו המגמה נשברה לפני שמשנים משהו.',
+        ].join('\n'),
+        details: regressions.slice(0, 5).map(regressionLine),
+      });
+    }
+
+    // 8. Security anomalies (brute-force, privilege escalation) from the audit log.
     //    Reported through the same channels; the 6h throttle per key still applies so
     //    an ongoing attack alerts once, not every 15 minutes.
     const sec = await this.security.scan().catch(() => []);
