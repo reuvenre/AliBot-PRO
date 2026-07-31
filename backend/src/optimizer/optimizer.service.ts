@@ -4,19 +4,28 @@ import { Repository } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
 import { Campaign } from '../campaigns/campaign.entity';
+import { Channel } from '../channels/channel.entity';
 import { OptimizerRun } from './optimizer-run.entity';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { EarningsService } from '../earnings/earnings.service';
+import { AiService } from '../ai/ai.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
+import {
+  CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
+  buildFitPrompt, lexicalFit, parseFitVerdicts, rankFitted,
+} from './campaign-fit';
 
 interface KeywordScore { keyword: string; posts: number; clicks: number; revenue_ils: number }
 interface CampaignActions {
   campaign: string; retired: string[]; boosted: string | null; unboosted: string[];
-  /** Categories added to this campaign from what actually sold (opt-in per campaign). */
-  learned: string[];
+  /** Categories added to this campaign from what actually sold — each one judged to fit
+   *  THIS group, with the reason it was judged to fit (opt-in per campaign). */
+  learned: FittedCategory[];
+  /** Account winners this group was NOT given, because they do not suit its audience. */
+  rejected: string[];
 }
 
 /** Scoring window — long enough for commissions to land, short enough to track trends. */
@@ -45,6 +54,9 @@ const MAX_LEARNED_PER_RUN = 2;
  *     campaign.retired_keywords, never deleted, floor of 5 active keywords.
  *   • BOOST the top-earning keyword by doubling its slot in the round-robin (max 2×),
  *     and collapse a boost whose window revenue dried up.
+ *   • LEARN the categories that actually sold — per group. The ranking is account-wide, so
+ *     each candidate is judged against the specific campaign's audience before it is added;
+ *     see campaign-fit.ts for why a shared top-N was making every group the same group.
  * Then it tells the owner what it did — morning digest to Telegram (the watchdog chat)
  * and email: yesterday's numbers, top product, golden hours, actions taken.
  */
@@ -54,11 +66,14 @@ export class OptimizerService {
 
   constructor(
     @InjectRepository(Campaign) private readonly campaigns: Repository<Campaign>,
+    @InjectRepository(Channel) private readonly channels: Repository<Channel>,
     @InjectRepository(OptimizerRun) private readonly runs: Repository<OptimizerRun>,
     private readonly credentials: CredentialsService,
     private readonly subscription: SubscriptionService,
     private readonly mail: MailService,
     private readonly products: ProductsService,
+    // Judges whether an account-wide winning category suits a specific group's audience.
+    private readonly ai: AiService,
     // Optional so the module still boots if earnings are ever unwired — the digest degrades
     // to whatever the standing 3-hourly sync last pulled instead of failing.
     @Optional() private readonly earnings?: EarningsService,
@@ -127,11 +142,21 @@ export class OptimizerService {
       return [] as CategoryScore[];
     });
 
+    // The groups each campaign publishes to — the audience half of "does this fit here?".
+    const channelsById = await this.channelsById(userId);
+    // Categories already handed to an earlier campaign in THIS run. Used only as a
+    // tie-break, so equally-suitable groups drift apart instead of converging on one list.
+    const claimed = new Set<string>();
+
     for (const c of active) {
       const scores = await this.scoreKeywords(userId, c.id);
       allScores[c.name] = scores;
-      const actions = await this.applyActions(c, scores, soldCategories);
-      if (actions.retired.length || actions.boosted || actions.unboosted.length || actions.learned.length) {
+      const actions = await this.applyActions(
+        userId, c, scores, soldCategories, channelsById, claimed,
+      );
+      for (const l of actions.learned) claimed.add(l.keyword.toLowerCase());
+      if (actions.retired.length || actions.boosted || actions.unboosted.length
+        || actions.learned.length || actions.rejected.length) {
         allActions.push(actions);
       }
     }
@@ -242,9 +267,12 @@ export class OptimizerService {
 
   /** Small, safe, reversible adjustments to the campaign's keyword rotation. */
   private async applyActions(
-    c: Campaign, scores: KeywordScore[], soldCategories: CategoryScore[] = [],
+    userId: string, c: Campaign, scores: KeywordScore[], soldCategories: CategoryScore[] = [],
+    channelsById: Map<string, Channel> = new Map(), claimed: Set<string> = new Set(),
   ): Promise<CampaignActions> {
-    const out: CampaignActions = { campaign: c.name, retired: [], boosted: null, unboosted: [], learned: [] };
+    const out: CampaignActions = {
+      campaign: c.name, retired: [], boosted: null, unboosted: [], learned: [], rejected: [],
+    };
     const byKw = new Map(scores.map((s) => [s.keyword, s]));
     let kws = [...(c.keywords || [])];
     const distinct = () => Array.from(new Set(kws));
@@ -280,27 +308,108 @@ export class OptimizerService {
       if (copies === 1) { kws.push(top.keyword); out.boosted = top.keyword; }
     }
 
-    // 4) LEARN from what sold: add the top-earning categories this campaign doesn't already
-    //    search. Opt-in per campaign, because the categories are learned account-wide and a
-    //    winner from the owner's other traffic can be plainly off-brand for this channel —
-    //    the exact mistake seasonal keywords made before they became per-campaign too.
+    // 4) LEARN from what sold — but only what suits THIS group.
+    //    The categories are ranked account-wide, so the top of that list is the same list for
+    //    every campaign. Handing it out as-is made all the groups converge on one rotation:
+    //    a mothers-and-brands group and a general-deals group were both given "Hunting" the
+    //    same night. So each candidate now has to pass a per-group fit judgement first, and
+    //    a group that fits none of tonight's winners simply gains nothing.
     if (c.learn_from_orders && soldCategories.length) {
-      const additions = newKeywordsFor(
-        soldCategories, kws, c.retired_keywords || [], MAX_LEARNED_PER_RUN,
+      const profile = this.profileOf(c, kws, scores, channelsById);
+      const candidates = newKeywordsFor(
+        soldCategories, kws, c.retired_keywords || [], MAX_FIT_CANDIDATES,
       );
-      for (const a of additions) {
+      const { fitted, rejected } = await this.judgeFit(
+        userId, profile, candidates, claimed, MAX_LEARNED_PER_RUN,
+      );
+      for (const a of fitted) {
         kws.push(a.keyword);
-        out.learned.push(a.keyword);
+        out.learned.push(a);
       }
+      out.rejected = rejected;
     }
 
     if (out.retired.length || out.boosted || out.unboosted.length || out.learned.length) {
       c.keywords = kws;
       await this.campaigns.save(c).catch((err: any) =>
         this.logger.warn(`optimizer save failed for campaign ${c.id}: ${err.message}`));
-      this.logger.log(`optimizer [${c.name}]: retired=${out.retired.join(',') || '—'} boosted=${out.boosted || '—'} unboosted=${out.unboosted.join(',') || '—'} learned=${out.learned.join(',') || '—'}`);
+      this.logger.log(`optimizer [${c.name}]: retired=${out.retired.join(',') || '—'} boosted=${out.boosted || '—'} unboosted=${out.unboosted.join(',') || '—'} learned=${out.learned.map((l) => l.keyword).join(',') || '—'}`);
     }
     return out;
+  }
+
+  /** The user's groups by id, so a campaign's target_channels resolve to real audiences. */
+  private async channelsById(userId: string): Promise<Map<string, Channel>> {
+    const rows = await this.channels.find({ where: { user_id: userId } }).catch(() => [] as Channel[]);
+    return new Map(rows.map((ch) => [ch.id, ch]));
+  }
+
+  /** What this campaign IS, assembled from everything that describes it. */
+  private profileOf(
+    c: Campaign, keywords: string[], scores: KeywordScore[], channelsById: Map<string, Channel>,
+  ): CampaignProfile {
+    let ids: string[] = [];
+    try { ids = JSON.parse(c.target_channels || '[]'); } catch { ids = []; }
+    const channels = ids
+      .map((id) => channelsById.get(String(id)))
+      .filter((ch): ch is Channel => !!ch)
+      .map((ch) => (ch.description ? `${ch.name} — ${ch.description}` : ch.name));
+
+    return {
+      name: c.name,
+      keywords: Array.from(new Set(keywords)),
+      retired: c.retired_keywords || [],
+      channels,
+      // Proven appetite inside THIS group, which outranks any account-wide number.
+      earning: scores.filter((s) => s.revenue_ils > 0 || s.clicks > 0).map((s) => s.keyword),
+    };
+  }
+
+  /**
+   * Ask the account's model which of tonight's winners belong in this group.
+   *
+   * Failure is not neutral here, so it is never treated as such: if no model answers, the
+   * decision falls back to the vocabulary check, which only passes a category the group's
+   * own rotation already talks about. Both gates closed means the group gains nothing — the
+   * correct outcome, and the one the old code got wrong by adding regardless.
+   */
+  private async judgeFit(
+    userId: string, profile: CampaignProfile, candidates: CategoryScore[],
+    claimed: Set<string>, max: number,
+  ): Promise<{ fitted: FittedCategory[]; rejected: string[] }> {
+    if (!candidates.length) return { fitted: [], rejected: [] };
+
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const result = creds
+      ? await this.ai.generate(creds, {
+        system: FIT_SYSTEM_PROMPT,
+        prompt: buildFitPrompt(profile, candidates),
+        maxTokens: 700,
+        // A fit judgement is not creative writing — the same group and the same candidates
+        // should not swing between "belongs" and "off-brand" from one night to the next.
+        temperature: 0,
+      }).catch((err: any) => {
+        this.logger.warn(`fit judge failed for [${profile.name}]: ${err?.message}`);
+        return null;
+      })
+      : null;
+
+    const verdicts = result?.text
+      ? parseFitVerdicts(result.text, candidates)
+      : candidates.map((c) => ({
+        keyword: c.keyword,
+        fits: lexicalFit(c.keyword, profile),
+        reason: 'תואמת את מילות המפתח של הקבוצה',
+      }));
+
+    if (!result?.text) {
+      this.logger.warn(`fit judge unavailable for [${profile.name}] — falling back to the vocabulary check`);
+    }
+
+    // Only an explicit "does not belong" is reported as a rejection. A candidate that fit
+    // but lost to the per-run cap is still a candidate tomorrow, not an off-brand one.
+    const rejected = verdicts.filter((v) => !v.fits).map((v) => v.keyword);
+    return { fitted: rankFitted(candidates, verdicts, profile, claimed, max), rejected };
   }
 
   /** Yesterday's numbers + golden hours + top product — the digest's raw material. */
@@ -356,7 +465,16 @@ export class OptimizerService {
         if (a.boosted) lines.push(`  • [${a.campaign}] הכפלתי את "${a.boosted}" — היא מייצרת עמלות`);
         for (const kw of a.retired) lines.push(`  • [${a.campaign}] הוצאתי את "${kw}" — ${MIN_POSTS_TO_JUDGE}+ פוסטים בלי קליק אחד`);
         for (const kw of a.unboosted) lines.push(`  • [${a.campaign}] החזרתי את "${kw}" למינון רגיל — ההכנסות מהחלון האחרון התייבשו`);
-        for (const kw of a.learned) lines.push(`  • [${a.campaign}] הוספתי "${kw}" — קטגוריה שמייצרת מכירות בפועל`);
+        for (const l of a.learned) {
+          const why = l.reason ? ` — ${l.reason}` : '';
+          lines.push(`  • [${a.campaign}] הוספתי "${l.keyword}" (₪${l.commissionIls} · ${l.orders} הזמנות)${why}`);
+        }
+        // Saying what a group did NOT get is the point of the change: it shows the engine
+        // considered the account's winners for this group and turned them down on purpose,
+        // rather than never having looked.
+        if (a.rejected.length) {
+          lines.push(`  • [${a.campaign}] לא הוספתי: ${a.rejected.join(', ')} — לא מתאימות לקהל של הקבוצה`);
+        }
       }
     } else {
       lines.push('');
@@ -371,6 +489,7 @@ export class OptimizerService {
       for (const c of soldCategories.slice(0, 5)) {
         lines.push(`  • ${c.keyword} — ₪${c.commissionIls} · ${c.orders} הזמנות`);
       }
+      lines.push('  ↳ כל קטגוריה נבחנת מול הקהל של כל קבוצה בנפרד — לא כל קבוצה מקבלת את אותן מילים.');
       const optedOut = campaigns.filter((c) => !c.learn_from_orders).map((c) => c.name);
       if (optedOut.length) {
         lines.push(`  ↳ לא מתווספות אוטומטית ל: ${optedOut.join(', ')} — הפעל "לימוד מהזמנות" בקמפיין כדי שכן.`);

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Campaign } from '../campaigns/campaign.entity';
+import { Channel } from '../channels/channel.entity';
 import { OptimizerRun } from './optimizer-run.entity';
 import { OptimizerService } from './optimizer.service';
 import { OptimizerController } from './optimizer.controller';
@@ -9,10 +10,13 @@ import { SubscriptionModule } from '../subscription/subscription.module';
 import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
 import { EarningsModule } from '../earnings/earnings.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Campaign, OptimizerRun]),
+    // Channel: a campaign's target groups are the audience half of "does this category
+    // belong here?" — the fit judge reads their names and descriptions.
+    TypeOrmModule.forFeature([Campaign, Channel, OptimizerRun]),
     CredentialsModule,
     SubscriptionModule,
     MailModule,
@@ -20,6 +24,8 @@ import { EarningsModule } from '../earnings/earnings.module';
     ProductsModule,
     // Pulls fresh orders right before the digest, so it reports the day AliExpress just closed.
     EarningsModule,
+    // Judges a learned category against a specific group's audience.
+    AiModule,
   ],
   controllers: [OptimizerController],
   providers: [OptimizerService],
