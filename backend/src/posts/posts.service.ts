@@ -20,7 +20,7 @@ import { RatesService } from '../rates/rates.service';
 import { AiService, GenerateImage } from '../ai/ai.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { ChannelsService } from '../channels/channels.service';
-import { CouponsService } from '../coupons/coupons.service';
+import { CouponsService, currencySymbol } from '../coupons/coupons.service';
 import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { CollageService } from '../collage/collage.service';
@@ -399,7 +399,15 @@ export class PostsService {
       generated_text: text,
       price_ils: customProduct?.price_ils ?? priceLocal,
       exchange_rate: priceAlreadyConverted ? 1 : rate,
-      coupon_line: match ? this.coupons.couponLine(match.coupon, match.qualifies) : null,
+      // Same currency as the preview's own price, and the same line the send path will
+      // ship — the preview must never show the owner something different from what goes out.
+      // The coupon tiers are stored in USD whatever the product price did, so this always
+      // needs the full USD→local rate — never the identity rate a pre-converted price uses.
+      coupon_line: match
+        ? this.coupons.couponLine(match.coupon, match.qualifies, {
+          rate, symbol: currencySymbol(creds?.currency_pair),
+        })
+        : null,
     };
   }
 
@@ -2142,6 +2150,29 @@ export class PostsService {
   }
 
   /**
+   * The currency this post is priced in, with the live rate — the campaign's own override
+   * when it has one, else the account default. Mirrors the precedence the copy itself uses,
+   * so the coupon tier can never be quoted in a different currency than the price above it.
+   *
+   * Best-effort: a rates failure returns no money and the coupon falls back to USD, which is
+   * accurate if less convenient. Publishing never waits on a conversion.
+   */
+  private async postMoney(
+    post: Post, creds: DecryptedCredentials,
+  ): Promise<{ rate: number; symbol: string } | undefined> {
+    try {
+      const campaign = post.campaign_id
+        ? await this.campaignRepo.findOne({ where: { id: post.campaign_id } })
+        : null;
+      const pair = campaign?.currency_pair?.trim() || creds?.currency_pair || 'USD_ILS';
+      const rate = await this.rates.getRate(pair);
+      return { rate, symbol: currencySymbol(pair) };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Clicks per copy angle for one campaign — what the bandit picks the next angle from.
    *
    * Only SENT posts count: a post that never published cannot have drawn a click, and
@@ -2225,7 +2256,9 @@ export class PostsService {
       ? await this.coupons.bestFor(post.user_id, post.sale_price_usd).catch(() => null)
       : null;
     if (match && !body.includes(match.coupon.code)) {
-      body = `${body}\n\n${this.coupons.couponLine(match.coupon, match.qualifies)}`;
+      // Priced in the same currency as the rest of this post, so a shopper can tell at a
+      // glance whether they qualify instead of converting the tier themselves.
+      body = `${body}\n\n${this.coupons.couponLine(match.coupon, match.qualifies, await this.postMoney(post, creds))}`;
     }
 
     const footer = await this.resolveFooterText(post.user_id, creds, channelOverride);

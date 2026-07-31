@@ -267,9 +267,54 @@ export class CouponsService {
   /**
    * The exact line appended to a post. Kept here so the send path and the composer
    * preview can never drift apart and show the user something different from what ships.
+   *
+   * The amounts are shown in the post's own currency, because the rest of the post already
+   * is: a shopper reading "₪89 במקום ₪150" and then "$7 הנחה בקנייה מעל $55" has to do the
+   * conversion themselves to find out whether they qualify, and most simply will not.
+   *
+   * The CODE itself is never touched. It is issued by AliExpress and typed at their
+   * checkout — a prettier or rebranded code is a code that does not work.
+   *
+   * Pass no `money` and it renders in USD exactly as before.
    */
-  couponLine(coupon: Coupon, qualifies: boolean): string {
-    const base = `🎟️ קוד קופון: ${coupon.code} — $${coupon.discount_usd} הנחה בקנייה מעל $${coupon.min_spend_usd}`;
+  couponLine(coupon: Coupon, qualifies: boolean, money?: { rate: number; symbol: string }): string {
+    const { discount, minSpend, symbol } = this.couponAmounts(coupon, money);
+    const base = `🎟️ קוד קופון: ${coupon.code} — ${symbol}${discount} הנחה בקנייה מעל ${symbol}${minSpend}`;
     return qualifies ? base : `${base}\n💡 הוסף עוד פריט לסל כדי לנצל את ההנחה`;
   }
+
+  /**
+   * The two amounts as the shopper should read them, rounded in the direction that cannot
+   * mislead.
+   *
+   * AliExpress enforces the tier in USD, at its own rate, on the day of purchase — our
+   * converted number is a guide, never the rule. So the minimum spend rounds UP and the
+   * discount rounds DOWN: the worst case is a shopper who adds a little more than they
+   * strictly had to, instead of one who reaches checkout, finds the coupon rejected, and
+   * concludes the group posts codes that do not work.
+   */
+  private couponAmounts(
+    coupon: Coupon, money?: { rate: number; symbol: string },
+  ): { discount: number; minSpend: number; symbol: string } {
+    const rate = Number(money?.rate);
+    // No usable rate → USD, unconverted. Showing a shekel sign against a dollar amount
+    // would be worse than showing dollars honestly.
+    if (!money || !Number.isFinite(rate) || rate <= 0 || money.symbol === '$') {
+      return { discount: coupon.discount_usd, minSpend: coupon.min_spend_usd, symbol: '$' };
+    }
+    return {
+      discount: Math.floor(coupon.discount_usd * rate),
+      minSpend: Math.ceil(coupon.min_spend_usd * rate),
+      symbol: money.symbol,
+    };
+  }
+}
+
+/** The currency symbol for a rates pair ('USD_ILS' → '₪'). */
+export function currencySymbol(pair?: string | null): string {
+  const p = String(pair || 'USD_ILS');
+  if (p.includes('ILS')) return '₪';
+  if (p.includes('EUR')) return '€';
+  if (p.includes('GBP')) return '£';
+  return '$';
 }
