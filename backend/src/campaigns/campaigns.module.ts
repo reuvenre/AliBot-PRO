@@ -7,6 +7,8 @@ import { PostsModule } from '../posts/posts.module';
 import { SuppliersModule } from '../suppliers/suppliers.module';
 import { AmazonModule } from '../amazon/amazon.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { ChannelsModule } from '../channels/channels.module';
+import { CredentialsModule } from '../credentials/credentials.module';
 
 @Module({
   imports: [
@@ -19,6 +21,10 @@ import { SubscriptionModule } from '../subscription/subscription.module';
     // PostsModule + the Campaign repo, not CampaignsModule.
     AmazonModule,
     SubscriptionModule,
+    // Resolve each campaign's effective send window (group hours / account hours) for the
+    // next-publish display. No cycle: neither module imports CampaignsModule.
+    ChannelsModule,
+    CredentialsModule,
   ],
   providers: [CampaignsService],
   controllers: [CampaignsController],

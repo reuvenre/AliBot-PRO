@@ -424,6 +424,9 @@ export interface Campaign {
   learn_from_orders?: boolean;
   last_run_at?: string;
   next_run_at?: string;
+  /** When the next post will actually LEAVE — the next cron fire pushed into the send
+   *  window. This is what the UI shows; the raw cron tick confused owners at night. */
+  next_publish_at?: string | null;
   posts_count: number;
   created_at: string;
   updated_at: string;

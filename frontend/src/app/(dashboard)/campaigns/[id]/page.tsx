@@ -172,9 +172,11 @@ export default function CampaignDetailPage() {
             ]
         ).concat([
           {
-            label: 'הרצה הבאה',
-            value: campaign.next_run_at
-              ? new Date(campaign.next_run_at).toLocaleString('he-IL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            // The next PUBLISH — the cron fire pushed into the send window — because the
+            // raw fire time ("01:00") read as a promise the system then appeared to break.
+            label: 'פרסום הבא',
+            value: (campaign.next_publish_at || campaign.next_run_at)
+              ? new Date(campaign.next_publish_at || campaign.next_run_at!).toLocaleString('he-IL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
               : '—',
           },
           { label: 'פוסטים בהרצה', value: `${campaign.posts_per_run}` },

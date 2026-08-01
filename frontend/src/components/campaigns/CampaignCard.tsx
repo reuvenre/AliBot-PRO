@@ -84,10 +84,13 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
           <FileText size={11} />
           {campaign.posts_count} פוסטים
         </span>
-        {campaign.next_run_at && (
+        {/* The next PUBLISH, not the next cron tick — a night-time cron fire schedules its
+            posts into the window's opening, and showing the tick read as a promise the
+            system then appeared to break. Falls back to the tick for stale cached rows. */}
+        {(campaign.next_publish_at || campaign.next_run_at) && (
           <span className="flex items-center gap-1">
             <Clock size={11} />
-            {new Date(campaign.next_run_at).toLocaleString('he-IL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            פרסום הבא: {new Date(campaign.next_publish_at || campaign.next_run_at!).toLocaleString('he-IL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
       </div>

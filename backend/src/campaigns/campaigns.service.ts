@@ -7,6 +7,9 @@ import { CronTime } from 'cron';
 import { Campaign } from './campaign.entity';
 import { CampaignDto } from './dto/campaign.dto';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { ChannelsService } from '../channels/channels.service';
+import { CredentialsService } from '../credentials/credentials.service';
+import { nextPublishAt } from './next-run';
 
 @Injectable()
 export class CampaignsService {
@@ -14,7 +17,40 @@ export class CampaignsService {
     @InjectRepository(Campaign)
     private readonly repo: Repository<Campaign>,
     private readonly subscription: SubscriptionService,
+    // Resolve each campaign's real send window (group hours / account hours) so the UI can
+    // show when a post will actually LEAVE, not just when the cron ticks next.
+    private readonly channels: ChannelsService,
+    private readonly credentials: CredentialsService,
   ) {}
+
+  /**
+   * When this campaign's next post actually leaves — the next cron fire pushed into the
+   * effective send window, resolved with the same precedence the scheduler uses:
+   * campaign override → target group's hours → account global → the 9–22 default.
+   *
+   * `creds` is passed in so a list of campaigns decrypts the account row once, not per row.
+   * Best-effort: any failure returns null and the UI falls back to the raw cron time.
+   */
+  private async computeNextPublishAt(
+    c: Campaign, creds: { schedule_start_hour?: number | null; schedule_end_hour?: number | null } | null,
+  ): Promise<Date | null> {
+    if (c.status !== 'active' || !c.schedule_cron) return null;
+    try {
+      let group: { startHour: number | null; endHour: number | null } | null = null;
+      let targets: string[] = [];
+      try { targets = JSON.parse(c.target_channels || '[]'); } catch { targets = []; }
+      if (targets.length) {
+        group = await this.channels.getScheduleWindow(c.user_id, targets[0]).catch(() => null);
+      }
+      return nextPublishAt(c.schedule_cron, {
+        startHour: c.window_start_hour ?? group?.startHour ?? creds?.schedule_start_hour ?? 9,
+        endHour: c.window_end_hour ?? group?.endHour ?? creds?.schedule_end_hour ?? 22,
+        tz: c.window_tz || process.env.SCHEDULER_TZ || 'Asia/Jerusalem',
+      });
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Subscription gating at the campaign write path. Throws the standard upgrade
@@ -56,7 +92,13 @@ export class CampaignsService {
     if (status) qb.andWhere('c.status = :status', { status });
 
     const [data, total] = await qb.getManyAndCount();
-    return { data: data.map((c) => this.toPublic(c)), total, page, limit };
+    // One credentials decrypt for the whole page, then a per-campaign window resolve.
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const enriched = await Promise.all(data.map(async (c) => ({
+      ...this.toPublic(c),
+      next_publish_at: await this.computeNextPublishAt(c, creds),
+    })));
+    return { data: enriched, total, page, limit };
   }
 
   async get(userId: string, id: string) {
@@ -68,7 +110,12 @@ export class CampaignsService {
 
   /** API-facing get: target_channels as an array. Internal callers (runner) use get(). */
   async getPublic(userId: string, id: string) {
-    return this.toPublic(await this.get(userId, id));
+    const campaign = await this.get(userId, id);
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    return {
+      ...this.toPublic(campaign),
+      next_publish_at: await this.computeNextPublishAt(campaign, creds),
+    };
   }
 
   async create(userId: string, dto: CampaignDto) {

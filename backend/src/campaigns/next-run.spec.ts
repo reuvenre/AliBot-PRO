@@ -1,4 +1,4 @@
-import { nextRunAt } from './next-run';
+import { nextPublishAt, nextRunAt } from './next-run';
 
 describe('nextRunAt', () => {
   it('returns the next fire time for a valid expression', () => {
@@ -79,5 +79,49 @@ describe('stacking within a cycle', () => {
   it('never blocks the FIRST post of a run', () => {
     expect(blocks(0, run, cycleEnd)).toBe(false);
     expect(blocks(0, run + 9 * hour, null)).toBe(false);
+  });
+});
+
+describe('nextPublishAt', () => {
+  // August: Israel is UTC+3 (DST). 22:30 UTC = 01:30 Israel, deep inside the closed night.
+  const NIGHT = new Date('2026-08-01T22:30:00Z');
+  const WINDOW = { startHour: 6, endHour: 23, tz: 'Asia/Jerusalem' };
+
+  it('pushes a night fire to the window opening', () => {
+    // Hourly cron fires next at 23:00Z = 02:00 Israel — closed. The post will actually
+    // leave at 06:00 Israel = 03:00Z. This is the exact case that read as a broken system:
+    // the UI said "ריצה הבאה 01:00" and nothing visibly happened at 01:00.
+    expect(nextPublishAt('0 * * * *', WINDOW, NIGHT)?.toISOString())
+      .toBe('2026-08-02T03:00:00.000Z');
+  });
+
+  it('returns a daytime fire untouched', () => {
+    // 09:00Z = 12:00 Israel — already inside the window; the fire IS the publish time.
+    const noon = new Date('2026-08-01T09:30:00Z');
+    expect(nextPublishAt('0 * * * *', WINDOW, noon)?.toISOString())
+      .toBe('2026-08-01T10:00:00.000Z');
+  });
+
+  it('keeps the fire minutes through the walk, like the scheduler does', () => {
+    // campaignScheduleTimes walks in whole hours from the run moment, so a :30 cron
+    // publishes at HH:30 after the window opens — the prediction must match that.
+    expect(nextPublishAt('30 * * * *', WINDOW, NIGHT)?.toISOString())
+      .toBe('2026-08-02T03:30:00.000Z');
+  });
+
+  it('treats a degenerate window as 24h publishing', () => {
+    expect(nextPublishAt('0 * * * *', { startHour: 22, endHour: 6, tz: 'Asia/Jerusalem' }, NIGHT)
+      ?.toISOString()).toBe('2026-08-01T23:00:00.000Z');
+  });
+
+  it('respects the window timezone, not the server clock', () => {
+    // Same instant, New-York window: 23:00Z = 19:00 EDT — inside 17–22, no push.
+    const ny = { startHour: 17, endHour: 22, tz: 'America/New_York' };
+    expect(nextPublishAt('0 * * * *', ny, NIGHT)?.toISOString())
+      .toBe('2026-08-01T23:00:00.000Z');
+  });
+
+  it('returns null for an unreadable cron', () => {
+    expect(nextPublishAt('not a cron', WINDOW, NIGHT)).toBeNull();
   });
 });
