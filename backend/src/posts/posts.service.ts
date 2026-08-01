@@ -3170,33 +3170,63 @@ export class PostsService {
 
     // Facebook does not render Telegram-style HTML tags — strip them for the FB body.
     const plain = message.replace(/<\/?[^>]+>/g, '');
-    // The preview CARD, not the URL in the text, is what a Facebook reader actually taps —
-    // so `link` has to be the tracked one too. It used to carry the raw affiliate URL,
-    // which meant essentially every Facebook click was invisible: the optimizer saw those
-    // posts draw nothing and judged their keywords dead on a channel it could not see.
-    // Facebook's scraper follows the 302 and still builds the card from the product page,
-    // and its own fetch is filtered out of the click count as a crawler.
-    const params = new URLSearchParams({
-      message: plain,
-      link: (await this.trackedLink(post)) || '',
-      access_token: token,
-    });
+    // The tracked /r/<code> URL. It already sits inside `plain` (buildPostBody puts it
+    // there), so a photo post carries it in the caption and clicks are still counted.
+    const link = (await this.trackedLink(post)) || '';
+    const image = this.facebookImage(post);
+
+    // PHOTO post when we have the product image, LINK post only as a fallback.
+    //
+    // A link post has no image of its own: Facebook scrapes the destination and shows
+    // whatever og:image it finds there. For an AliExpress product page that is routinely
+    // not the product — one of these went out over a picture of a Chinese business licence
+    // — and Graph has not allowed overriding it since v2.x. So the group got a random
+    // certificate where Telegram, which uploads the photo directly, showed the product.
+    //
+    // Posting the photo puts the same image on both channels and makes the product the ad.
+    // The trade is the preview card, which was the wrong picture anyway; the link stays in
+    // the caption, clickable and tracked.
+    const endpoint = image ? 'photos' : 'feed';
+    const params = new URLSearchParams(
+      image
+        ? { url: image, caption: plain, access_token: token }
+        : { message: plain, link, access_token: token },
+    );
 
     const res = await axios.post(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/feed`,
+      `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/${endpoint}`,
       params.toString(),
-      // 20s, not the 8s this used to be. A feed post carries `link`, and Graph fetches that
-      // URL to build the preview card BEFORE it answers — an AliExpress redirect chain
-      // regularly pushes the round trip past 8s. Timing out here is the worst outcome
+      // 20s, not the 8s this used to be. Graph fetches the attached URL — the link to build
+      // a preview card, or the image to ingest it — BEFORE it answers, and an AliExpress
+      // round trip regularly pushes that past 8s. Timing out here is the worst outcome
       // available: Facebook may have published anyway, so the post is marked failed while
       // it exists on the page, and the retry duplicates it. Better to wait.
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 },
     );
     if (res.data?.error) throw new Error(res.data.error.message);
-    // A 200 without a post id means nothing was actually published — treat it as a
-    // failure instead of marking the post 'sent' (Telegram validates delivery; FB didn't).
-    if (!res.data?.id) throw new Error('Facebook did not return a post id (nothing published)');
-    post.facebook_post_id = res.data.id;
+    // A 200 without an id means nothing was actually published — treat it as a failure
+    // instead of marking the post 'sent' (Telegram validates delivery; FB didn't).
+    // /photos answers with the PHOTO id plus `post_id`, the story on the page; prefer that,
+    // since it is what identifies the post everywhere else in Graph.
+    const publishedId = res.data?.post_id || res.data?.id;
+    if (!publishedId) throw new Error('Facebook did not return a post id (nothing published)');
+    post.facebook_post_id = String(publishedId);
+  }
+
+  /**
+   * The image a Facebook post should carry: the first gallery picture the owner chose,
+   * falling back to the product's main photo. Same source Telegram publishes from, so the
+   * two channels show the same thing.
+   *
+   * Returns null when there is nothing usable — the caller then falls back to a link post
+   * rather than failing, because a post with the wrong picture still beats no post at all.
+   */
+  private facebookImage(post: Post): string | null {
+    let gallery: string[] = [];
+    try { gallery = post.gallery_json ? JSON.parse(post.gallery_json) : []; } catch { gallery = []; }
+    const candidate = gallery.find((u) => typeof u === 'string' && /^https?:\/\//i.test(u))
+      || (/^https?:\/\//i.test(post.product_image || '') ? post.product_image : null);
+    return candidate || null;
   }
 
   /**
