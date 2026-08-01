@@ -15,6 +15,7 @@ import { isTelegramConnectionError } from './telegram-retry';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
+import { nextRunAt } from '../campaigns/next-run';
 import { CredentialsService, DecryptedCredentials, GRAPH_VERSION } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { AiService, GenerateImage } from '../ai/ai.service';
@@ -1284,8 +1285,17 @@ export class PostsService {
    * Returns { slot, skip }; skip=true when the group is already
    * booked within the current interval, so two campaigns to one group never post together and
    * the group publishes at most once per its interval (the group's setting is the rate).
+   *
+   * `stackUntil` is the caller's CYCLE END (its next cron fire). Within it a campaign may
+   * queue more than one post on the group — that is what makes "2 posts per run" mean two
+   * posts — while each still lands a full group interval after the last, so the group's own
+   * rate is untouched. Past that point the booking belongs to the next run, which is what
+   * keeps the queue from growing without bound.
    */
-  async nextGroupSlot(userId: string, groupId: string, notBefore: Date, campaignId?: string): Promise<{ slot: Date; skip: boolean }> {
+  async nextGroupSlot(
+    userId: string, groupId: string, notBefore: Date, campaignId?: string,
+    stackUntil?: Date | null,
+  ): Promise<{ slot: Date; skip: boolean }> {
     const intervalMin = (await this.channels.getIntervalMinutes(userId, groupId).catch(() => null)) ?? 60;
     const now = Date.now();
     const recentSentCutoff = new Date(now - intervalMin * 60_000);
@@ -1369,8 +1379,16 @@ export class PostsService {
     // for 13 hours while its sibling published hourly. A sibling's booking now just moves
     // this campaign to the following slot; fair-share below still decides who goes first,
     // and one-booking-per-campaign keeps the queue depth bounded by the campaign count.
+    // A booking of this campaign's own blocks a second one — EXCEPT while the new slot still
+    // falls inside this run's own cycle. Without that exception "posts per run" was a lie for
+    // any campaign publishing to a group: the first post booked, the second saw its own
+    // pending post and skipped, and a campaign set to 2 or 3 posts silently produced exactly
+    // one, every run, with nothing in the UI to say why. The group's rate is not weakened by
+    // allowing it — `slotMs` already spaces each post a full interval behind the last.
+    const stackable = !!stackUntil && slotMs < stackUntil.getTime();
+    const myBookingBlocks = myPendingMs > 0 && !stackable;
     const groupBusy = campaignId
-      ? myPendingMs > 0 || withinInterval(mySentMs) || manualPendingSoon
+      ? myBookingBlocks || withinInterval(mySentMs) || manualPendingSoon
       : pendingSoon || withinInterval(lastSentMs);
 
     // FAIR-SHARE: when several campaigns publish to one group, the group's single rate is
@@ -1408,7 +1426,8 @@ export class PostsService {
     if (skip) {
       // Name the gate that closed. A silent skip is indistinguishable from "nothing to post",
       // which is what made a cadence regression here take hours to localise.
-      const why = myPendingMs > 0 ? 'this campaign already has a post booked on the group'
+      const why = myBookingBlocks ? 'this campaign already has a post booked on the group,'
+          + ` and the next slot (${new Date(slotMs).toISOString()}) falls past this run's cycle`
         : manualPendingSoon ? 'a manual post occupies this interval'
         : groupBusy ? `published ${Math.round((now - (campaignId ? mySentMs : lastSentMs)) / 60_000)}m ago (interval ${intervalMin}m)`
         : notMyTurn ? 'another campaign on this group is further behind'
@@ -1762,6 +1781,12 @@ export class PostsService {
         : null);
     const times = this.campaignScheduleTimes(toPost.length, creds, window || undefined);
 
+    // This run's cycle end — when this campaign's cron fires again. Posts this run books on
+    // the target group may stack up to that point (each still a full group interval apart),
+    // which is what lets "posts per run" actually deliver more than one. Anything past it is
+    // the next run's work. An unparseable cron gives null → the old one-per-run behaviour.
+    const cycleEnd = nextRunAt(campaign.schedule_cron);
+
     // How each copy angle has performed for THIS campaign — the bandit's evidence. Read
     // once per run; a handful of posts will not move it, and a failure here only means the
     // run keeps exploring evenly, which is the correct default anyway.
@@ -1782,7 +1807,9 @@ export class PostsService {
         // its own cron cadence.
         let scheduledAt = times[i];
         if (targets.length && (!platforms || platforms.has('telegram'))) {
-          const { slot, skip } = await this.nextGroupSlot(userId, targets[0], times[i], campaign.id);
+          const { slot, skip } = await this.nextGroupSlot(
+            userId, targets[0], times[i], campaign.id, cycleEnd,
+          );
           if (skip && opts?.fromScheduler) { skipped++; continue; }
           scheduledAt = slot;
         }
