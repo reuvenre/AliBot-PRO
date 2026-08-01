@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
-import { CronTime } from 'cron';
+
 import axios from 'axios';
 import { Post } from '../posts/post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -18,28 +18,13 @@ import {
   detectCtrRegressions, regressionLine,
 } from './regression';
 import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
+import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
 
 /** The window a campaign is judged on, and the stretch of its own past it is judged against.
  *  Three weeks of baseline absorbs a single odd week; one week of "recent" still reacts fast. */
 const RECENT_DAYS = 7;
 const BASELINE_DAYS = 21;
 
-/** The tightest interval (minutes) a cron fires at — min gap over its next few fires.
- *  Hourly → 60, every-2h → 120. null when the expression can't be parsed. */
-function cronBaseIntervalMin(expr: string): number | null {
-  try {
-    const ct = new CronTime(expr);
-    let from = new Date();
-    let min = Infinity;
-    for (let i = 0; i < 4; i++) {
-      const a = ct.getNextDateFrom(from).toJSDate();
-      const b = ct.getNextDateFrom(new Date(a.getTime() + 1000)).toJSDate();
-      min = Math.min(min, (b.getTime() - a.getTime()) / 60_000);
-      from = new Date(b.getTime() + 1000);
-    }
-    return Number.isFinite(min) && min > 0 ? Math.round(min) : null;
-  } catch { return null; }
-}
 
 /**
  * 24/7 self-monitoring. Every 15 minutes the watchdog scans for anomalies that
@@ -551,7 +536,11 @@ export class WatchdogService implements OnModuleInit {
     const driftHits: string[] = [];
     const driftDetails: string[] = [];
     for (const c of silent.slice(0, 40)) {
-      const expectedCron = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
+      // The TYPICAL gap, not the tightest one. An irregular schedule
+      // ("0 9,10,13,16,19,22 * * *") fires 60 minutes apart once and ~3 hours apart the rest
+      // of the day; measuring it by its minimum and then comparing that to a real median gap
+      // reported a campaign publishing exactly as intended as a 3× drift.
+      const expectedCron = c.schedule_cron ? cronTypicalIntervalMin(c.schedule_cron) : null;
       if (!expectedCron) continue;
       // Same night suppression: don't report slow cadence while the window is closed.
       if (!this.nowInWindow(await this.campaignWindowResolved(c))) continue;
