@@ -134,6 +134,17 @@ export default function OrdersPage() {
   const commRate = totalAmount > 0 ? (totalComm / totalAmount) * 100 : 0;
   const pages = Math.max(1, Math.ceil(total / LIMIT));
 
+  // The count card used `total` — every row matching the filter, CANCELLED INCLUDED — while
+  // the three money cards beside it come from `totals`, which excludes cancelled server-side.
+  // So one row of four described a different population than the rest, and the count silently
+  // disagreed with the money above it. All four now describe the same orders.
+  //
+  // That leaves the count differing from the rows in the table, which DOES list cancelled —
+  // so the difference is stated rather than left as a puzzle. On the "בוטל" tab there is
+  // nothing to explain: every row is cancelled and the money cards are legitimately zero.
+  const cancelledCount = filter === 'cancelled' ? 0 : Math.max(0, total - totals.count);
+  const orderCount = filter === 'cancelled' ? total : totals.count;
+
   // Name the period the figures below cover. Without it a filtered total is indistinguishable
   // from an all-time one, which is exactly the confusion this screen had.
   const rangeLabel = (() => {
@@ -181,8 +192,13 @@ export default function OrdersPage() {
           { label: 'אחוז עמלה', value: totalAmount > 0 ? `${commRate.toFixed(1)}%` : '—', icon: TrendingUp, accent: 'blue' },
           { label: 'סך הזמנות', value: `$${totalAmount.toFixed(2)}`, icon: DollarSign, accent: 'green' },
           { label: 'סך עמלות', value: `$${totalComm.toFixed(2)}`, icon: DollarSign, accent: 'violet' },
-          { label: 'מספר הזמנות', value: total, icon: ShoppingCart, accent: 'amber' },
-        ].map(({ label, value, icon: Icon, accent }) => {
+          {
+            label: 'מספר הזמנות', value: orderCount, icon: ShoppingCart, accent: 'amber',
+            sub: cancelledCount > 0
+              ? `+${cancelledCount} ${cancelledCount === 1 ? 'בוטלה' : 'בוטלו'} — מופיעות בטבלה, לא בסכומים`
+              : null,
+          },
+        ].map(({ label, value, icon: Icon, accent, sub }) => {
           const map: Record<string, string> = {
             blue: 'text-blue-400 bg-blue-500/10', green: 'text-emerald-400 bg-emerald-500/10',
             violet: 'text-violet-400 bg-violet-500/10', amber: 'text-amber-400 bg-amber-500/10',
@@ -196,6 +212,7 @@ export default function OrdersPage() {
                 </span>
               </div>
               <p className="text-xl font-bold text-white">{value}</p>
+              {sub && <p className="text-[10px] text-white/35 mt-1 leading-tight">{sub}</p>}
             </div>
           );
         })}
