@@ -2462,8 +2462,15 @@ export class PostsService {
       .filter((line) => !attemptedTokens.some((tok) => new RegExp(`^${tok}:`, 'i').test(line)));
     const merged = [...kept, ...errors].filter(Boolean);
     post.error_message = merged.length ? merged.join(' | ') : null;
-    if (post.status !== 'sent') post.status = 'sent';
-    if (!post.sent_at) post.sent_at = new Date();
+    // ONLY a push that actually reached a platform may mark the post sent. This used to run
+    // unconditionally, and the row was saved before the failure was thrown — so a push where
+    // every platform failed still left the post reading 'נשלח' in the list forever, with the
+    // real error buried in error_message. The caller saw an error once; the record lied after.
+    if (anySuccess) {
+      if (post.status !== 'sent') post.status = 'sent';
+      if (!post.sent_at) post.sent_at = new Date();
+    }
+    // The error message is persisted either way — a failed push must leave its reason behind.
     await this.repo.save(post);
 
     // Nothing went out → surface the failure to the caller instead of a false success.
