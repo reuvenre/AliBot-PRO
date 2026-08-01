@@ -96,3 +96,37 @@ describe('facebookError', () => {
     expect(info.message).toContain('לא השיבה בזמן');
   });
 });
+
+describe('#100 — Graph\'s generic "invalid parameter"', () => {
+  const err100 = (message: string) => ({ response: { data: { error: { code: 100, message } } } });
+
+  it('names the Page ID when Graph says the object cannot be reached', () => {
+    const info = facebookError(err100(
+      "Unsupported post request. Object with ID '123' does not exist, cannot be loaded due to "
+      + 'missing permissions, or does not support this operation.',
+    ));
+    expect(info.message).toContain('Page ID');
+    expect(info.message).toContain('/me/accounts');
+    expect(info.needsUserAction).toBe(true);
+  });
+
+  it('blames the LINK when Graph says the link is what it rejected', () => {
+    // The same code fires for a bad `link`, and sending the owner to re-check a correct
+    // Page ID leaves the real culprit untouched.
+    const info = facebookError(err100('Invalid parameter: link URL is not properly formatted'));
+    expect(info.message).toContain('קישור');
+    expect(info.message).not.toContain('/me/accounts');
+  });
+
+  it('quotes Facebook verbatim for a flavour it does not recognise', () => {
+    // Guessing a cause reads as certainty the code does not have. Say what Facebook said.
+    const info = facebookError(err100('Invalid parameter: some future field'));
+    expect(info.message).toContain('Invalid parameter: some future field');
+    expect(info.message).toContain('Page ID'); // still names the most common cause
+  });
+
+  it('applies the same reading to #803', () => {
+    expect(facebookError({ response: { data: { error: { code: 803, message: 'does not exist' } } } })
+      .message).toContain('Page ID');
+  });
+});

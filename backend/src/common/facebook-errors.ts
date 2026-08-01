@@ -73,11 +73,30 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
       }
       return act('טוקן הפייסבוק פג תוקף או בוטל. יש לחדש אותו בהגדרות ← אינטגרציות.');
     case 100:
-    case 803:
+    case 803: {
+      // #100 is Graph's GENERIC "invalid parameter" — a wrong Page ID is only its most
+      // common cause. It also fires on a bad `link`, an unknown field, or a malformed
+      // argument, and blaming the Page ID unconditionally sent the owner to re-check an id
+      // that was correct while the real culprit sat untouched. Graph names the offending
+      // parameter in its own message, so let that decide, and never drop what it said.
+      if (/\blink\b/i.test(raw)) {
+        return act(
+          'פייסבוק דחתה את הקישור שבפוסט. הקישור חייב להיות כתובת מלאה וציבורית '
+          + `שפייסבוק יכולה לפתוח. (פייסבוק אמרה: ${raw})`,
+        );
+      }
+      if (/nonexisting|does not exist|cannot be loaded|Unsupported (get|post) request/i.test(raw)) {
+        return act(
+          'מזהה הדף (Page ID) אינו תקין או שהטוקן לא מכסה אותו. '
+          + 'יש להשתמש במזהה שחוזר מ-GET /me/accounts, לא במספר מכתובת profile.php.',
+        );
+      }
+      // Unknown flavour of #100: say what Facebook said rather than guess a cause.
       return act(
-        'מזהה הדף (Page ID) אינו תקין או שהטוקן לא מכסה אותו. '
-        + 'יש להשתמש במזהה שחוזר מ-GET /me/accounts, לא במספר מכתובת profile.php.',
+        'פייסבוק דחתה את הבקשה כלא תקינה. '
+        + `הסיבה הנפוצה היא Page ID שגוי, אך פייסבוק אמרה: ${raw}`,
       );
+    }
     case 368:
       return act('הדף חסום זמנית לפרסום על ידי פייסבוק. יש להמתין לפני ניסיון נוסף.');
     case 4:
