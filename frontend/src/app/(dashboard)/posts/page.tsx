@@ -846,12 +846,15 @@ function PushModal({ post, channels, onClose, onDone }: {
               {PLATFORMS.map((p) => {
                 const on = platforms.includes(p.id);
                 return (
+                  // Same selected-blue as the group chips below. These are two rows of the
+                  // same control in one dialog, and giving each its own colour read as a
+                  // difference in meaning rather than a difference in category.
                   <button key={p.id} type="button" onClick={() => togglePlatform(p.id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                      on ? 'bg-teal-600/20 border-teal-500/50 text-teal-200' : 'bg-white/5 border-edge-hover text-white/50 hover:text-white/80'
+                      on ? 'bg-blue-600/20 border-blue-500/50 text-blue-200' : 'bg-white/5 border-edge-hover text-white/50 hover:text-white/80'
                     }`}>
-                    <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${on ? 'bg-teal-500 border-teal-500' : 'border-white/30'}`}>
-                      {on && <CheckCircle2 size={10} className="text-white" />}
+                    <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${on ? 'bg-blue-500 border-blue-500' : 'border-white/30'}`}>
+                      {on && <Check size={10} className="text-on-accent" strokeWidth={3} />}
                     </span>
                     {p.label}
                   </button>

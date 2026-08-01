@@ -443,6 +443,23 @@ input.bg-white:-webkit-autofill:active {
 [data-theme="light"] .text-rose-300    { color: #be123c !important; }
 [data-theme="light"] .text-cyan-300    { color: #0e7490 !important; }
 [data-theme="light"] .text-orange-300  { color: #c2410c !important; }
+/* Teal and amber were the two hues this block never covered, so they kept the washed-out
+   dark-theme tint on white. The selected platform chip in the push dialog was the visible
+   casualty: pale mint text on a pale mint fill, effectively unreadable. */
+[data-theme="light"] .text-teal-100,
+[data-theme="light"] .text-teal-200    { color: #115e59 !important; }
+[data-theme="light"] .text-teal-300    { color: #0f766e !important; }
+[data-theme="light"] .text-amber-100,
+[data-theme="light"] .text-amber-200   { color: #92400e !important; }
+[data-theme="light"] .text-amber-300   { color: #b45309 !important; }
+
+/* Content sitting ON a saturated fill — a tick inside a filled checkbox, a label on a solid
+   button — must stay white in BOTH themes. The light-theme `.text-white` remap above turns
+   it near-black, which is what made the ticked checkboxes in the push dialog read as dark
+   blobs on blue. This class opts out of that remap; use it instead of `text-white` whenever
+   the background is a solid accent rather than the page surface. */
+.text-on-accent,
+[data-theme="light"] .text-on-accent { color: #fff !important; }
 
 /* Tinted alert surfaces: a /15 wash of a saturated colour reads as flat grey on white.
    Nudge the fill up and the border to a real hue so the banner keeps its meaning. */

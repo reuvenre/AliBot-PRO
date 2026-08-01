@@ -540,7 +540,7 @@ function BroadcastModal({ onClose }: { onClose: () => void }) {
                       on ? 'bg-violet-600/20 border-violet-500/50 text-violet-200' : 'bg-white/5 border-edge-hover text-white/50 hover:text-white/80'
                     }`}>
                     <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${on ? 'bg-violet-500 border-violet-500' : 'border-white/30'}`}>
-                      {on && <CheckCircle2 size={10} className="text-white" />}
+                      {on && <CheckCircle2 size={10} className="text-on-accent" />}
                     </span>
                     {c.label}
                   </button>

@@ -48,7 +48,7 @@ export function GroupMultiSelect({ channels, value, onChange, disabled }: {
                   on ? 'bg-blue-500 border-blue-500' : 'border-white/30'
                 }`}
               >
-                {on && <Check size={10} className="text-white" />}
+                {on && <Check size={10} className="text-on-accent" strokeWidth={3} />}
               </span>
               {ch.name}
             </button>
