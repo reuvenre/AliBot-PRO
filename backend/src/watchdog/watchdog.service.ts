@@ -17,6 +17,7 @@ import {
   CtrRegression, MIN_BASELINE_CLICKS, MIN_DROP_PERCENT, MIN_POSTS_PER_WINDOW,
   detectCtrRegressions, regressionLine,
 } from './regression';
+import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
 
 /** The window a campaign is judged on, and the stretch of its own past it is judged against.
  *  Three weeks of baseline absorbs a single odd week; one week of "recent" still reacts fast. */
@@ -658,7 +659,61 @@ export class WatchdogService implements OnModuleInit {
       });
     }
 
-    // 7. Business regression: a campaign that still publishes fine but stopped converting.
+    // 7. CAPACITY SHORTFALL: a campaign set to N posts per run whose target group's interval
+    //    cannot carry N in one cycle. The scheduler is behaving correctly — each post sits a
+    //    full group interval behind the last and nothing may spill past the next cron fire —
+    //    but the setting in the UI then simply does not come true, silently. No other check
+    //    can see it: nothing fails, nothing runs late, and the cadence matches the group's
+    //    configured rate exactly. Only the owner can resolve it, so it is a user-action alert.
+    const shortfalls = detectCapacityShortfalls(
+      (await Promise.all(activeCampaigns.map(async (c) => {
+        const wanted = Number(c.posts_per_run);
+        if (!(wanted > 1)) return null;
+        const cycleMin = c.schedule_cron ? cronBaseIntervalMin(c.schedule_cron) : null;
+        if (!cycleMin) return null;
+        // Only Telegram-publishing campaigns are bound by the group's Telegram interval.
+        if (c.target_platforms && !/telegram/i.test(c.target_platforms)) return null;
+        let groups: string[] = [];
+        try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+        if (!groups.length) return null;
+        const groupId = groups[0];
+        const groupMin = await this.channels.getIntervalMinutes(c.user_id, groupId).catch(() => null);
+        if (groupMin == null) return null;
+        return {
+          campaignId: c.id,
+          campaignName: c.name,
+          userId: c.user_id,
+          groupId,
+          groupName: (await this.channels.getName(c.user_id, groupId).catch(() => null)) || groupId,
+          postsPerRun: wanted,
+          cycleMinutes: cycleMin,
+          groupIntervalMinutes: groupMin,
+        };
+      }))).filter(Boolean) as CampaignCadence[],
+    );
+    if (shortfalls.length) {
+      out.push({
+        key: `posts_per_run_capacity:${shortfalls.map((s) => s.campaignId).sort().join(',').slice(0, 80)}`,
+        title: `${shortfalls.length} קמפיינים שמוגדרים ליותר פוסטים לריצה ממה שהקבוצה יכולה לקבל`,
+        body: [
+          '**בדיקה:** "פוסטים לריצה" של קמפיין פעיל מול כמה פוסטים באמת נכנסים במחזור אחד שלו.',
+          'המתזמן מציב כל פוסט מרווח-קבוצה שלם אחרי הקודם, ולא חורג מהפעימה הבאה של ה-cron —',
+          `כך שהמקסימום האמיתי הוא ceil(מחזור ÷ מרווח קבוצה).`,
+          '',
+          ...shortfalls.map((s) =>
+            `- "${s.campaignName}" \`${s.campaignId}\` · מוגדר ${s.postsPerRun}/ריצה · מחזור ${s.cycleMinutes} דק'`
+            + ` · קבוצה "${s.groupName}" ${s.groupIntervalMinutes} דק' → **בפועל ${s.maxPostsPerCycle}**`),
+          '',
+          '**זו אינה תקלת קוד** — המתזמן מתנהג נכון וקצב הקבוצה גובר בכוונה. זו סתירה בין שתי',
+          'הגדרות של המשתמש, ורק שינוי הגדרה יפתור אותה.',
+        ].join('\n'),
+        details: shortfalls.slice(0, 5).map(shortfallLine),
+        action: 'הגדרות ← קבוצות ← בחר את הקבוצה ← הקטן את "מרווח בין פוסטים",'
+          + ' או הקטן את "פוסטים לריצה" בקמפיין. זו סתירה בין הגדרות — קוד לא יתקן אותה.',
+      });
+    }
+
+    // 8. Business regression: a campaign that still publishes fine but stopped converting.
     //    Every other check answers "is the machine broken?" — this one catches the failure
     //    that costs money while nothing raises an error at all: posts go out, Telegram
     //    accepts them, and the group quietly stops clicking after a template edit or a
@@ -689,7 +744,7 @@ export class WatchdogService implements OnModuleInit {
       });
     }
 
-    // 8. Security anomalies (brute-force, privilege escalation) from the audit log.
+    // 9. Security anomalies (brute-force, privilege escalation) from the audit log.
     //    Reported through the same channels; the 6h throttle per key still applies so
     //    an ongoing attack alerts once, not every 15 minutes.
     const sec = await this.security.scan().catch(() => []);
