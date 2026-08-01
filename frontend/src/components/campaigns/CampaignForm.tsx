@@ -116,14 +116,19 @@ export function CampaignForm({
           ? { ...form, source: 'amazon', target_channels: form.target_channels ?? [], min_discount: undefined, min_rating: undefined }
           : { ...form, source: 'aliexpress', target_channels: form.target_channels ?? [] };
       // Custom window off → explicit nulls so a previously-saved window is CLEARED,
-      // not silently kept. On → fill sensible defaults for anything left empty.
+      // not silently kept. On → store ONLY what the user actually picked: an hour left on
+      // "ירושה" stays null and keeps inheriting. The old `?? 9` / `?? 22` here was the same
+      // trap as the group card — the toggle self-enables for a campaign that has only a
+      // timezone, and any save then silently wrote 9–22 as the campaign's window, which
+      // outranks both the group's hours and the account's. A form must not invent settings.
       const payload: CampaignInput = {
         ...base,
         ...(useWindow
           ? {
+              // The tz default is visible, not silent — the buttons show Jerusalem active.
               window_tz: form.window_tz || 'Asia/Jerusalem',
-              window_start_hour: form.window_start_hour ?? 9,
-              window_end_hour: form.window_end_hour ?? 22,
+              window_start_hour: form.window_start_hour ?? null,
+              window_end_hour: form.window_end_hour ?? null,
             }
           : { window_tz: null, window_start_hour: null, window_end_hour: null }),
       };
@@ -593,11 +598,14 @@ export function CampaignForm({
                 <div>
                   <label className="block text-xs font-medium text-white/50 mb-1.5">משעה</label>
                   <select
-                    value={form.window_start_hour ?? 9}
-                    onChange={(e) => setForm((f) => ({ ...f, window_start_hour: +e.target.value }))}
+                    value={form.window_start_hour ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, window_start_hour: e.target.value === '' ? null : +e.target.value }))}
                     className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors appearance-none cursor-pointer"
                     dir="ltr"
                   >
+                    {/* Inherit is the DEFAULT. Preselecting 09:00 here is how a campaign
+                        with only a timezone silently gained a 9–22 window on save. */}
+                    <option value="" className="bg-neutral-900">ירושה (קבוצה/כללי)</option>
                     {Array.from({ length: 24 }, (_, h) => (
                       <option key={h} value={h} className="bg-neutral-900">{String(h).padStart(2, '0')}:00</option>
                     ))}
@@ -606,18 +614,20 @@ export function CampaignForm({
                 <div>
                   <label className="block text-xs font-medium text-white/50 mb-1.5">עד שעה</label>
                   <select
-                    value={form.window_end_hour ?? 22}
-                    onChange={(e) => setForm((f) => ({ ...f, window_end_hour: +e.target.value }))}
+                    value={form.window_end_hour ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, window_end_hour: e.target.value === '' ? null : +e.target.value }))}
                     className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors appearance-none cursor-pointer"
                     dir="ltr"
                   >
+                    <option value="" className="bg-neutral-900">ירושה (קבוצה/כללי)</option>
                     {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => (
                       <option key={h} value={h} className="bg-neutral-900">{h === 24 ? '24:00 (חצות)' : `${String(h).padStart(2, '0')}:00`}</option>
                     ))}
                   </select>
                 </div>
               </div>
-              {(form.window_end_hour ?? 22) <= (form.window_start_hour ?? 9) && (
+              {form.window_start_hour != null && form.window_end_hour != null
+                && form.window_end_hour <= form.window_start_hour && (
                 <p className="text-2xs text-red-400">⚠️ &quot;עד שעה&quot; חייבת להיות אחרי &quot;משעה&quot; — אחרת החלון לא יגביל כלום.</p>
               )}
               <p className="text-2xs text-white/30">
