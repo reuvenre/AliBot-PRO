@@ -343,9 +343,21 @@ function EditChannelModal({
     channel.schedule_start_hour != null ||
     channel.schedule_end_hour != null,
   );
-  const [interval, setIntervalMin] = useState(String(channel.schedule_interval_minutes ?? 60));
-  const [startHour, setStartHour] = useState(String(channel.schedule_start_hour ?? 9));
-  const [endHour, setEndHour] = useState(String(channel.schedule_end_hour ?? 22));
+  // Empty string = "not set here — inherit the global schedule". NEVER pre-fill a value the
+  // user didn't choose: these inputs used to initialize to `?? 9` / `?? 22`, so a group that
+  // only had an interval set showed 9–22 in state, and ANY save of this card — e.g. pasting
+  // a Facebook token — silently wrote those hours to the DB. The group then stopped
+  // publishing at 21:xx while the owner's global window said 6–23, with nothing anywhere
+  // showing why. A form must not invent settings on behalf of the user.
+  const [interval, setIntervalMin] = useState(
+    channel.schedule_interval_minutes != null ? String(channel.schedule_interval_minutes) : '',
+  );
+  const [startHour, setStartHour] = useState(
+    channel.schedule_start_hour != null ? String(channel.schedule_start_hour) : '',
+  );
+  const [endHour, setEndHour] = useState(
+    channel.schedule_end_hour != null ? String(channel.schedule_end_hour) : '',
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -363,9 +375,12 @@ function EditChannelModal({
         // null = inherit the global schedule; false on schedule_enabled = skip this
         // group's auto-queue entirely.
         schedule_enabled: inQueue ? null : false,
-        schedule_interval_minutes: customSched ? Number(interval) || 60 : null,
-        schedule_start_hour: customSched ? Number(startHour) || 0 : null,
-        schedule_end_hour: customSched ? Number(endHour) || 24 : null,
+        // Only what the user actually typed is stored; an empty field stays null and keeps
+        // inheriting the global schedule. Note hour 0 (midnight) is a legitimate value, so
+        // the empty-check is on the string — `Number('') || 0` would have stored midnight.
+        schedule_interval_minutes: customSched && interval.trim() !== '' ? Number(interval) || null : null,
+        schedule_start_hour: customSched && startHour.trim() !== '' ? Number(startHour) : null,
+        schedule_end_hour: customSched && endHour.trim() !== '' ? Number(endHour) : null,
       };
       if (botToken.trim()) dto.bot_token = botToken.trim();
       if (facebookPageToken.trim()) dto.facebook_page_token = facebookPageToken.trim();
@@ -437,23 +452,32 @@ function EditChannelModal({
             </label>
 
             {inQueue && customSched && (
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-2xs text-white/40 mb-1">כל (דק׳)</label>
-                  <input type="number" min={1} max={1440} value={interval} onChange={(e) => setIntervalMin(e.target.value)}
-                    className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-white/80 outline-none focus:border-blue-500/50" />
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-2xs text-white/40 mb-1">כל (דק׳)</label>
+                    <input type="number" min={1} max={1440} value={interval} placeholder="גלובלי"
+                      onChange={(e) => setIntervalMin(e.target.value)}
+                      className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-white/80 placeholder:text-white/25 outline-none focus:border-blue-500/50" />
+                  </div>
+                  <div>
+                    <label className="block text-2xs text-white/40 mb-1">משעה</label>
+                    <input type="number" min={0} max={23} value={startHour} placeholder="גלובלי"
+                      onChange={(e) => setStartHour(e.target.value)}
+                      className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-white/80 placeholder:text-white/25 outline-none focus:border-blue-500/50" />
+                  </div>
+                  <div>
+                    <label className="block text-2xs text-white/40 mb-1">עד שעה</label>
+                    <input type="number" min={1} max={24} value={endHour} placeholder="גלובלי"
+                      onChange={(e) => setEndHour(e.target.value)}
+                      className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-white/80 placeholder:text-white/25 outline-none focus:border-blue-500/50" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-2xs text-white/40 mb-1">משעה</label>
-                  <input type="number" min={0} max={23} value={startHour} onChange={(e) => setStartHour(e.target.value)}
-                    className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-white/80 outline-none focus:border-blue-500/50" />
-                </div>
-                <div>
-                  <label className="block text-2xs text-white/40 mb-1">עד שעה</label>
-                  <input type="number" min={1} max={24} value={endHour} onChange={(e) => setEndHour(e.target.value)}
-                    className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1.5 text-sm text-white/80 outline-none focus:border-blue-500/50" />
-                </div>
-              </div>
+                <p className="text-2xs text-white/30 leading-relaxed">
+                  שדה ריק = יורש מההגדרה הכללית (הגדרות ← תזמון). ערך שמופיע כאן גובר על הכללית —
+                  לקבוצה הזו בלבד.
+                </p>
+              </>
             )}
           </div>
 
