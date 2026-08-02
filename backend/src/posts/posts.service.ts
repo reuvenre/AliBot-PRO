@@ -1304,13 +1304,18 @@ export class PostsService {
     // and the last SENT time PER CAMPAIGN within the interval. Telegram-publishing posts
     // only (an Instagram-only campaign shares the group id for targeting but never reaches
     // the Telegram channel, so it must not consume the group's Telegram rate).
+    // 'pending' counts as occupying the group. A post being sent RIGHT NOW sits in
+    // 'pending' for a few seconds (scheduled → pending → sent), and the old status list
+    // skipped it — so a campaign cron firing during those seconds saw the group as free,
+    // booked the same minute, and the group got 06:00 and 06:01 back-to-back. The stale
+    // safety is the 30-minute pending reset cron, so a hung send blocks at most that long.
     const rows = await this.repo.createQueryBuilder('p')
       .select('p.campaign_id', 'campaign_id')
-      .addSelect("MAX(CASE WHEN p.status IN ('scheduled','queued') THEN p.scheduled_at END)", 'pending')
+      .addSelect("MAX(CASE WHEN p.status IN ('scheduled','queued','pending') THEN COALESCE(p.scheduled_at, p.pending_at) END)", 'pending')
       .addSelect("MAX(CASE WHEN p.status = 'sent' THEN p.sent_at END)", 'sent')
       .leftJoin(Campaign, 'c', 'c.id = p.campaign_id')
       .where('p.user_id = :userId', { userId })
-      .andWhere("p.status IN ('scheduled','queued','sent')")
+      .andWhere("p.status IN ('scheduled','queued','pending','sent')")
       .andWhere("(p.status != 'sent' OR p.sent_at >= :recent)", { recent: recentSentCutoff })
       .andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)', { g: groupId, like: `%"${groupId}"%` })
       .andWhere('(p.campaign_id IS NULL OR c.target_platforms IS NULL OR c.target_platforms LIKE :tg)', { tg: '%telegram%' })

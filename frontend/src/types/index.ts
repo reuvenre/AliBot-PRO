@@ -611,6 +611,9 @@ export interface Post {
   clicks_count?: number;
   /** Set when this post is an automatic winner-recycle of another post. */
   recycled_from?: string | null;
+  /** The campaign search keyword that produced this post — shown in the list so "where did
+   *  THIS product come from?" is answerable at a glance, without asking anyone. */
+  keyword?: string | null;
   created_at: string;
 }
 

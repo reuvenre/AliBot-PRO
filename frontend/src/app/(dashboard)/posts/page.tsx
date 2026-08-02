@@ -463,7 +463,12 @@ function PostRow({ post, channels, onRetry, onRetryFailed, onDelete, onEdit, onR
               {post.product_title}
             </p>
             <div className="mt-1"><PostMeta post={post} channels={channels} /></div>
-            {post.campaign_name && <span className="text-xs text-white/30 truncate block mt-0.5">{post.campaign_name}</span>}
+            <span className="text-xs text-white/30 truncate block mt-0.5">
+              {post.campaign_name}
+              {/* The search keyword that pulled THIS product — so an off-brand product in a
+                  group is traceable to its keyword at a glance, without asking anyone. */}
+              {post.keyword && <span className="text-white/40"> · 🔎 {post.keyword}</span>}
+            </span>
           </div>
         </div>
       </td>
