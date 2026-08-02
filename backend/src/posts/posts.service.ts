@@ -1313,6 +1313,14 @@ export class PostsService {
       .select('p.campaign_id', 'campaign_id')
       .addSelect("MAX(CASE WHEN p.status IN ('scheduled','queued','pending') THEN COALESCE(p.scheduled_at, p.pending_at) END)", 'pending')
       .addSelect("MAX(CASE WHEN p.status = 'sent' THEN p.sent_at END)", 'sent')
+      // The sent post's SLOT time (scheduled_at), for spacing the next slot from. Spacing
+      // from sent_at made the clock creep: each send finishes seconds after its slot, the
+      // next slot inherited that lag plus its own, and 06:00 became 07:01, 08:02… — a
+      // visible minute-per-hour drift the owner rightly flagged. Anchoring on the slot
+      // keeps the chain on round hours; the busy checks below still use the ACTUAL send
+      // time, because "did this group just publish?" is a question about reality, not
+      // about the timetable. Manual sends have no slot → sent_at, exactly as before.
+      .addSelect("MAX(CASE WHEN p.status = 'sent' THEN COALESCE(p.scheduled_at, p.sent_at) END)", 'sent_anchor')
       .leftJoin(Campaign, 'c', 'c.id = p.campaign_id')
       .where('p.user_id = :userId', { userId })
       .andWhere("p.status IN ('scheduled','queued','pending','sent')")
@@ -1353,7 +1361,10 @@ export class PostsService {
       }
       if (sent) {
         lastSentMs = Math.max(lastSentMs, sent);
-        latestMs = Math.max(latestMs, sent);
+        // SPACING runs off the slot anchor, so the chain stays on round hours instead of
+        // creeping by each send's processing lag. Busy checks keep the real send time.
+        const anchor = r.sent_anchor ? new Date(r.sent_anchor).getTime() : sent;
+        latestMs = Math.max(latestMs, Math.min(anchor, sent));
         if (campaignId && cid === campaignId) mySentMs = Math.max(mySentMs, sent);
       }
       lastSentByCampaign.set(cid, Math.max(pend, sent));
