@@ -745,10 +745,7 @@ export function IntegrationsForm() {
           Before this bar, two "שמור" buttons sat mid-page and whole sections (WhatsApp,
           Pinterest, Amazon, the publish toggles) had none in sight — a toggle flipped
           there looked saved and wasn't. */}
-      <SettingsSaveBar
-        onSave={handleSave} saving={saving} saved={saved}
-        note="שומר את כל האינטגרציות והמתגים בעמוד — כולל סעיפים בלי כפתור משלהם"
-      />
+      <SettingsSaveBar onSave={handleSave} saving={saving} saved={saved} />
     </div>
   );
 }

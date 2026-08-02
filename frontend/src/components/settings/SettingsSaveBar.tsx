@@ -15,29 +15,25 @@ import { Save, Loader2 } from 'lucide-react';
  * Section-level ACTION buttons (test connection, verify page) stay in their sections —
  * they run things; this bar is the only thing that persists them.
  */
-export function SettingsSaveBar({ onSave, saving, saved, note }: {
+export function SettingsSaveBar({ onSave, saving, saved }: {
   onSave: () => void | Promise<void>;
   saving: boolean;
   saved: boolean;
-  /** Optional one-liner shown beside the button (e.g. what this tab's save covers). */
-  note?: string;
 }) {
+  // Just the button — sticky so it's reachable from anywhere on the tab, but no card, no
+  // caption. The wrapping panel this started with read as one more section to parse, and
+  // the owner's reaction was right: a save button explains itself.
   return (
-    <div className="sticky bottom-2 z-10 mt-6">
-      <div className="bg-surface-secondary border border-edge-hover rounded-xl px-4 py-3 flex items-center justify-between gap-3 shadow-lg shadow-black/20">
-        <p className="text-2xs text-white/35 leading-relaxed">
-          {note || 'לחצן אחד שומר את כל ההגדרות בעמוד הזה'}
-        </p>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all shrink-0"
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור הגדרות'}
-        </button>
-      </div>
+    <div className="sticky bottom-3 z-10 mt-6 flex justify-start">
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-black/25"
+      >
+        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+        {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור הגדרות'}
+      </button>
     </div>
   );
 }

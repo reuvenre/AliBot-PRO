@@ -515,10 +515,7 @@ export function SchedulingForm() {
         </div>
       )}
 
-      <SettingsSaveBar
-        onSave={handleSave} saving={saving} saved={saved}
-        note="שומר את כל הגדרות התזמון בעמוד — חלון, מרווחים, מיחזור, התאוששות והמנוע הלומד"
-      />
+      <SettingsSaveBar onSave={handleSave} saving={saving} saved={saved} />
     </div>
   );
 }
