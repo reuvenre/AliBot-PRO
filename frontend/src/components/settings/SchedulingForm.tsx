@@ -16,6 +16,16 @@ const HOURS = Array.from({ length: 24 }, (_, i) => {
   return { value: i, label };
 });
 
+// END hours run 1–24, not 0–23. An end of "00:00" is the value 0, which can never be after
+// any start hour — so "until midnight" was impossible to pick and the form answered with
+// "שעת הסיום חייבת להיות אחרי שעת ההתחלה" for a perfectly reasonable request. 24 is the
+// end-of-day sentinel the group and campaign forms already use.
+const END_HOURS = Array.from({ length: 24 }, (_, i) => {
+  const h = i + 1;
+  const label = h === 24 ? '24:00 (חצות)' : h < 10 ? `0${h}:00` : `${h}:00`;
+  return { value: h, label };
+});
+
 const INTERVALS = [
   { value: 15,   label: 'כל 15 דקות' },
   { value: 30,   label: 'כל 30 דקות' },
@@ -91,7 +101,10 @@ export function SchedulingForm() {
   const postsPerDay = estimatePostsPerDay(startHour, endHour, interval);
 
   async function handleSave() {
-    if (startHour >= endHour) {
+    // A legacy stored 0 means end-of-day (see the select) — validate and save it as 24,
+    // or the one value that MEANS "after every start hour" would fail the check.
+    const effectiveEnd = endHour === 0 ? 24 : endHour;
+    if (startHour >= effectiveEnd) {
       setError('שעת הסיום חייבת להיות אחרי שעת ההתחלה');
       return;
     }
@@ -107,7 +120,7 @@ export function SchedulingForm() {
         openai_api_key: '',
         schedule_enabled: enabled,
         schedule_start_hour: startHour,
-        schedule_end_hour: endHour,
+        schedule_end_hour: effectiveEnd,
         schedule_interval_minutes: interval,
         seasonal_enabled: seasonalOn,
         recycle_winners_enabled: recycleOn,
@@ -234,37 +247,23 @@ export function SchedulingForm() {
               שעת סיום
             </label>
             <select
-              value={endHour}
+              // A stored 0 (saved back when "00:00" was offered here) means end-of-day;
+              // show it as 24 so it reads as the midnight it always meant.
+              value={endHour === 0 ? 24 : endHour}
               onChange={(e) => setEndHour(Number(e.target.value))}
               className="w-full bg-surface-tertiary border border-edge rounded-xl px-3 py-2.5 text-body text-white/80 outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
             >
-              {HOURS.map((h) => (
+              {END_HOURS.map((h) => (
                 <option key={h.value} value={h.value}>{h.label}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* Visual timeline */}
-        <div className="relative h-8 bg-white/[0.03] rounded-full overflow-hidden mt-2">
-          <div
-            className="absolute h-full bg-amber-500/20 border-x border-amber-500/30 rounded-full transition-all"
-            style={{
-              left: `${(startHour / 24) * 100}%`,
-              width: `${(Math.max(0, endHour - startHour) / 24) * 100}%`,
-            }}
-          />
-          {/* Hour marks */}
-          {[0, 6, 12, 18].map((h) => (
-            <div
-              key={h}
-              className="absolute top-1/2 -translate-y-1/2 text-[9px] text-white/20 font-medium"
-              style={{ left: `${(h / 24) * 100}%`, transform: 'translate(-50%, -50%)' }}
-            >
-              {h}:00
-            </div>
-          ))}
-        </div>
+        {/* No visual timeline. It was drawn left-to-right inside an RTL page, so its
+            direction read backwards, and it repeated what the two selects above already
+            say precisely. A decorative element that misleads is worth less than nothing —
+            the owner circled it and asked what it was for, which was the correct review. */}
       </div>
 
       {/* Interval */}

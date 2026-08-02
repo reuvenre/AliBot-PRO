@@ -203,7 +203,11 @@ export class CredentialSetDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  @Max(23)
+  // 24 = "עד חצות": the window runs to the end of the day, so the 23:00 hour is a real
+  // sending hour. The channel DTO already allowed 24; capping the GLOBAL window at 23 was
+  // the inconsistency that made "publish until midnight" impossible to configure — the UI
+  // only offered 00:00, which is 0, which fails the start<end check.
+  @Max(24)
   schedule_end_hour?: number;
 
   @IsOptional()
