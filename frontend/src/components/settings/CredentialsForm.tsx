@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Save } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { SettingsSaveBar } from './SettingsSaveBar';
 import { credentialsApi } from '@/lib/api-client';
 import type { CredentialSetInput, VerifyResult, AiProvider } from '@/types';
 
@@ -318,17 +319,8 @@ export function CredentialsForm() {
         </div>
       </section>
 
-      {/* Actions */}
+      {/* Action only — persisting is the sticky bar's job, one per tab. */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
-        >
-          {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          {saved ? 'נשמר ✓' : isSaving ? 'שומר...' : 'שמור הגדרות'}
-        </button>
-
         <button
           onClick={handleVerify}
           disabled={isVerifying}
@@ -338,6 +330,8 @@ export function CredentialsForm() {
           בדוק חיבורים
         </button>
       </div>
+
+      <SettingsSaveBar onSave={handleSave} saving={isSaving} saved={saved} />
     </div>
   );
 }

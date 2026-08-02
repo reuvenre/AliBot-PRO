@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Save, Check, Calculator } from 'lucide-react';
+import { Calculator, Loader2 } from 'lucide-react';
 import { credentialsApi } from '@/lib/api-client';
+import { SettingsSaveBar } from './SettingsSaveBar';
 
 type Rounding = 'natural' | 'charming' | 'exact';
 
@@ -132,14 +133,7 @@ export function PricingForm() {
         </div>
       </section>
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
-      >
-        {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
-        {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור הגדרות תמחור'}
-      </button>
+      <SettingsSaveBar onSave={handleSave} saving={saving} saved={saved} />
     </div>
   );
 }

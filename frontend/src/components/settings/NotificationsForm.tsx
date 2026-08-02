@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Loader2, AlertCircle, Send, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, Send } from 'lucide-react';
+import { SettingsSaveBar } from './SettingsSaveBar';
 import { notificationsApi } from '@/lib/api-client';
 import type { NotificationPrefs } from '@/types';
 
@@ -131,15 +132,8 @@ export function NotificationsForm() {
         {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
         {testMsg && <p className="text-xs text-emerald-400 mt-3">{testMsg}</p>}
 
+        {/* Action only — persisting is the sticky bar's job, one per tab. */}
         <div className="flex items-center gap-2 mt-5 flex-wrap">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
-            {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור העדפות'}
-          </button>
           <button
             onClick={handleTest}
             disabled={testing}
@@ -151,6 +145,8 @@ export function NotificationsForm() {
           </button>
         </div>
       </section>
+
+      <SettingsSaveBar onSave={handleSave} saving={saving} saved={saved} />
     </div>
   );
 }

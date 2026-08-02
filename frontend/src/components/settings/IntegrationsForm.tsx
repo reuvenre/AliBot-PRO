@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Save, Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2 } from 'lucide-react';
 import { credentialsApi, channelsApi, amazonApi } from '@/lib/api-client';
+import { SettingsSaveBar } from './SettingsSaveBar';
 import type { Channel } from '@/types';
 
 export function IntegrationsForm() {
@@ -297,12 +298,8 @@ export function IntegrationsForm() {
             />
           </div>
         </div>
+        {/* Action only — the ONE save for this tab is the sticky bar at the bottom. */}
         <div className="flex items-center gap-3 mt-4">
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור'}
-          </button>
           <button onClick={handleVerify} disabled={verifying}
             className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all">
             {verifying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -538,12 +535,8 @@ export function IntegrationsForm() {
             <p className="text-2xs text-red-400 -mt-2">⚠️ חיבור הדף: {facebookError}</p>
           )}
         </div>
+        {/* Action only — the ONE save for this tab is the sticky bar at the bottom. */}
         <div className="flex items-center gap-3 mt-4">
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור'}
-          </button>
           <button onClick={handleVerify} disabled={verifying}
             className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all">
             {verifying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -747,6 +740,15 @@ export function IntegrationsForm() {
           </div>
         )}
       </section>
+
+      {/* One save for the whole tab — every field and toggle above persists together.
+          Before this bar, two "שמור" buttons sat mid-page and whole sections (WhatsApp,
+          Pinterest, Amazon, the publish toggles) had none in sight — a toggle flipped
+          there looked saved and wasn't. */}
+      <SettingsSaveBar
+        onSave={handleSave} saving={saving} saved={saved}
+        note="שומר את כל האינטגרציות והמתגים בעמוד — כולל סעיפים בלי כפתור משלהם"
+      />
     </div>
   );
 }

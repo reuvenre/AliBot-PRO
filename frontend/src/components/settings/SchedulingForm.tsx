@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import {
-  ListOrdered, Save, Loader2, CheckCircle2, Clock,
+  ListOrdered, Loader2, CheckCircle2, Clock,
   Sun, Moon, Timer, Info, Zap,
 } from 'lucide-react';
 import { credentialsApi, campaignsApi, optimizerApi } from '@/lib/api-client';
+import { SettingsSaveBar } from './SettingsSaveBar';
 import type { Campaign } from '@/types';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => {
@@ -514,27 +515,10 @@ export function SchedulingForm() {
         </div>
       )}
 
-      {/* Save button */}
-      <div className="flex justify-start pt-1">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`flex items-center gap-2 px-5 py-2.5 text-body font-semibold rounded-xl transition-all disabled:opacity-50
-            ${saved
-              ? 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-400'
-              : 'bg-amber-500 hover:bg-amber-400 text-black'
-            }`}
-        >
-          {saving ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : saved ? (
-            <CheckCircle2 size={14} />
-          ) : (
-            <Save size={14} />
-          )}
-          {saved ? 'נשמר!' : 'שמור הגדרות'}
-        </button>
-      </div>
+      <SettingsSaveBar
+        onSave={handleSave} saving={saving} saved={saved}
+        note="שומר את כל הגדרות התזמון בעמוד — חלון, מרווחים, מיחזור, התאוששות והמנוע הלומד"
+      />
     </div>
   );
 }

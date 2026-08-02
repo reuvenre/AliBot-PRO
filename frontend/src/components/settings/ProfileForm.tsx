@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { SettingsSaveBar } from './SettingsSaveBar';
 import { credentialsApi } from '@/lib/api-client';
 
 const CURRENCIES = [
@@ -42,8 +42,8 @@ export function ProfileForm() {
       .catch(() => {});
   }, []);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setSaving(true);
     try {
       // Persist profile fields locally (no dedicated profile API endpoint yet)
@@ -103,17 +103,9 @@ export function ProfileForm() {
             />
           </div>
           <div className="col-span-2 pt-1">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
-            >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור שינויים'}
-            </button>
             {/* These fields have no column on the user record — they live in this browser
                 only. Saying so beats implying they follow the account. */}
-            <p className="text-2xs text-white/30 mt-2 leading-relaxed">
+            <p className="text-2xs text-white/30 leading-relaxed">
               השם והטלפון נשמרים בדפדפן הזה בלבד (אין להם עדיין שדה בחשבון) — לא יופיעו במכשיר אחר.
               כתובת המייל היא מזהה החשבון ומנוהלת בטאב &quot;אבטחה&quot;.
             </p>
@@ -148,17 +140,11 @@ export function ProfileForm() {
             <p className="text-2xs text-white/25 mt-2">המחירים יומרו מדולר למטבע שנבחר לפי שער חליפין בזמן אמת</p>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => handleSave(e as any)}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saved ? 'נשמר ✓' : saving ? 'שומר...' : 'שמור העדפות'}
-          </button>
         </div>
       </section>
+
+      {/* One save for the whole tab — profile fields and preferences persist together. */}
+      <SettingsSaveBar onSave={() => handleSave()} saving={saving} saved={saved} />
     </div>
   );
 }
