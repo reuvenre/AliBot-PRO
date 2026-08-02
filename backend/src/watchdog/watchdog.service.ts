@@ -14,8 +14,8 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { ChannelsService } from '../channels/channels.service';
 import { formatTelegramAlert } from './alert-format';
 import {
-  CtrRegression, MIN_BASELINE_CLICKS, MIN_DROP_PERCENT, MIN_POSTS_PER_WINDOW,
-  detectCtrRegressions, regressionLine,
+  CLICK_FILTER_DEPLOYED_AT, CtrRegression, MIN_BASELINE_CLICKS, MIN_DROP_PERCENT,
+  MIN_POSTS_PER_WINDOW, detectCtrRegressions, regressionLine, windowsComparable,
 } from './regression';
 import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
 import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
@@ -280,6 +280,14 @@ export class WatchdogService implements OnModuleInit {
    * would manufacture a "drop" out of a delivery problem another check already reports.
    */
   private async ctrRegressions(): Promise<CtrRegression[]> {
+    // Both windows must be measured in the same click unit. Until the full 28-day span
+    // clears the crawler-filter deploy, the baseline counts preview-crawler hits the recent
+    // window filters out, and every campaign "collapses" by construction. Resumes itself.
+    if (!windowsComparable(new Date(), RECENT_DAYS, BASELINE_DAYS)) {
+      this.logger.log('ctr regression scan on hold — baseline predates the crawler click filter '
+        + `(comparable again from ${new Date(CLICK_FILTER_DEPLOYED_AT.getTime() + (RECENT_DAYS + BASELINE_DAYS) * 86400_000).toISOString().slice(0, 10)})`);
+      return [];
+    }
     const rows: any[] = await this.campaigns.query(
       `SELECT c.id                                                        AS "campaignId",
               c.name                                                      AS "campaignName",

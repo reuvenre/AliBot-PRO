@@ -43,6 +43,32 @@ export interface CtrRegression {
   baselineClicks: number;
 }
 
+/**
+ * When the crawler click filter went live (commit 5560559, deployed 2026-07-31 ~10:30 UTC,
+ * stated with margin). Before it, every post's click count included link-preview crawler
+ * hits — Telegram and WhatsApp fetch each posted URL to build its card, and those fetches
+ * landed in link_clicks like shoppers.
+ *
+ * That makes clicks from before this moment a DIFFERENT UNIT than clicks after it, and a
+ * rate comparison across the boundary is biased downward by construction: the baseline is
+ * inflated, the recent window is not. The first alert this check ever raised was exactly
+ * that — a "-46% collapse" in a campaign whose baseline was measured in the old, inflated
+ * unit. A regression detector that cries wolf on its own measurement change teaches the
+ * owner to ignore it.
+ */
+export const CLICK_FILTER_DEPLOYED_AT = new Date('2026-07-31T11:00:00Z');
+
+/** Are both comparison windows measured in the same click unit? Only when the FULL span
+ *  (recent + baseline) starts after the filter deploy — the check holds off until then
+ *  and resumes by itself, no flag to remember to flip back. */
+export function windowsComparable(
+  now: Date, recentDays: number, baselineDays: number,
+  filterSince: Date = CLICK_FILTER_DEPLOYED_AT,
+): boolean {
+  const spanStart = new Date(now.getTime() - (recentDays + baselineDays) * 24 * 3600_000);
+  return spanStart.getTime() >= filterSince.getTime();
+}
+
 /** Posts needed in EACH window before the two are worth comparing. */
 export const MIN_POSTS_PER_WINDOW = 10;
 /**

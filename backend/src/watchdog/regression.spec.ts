@@ -1,6 +1,6 @@
 import {
   CampaignCtr, MIN_BASELINE_CLICKS, MIN_DROP_PERCENT, MIN_POSTS_PER_WINDOW,
-  detectCtrRegressions, regressionLine,
+  detectCtrRegressions, regressionLine, windowsComparable,
 } from './regression';
 
 const row = (over: Partial<CampaignCtr> = {}): CampaignCtr => ({
@@ -92,5 +92,25 @@ describe('regressionLine', () => {
     expect(line).toContain('80%');
     expect(line).toContain('0.1');
     expect(line).toContain('0.5');
+  });
+});
+
+describe('windowsComparable', () => {
+  const FILTER = new Date('2026-07-31T11:00:00Z');
+
+  it('holds the check while the baseline still spans the old click unit', () => {
+    // Aug 2: the 28-day span reaches back to Jul 5 — three weeks of bot-inflated clicks.
+    // This exact state produced a fabricated "-46% collapse" on the check's first firing.
+    expect(windowsComparable(new Date('2026-08-02T06:00:00Z'), 7, 21, FILTER)).toBe(false);
+  });
+
+  it('resumes by itself once the full span is post-filter', () => {
+    expect(windowsComparable(new Date('2026-08-28T12:00:00Z'), 7, 21, FILTER)).toBe(true);
+  });
+
+  it('flips exactly at the boundary, never a day early', () => {
+    const boundary = new Date(FILTER.getTime() + 28 * 24 * 3600_000);
+    expect(windowsComparable(new Date(boundary.getTime() - 60_000), 7, 21, FILTER)).toBe(false);
+    expect(windowsComparable(boundary, 7, 21, FILTER)).toBe(true);
   });
 });
