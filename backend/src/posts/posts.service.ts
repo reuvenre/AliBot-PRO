@@ -2919,7 +2919,13 @@ export class PostsService {
           const gen = await this.ai.generateProductImage(
             creds, { mime: 'image/jpeg', data: raw.toString('base64') }, PostsService.NANO_BANANA_PROMPT,
           );
-          if (gen?.data?.length) { out.push(gen.data); continue; }
+          if (gen?.data?.length) {
+            // Never upload the AI's raw output: it answers in PNG at native resolution
+            // (several MB each), and a few of those in one album blew the 120s Telegram
+            // upload. Bound it to the same ≤1440px JPEG envelope as every other image.
+            const bounded = await this.collage.boundJpeg(gen.data);
+            if (bounded) { out.push(bounded); continue; }
+          }
         }
       }
       const studio = await this.collage.enhance([url]).catch(() => [] as Buffer[]);

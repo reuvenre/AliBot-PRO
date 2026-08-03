@@ -135,6 +135,27 @@ export class CollageService {
   }
 
   /**
+   * Normalise an IN-MEMORY image to the same bounded envelope every published photo uses
+   * (≤1440px, JPEG q88). The AI redesign answers in PNG at native resolution — routinely
+   * several MB per image — and uploading those raw multiplied the Telegram multipart body
+   * until the album upload blew its 120s timeout (watchdog: "timeout of 120000ms exceeded").
+   * Every OTHER image path was already bounded; this closes the one that wasn't.
+   * Null on failure — the caller falls back to the studio pass for that image.
+   */
+  async boundJpeg(buf: Buffer): Promise<Buffer | null> {
+    try {
+      return await sharp(buf)
+        .rotate()
+        .resize(1440, 1440, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 88 })
+        .toBuffer();
+    } catch (e: any) {
+      this.logger.warn(`boundJpeg failed: ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Fetch image bytes. If the URL is our own /suppliers/image proxy, extract the raw
    * target and send the Yupoo Referer directly (avoids a self-request and the hotlink
    * block). Any yupoo.com URL also gets the Referer.
