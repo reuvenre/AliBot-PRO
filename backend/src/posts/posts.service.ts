@@ -13,6 +13,8 @@ import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError } from './telegram-retry';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
+import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import sharp from 'sharp';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { nextRunAt } from '../campaigns/next-run';
@@ -3319,6 +3321,12 @@ export class PostsService {
       if (m) image = m[1];
     }
 
+    // Aspect-ratio gate: Instagram rejects anything outside 4:5–1.91:1 with #36003 —
+    // supplier fashion shots are routinely taller. When the ratio is illegal, hand
+    // Instagram our ig-image URL instead, which serves the photo letterboxed onto the
+    // nearest legal canvas. Best-effort: any failure here publishes the original.
+    image = await this.instagramFitImage(image);
+
     const caption = this.instagramCaption(message, post);
     const base = `https://graph.facebook.com/${GRAPH_VERSION}/${igId}`;
 
@@ -3366,6 +3374,38 @@ export class PostsService {
       await new Promise((r) => setTimeout(r, 4000));
     }
     throw new Error(lastErr);
+  }
+
+  /**
+   * The image URL Instagram should ingest: the original when its aspect ratio is legal,
+   * our /posts/ig-image letterbox variant when it is not. Checking the ratio requires the
+   * pixels, so the image is fetched once here (upstream directly, not through our own
+   * public proxy). Any failure — fetch, decode, disallowed host — returns the original:
+   * the gate must never turn a maybe-fine image into a certain failure.
+   */
+  private async instagramFitImage(imageUrl: string): Promise<string> {
+    try {
+      const target = unwrapOwnProxy(imageUrl);
+      const host = new URL(target).hostname;
+      if (!isIgFittableHost(host)) return imageUrl;
+
+      const resp = await axios.get(target, {
+        responseType: 'arraybuffer',
+        maxRedirects: 0,
+        headers: igFetchHeaders(host),
+        timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
+      });
+      if (resp.status !== 200) return imageUrl;
+      const meta = await sharp(Buffer.from(resp.data)).metadata();
+      if (!igFitBox(meta.width, meta.height)) return imageUrl;
+
+      const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+      if (!base) return imageUrl;
+      this.logger.log(`instagram image ${meta.width}x${meta.height} is outside 4:5–1.91:1 — serving the letterboxed variant`);
+      return `${base}/posts/ig-image?src=${encodeURIComponent(target)}`;
+    } catch {
+      return imageUrl;
+    }
   }
 
   /**

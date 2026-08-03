@@ -8,6 +8,7 @@ import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { PostsService } from './posts.service';
 import { PostsController } from './posts.controller';
+import { InstagramImageController } from './instagram-image.controller';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { RatesModule } from '../rates/rates.module';
@@ -33,7 +34,7 @@ import { CollageModule } from '../collage/collage.module';
     CollageModule,
   ],
   providers: [PostsService],
-  controllers: [PostsController],
+  controllers: [PostsController, InstagramImageController],
   exports: [PostsService],
 })
 export class PostsModule {}

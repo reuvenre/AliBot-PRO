@@ -710,7 +710,45 @@ export class WatchdogService implements OnModuleInit {
       });
     }
 
-    // 8. Business regression: a campaign that still publishes fine but stopped converting.
+    // 8. PARTIAL PUBLISHES: posts that went out on some channels and failed on another.
+    //    Every other post check watches for total failure — a post that reached Telegram
+    //    but lost Facebook or Instagram counts as 'sent' and tripped nothing, so a channel
+    //    could quietly degrade for days (the #36003 aspect-ratio run did exactly that:
+    //    the owner found it by eye the next morning, which is the watchdog's one job).
+    //    Two in six hours = a pattern worth a diagnosis, not channel noise.
+    const partials: any[] = await this.posts.createQueryBuilder('p')
+      .select(['p.id AS id', 'p.user_id AS user_id', 'p.error_message AS error_message', 'p.sent_at AS sent_at'])
+      .where("p.status = 'sent'")
+      .andWhere('p.error_message IS NOT NULL')
+      .andWhere('p.sent_at > :cutoff', { cutoff: new Date(now - 6 * 3600_000) })
+      .orderBy('p.sent_at', 'DESC')
+      .take(20)
+      .getRawMany()
+      .catch(() => []);
+    if (partials.length >= 2) {
+      // The platform tokens involved ("Instagram", "Facebook"…) key the alert, so a new
+      // platform starting to fail is its own alert instead of riding an old throttle.
+      const platforms = Array.from(new Set(partials.flatMap((p) =>
+        String(p.error_message).split('|').map((s) => s.trim().split(':')[0]).filter(Boolean)))).sort();
+      out.push({
+        key: `partial_publish:${platforms.join(',').slice(0, 60)}`,
+        title: `${partials.length} פוסטים פורסמו חלקית ב-6 שעות (${platforms.join(', ')})`,
+        body: [
+          '**בדיקה:** פוסטים בסטטוס sent שנושאים error_message — הגיעו לחלק מהערוצים ונכשלו באחר.',
+          'אף בדיקה אחרת לא רואה אותם: הם "נשלחו", אז ערוץ יכול להתדרדר בשקט ימים.',
+          '',
+          ...partials.slice(0, 8).map((p) =>
+            `- \`${p.id}\` · ${new Date(p.sent_at).toISOString()} · ${String(p.error_message).slice(0, 160)}`),
+          '',
+          'כיווני חקירה: השגיאה עצמה אומרת את הערוץ ואת הסיבה (facebook-errors ממפה קודים).',
+          'שגיאה חוזרת באותו ערוץ = תקלה מערכתית (טוקן, פורמט תמונה, מזהה) — לא רעש רשת.',
+        ].join('\n'),
+        details: partials.slice(0, 3).map((p) =>
+          `פורסם חלקית · ${String(p.error_message).split('|')[0].trim().slice(0, 80)}`),
+      });
+    }
+
+    // 9. Business regression: a campaign that still publishes fine but stopped converting.
     //    Every other check answers "is the machine broken?" — this one catches the failure
     //    that costs money while nothing raises an error at all: posts go out, Telegram
     //    accepts them, and the group quietly stops clicking after a template edit or a
@@ -741,7 +779,7 @@ export class WatchdogService implements OnModuleInit {
       });
     }
 
-    // 9. Security anomalies (brute-force, privilege escalation) from the audit log.
+    // 10. Security anomalies (brute-force, privilege escalation) from the audit log.
     //    Reported through the same channels; the 6h throttle per key still applies so
     //    an ongoing attack alerts once, not every 15 minutes.
     const sec = await this.security.scan().catch(() => []);
