@@ -619,9 +619,12 @@ function PostComposer({ productId, channels, defaultChannel, onSent }: {
                       className="w-full h-full object-cover cursor-zoom-in" loading="lazy" />
                     {!on && <span className="absolute inset-0 bg-black/30 pointer-events-none" />}
                     {/* Quick select/deselect toggle */}
+                    {/* #1 is not just first in line — it IS the post's main image: the album
+                        cover on Telegram, the Facebook photo, the Instagram image. Amber so
+                        the one selection that matters most reads differently from the rest. */}
                     <button type="button" onClick={() => toggleImage(g)} disabled={!on && atMax}
-                      title={on ? 'הסר מהאלבום' : 'הוסף לאלבום'}
-                      className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${on ? 'bg-blue-600 text-white' : 'bg-black/60 text-white/70 hover:bg-black/80'}`}>
+                      title={on ? (idx === 0 ? 'התמונה הראשית — פותחת את האלבום ומשמשת בפייסבוק ובאינסטגרם' : 'הסר מהאלבום') : 'הוסף לאלבום'}
+                      className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${on ? (idx === 0 ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white') : 'bg-black/60 text-white/70 hover:bg-black/80'}`}>
                       {on ? idx + 1 : <Check size={11} />}
                     </button>
                     {/* Enlarge affordance */}
@@ -633,7 +636,7 @@ function PostComposer({ productId, channels, defaultChannel, onSent }: {
                 );
               })}
             </div>
-            <p className="text-2xs text-white/25 mt-1.5">לחץ תמונה להגדלה · הסדר = סדר הבחירה{collage ? ' · קולאז\' עד 30' : ' · אלבום עד 10'}.</p>
+            <p className="text-2xs text-white/25 mt-1.5">הבחירה הראשונה (1, בכתום) היא התמונה הראשית — פותחת את האלבום ומשמשת בפייסבוק ובאינסטגרם · הסדר = סדר הבחירה{collage ? ' · קולאז\' עד 30' : ' · אלבום עד 10'}.</p>
           </div>
         )}
         <div className="bg-surface-secondary border border-edge rounded-xl p-3">
