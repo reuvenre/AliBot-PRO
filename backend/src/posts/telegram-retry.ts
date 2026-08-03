@@ -33,5 +33,35 @@ const CONNECTION_ERRORS = new Set([
  */
 export function isTelegramConnectionError(err: any): boolean {
   if (err?.response) return false;
-  return CONNECTION_ERRORS.has(err?.code);
+  if (CONNECTION_ERRORS.has(err?.code)) return true;
+  // Node's Happy Eyeballs connect (v18+) tries IPv4 and IPv6 and, when EVERY attempt dies,
+  // throws an AggregateError whose own `code` is unset and whose `message` is often EMPTY —
+  // the real codes live in `errors[]`. This is still "the request never left the machine",
+  // but the plain code check above missed it, so the one safe retry never happened and the
+  // post's error_message read a blank "Telegram: ". Retryable only when every inner failure
+  // is connection-level — a mix means something unknown happened, and unknown never retries.
+  const inner = (err as AggregateError)?.errors;
+  return Array.isArray(inner) && inner.length > 0
+    && inner.every((e: any) => CONNECTION_ERRORS.has(e?.code));
+}
+
+/**
+ * The one-line reason a Telegram send failed, for error_message / the UI — NEVER empty.
+ *
+ * `description || message` was the old formula, and an AggregateError (empty message, codes
+ * buried in `errors[]`) reduced it to nothing: the owner and the watchdog both saw a bare
+ * "Telegram: " with no way to tell a dead token from a network blip. Walk every place a
+ * reason can hide, and when all are empty say "connection failure" explicitly — because
+ * with no HTTP response, that is exactly what it was.
+ */
+export function telegramErrorText(err: any): string {
+  const desc = err?.response?.data?.description;
+  if (desc) return String(desc);
+  if (err?.message) return String(err.message);
+  const inner = (err as AggregateError)?.errors;
+  const codes = Array.isArray(inner)
+    ? Array.from(new Set(inner.map((e: any) => e?.code || e?.message).filter(Boolean)))
+    : [];
+  const code = err?.code || codes.join(', ');
+  return code ? `שגיאת חיבור לטלגרם (${code})` : 'שגיאת חיבור לטלגרם — הבקשה לא הגיעה לשרתי טלגרם';
 }

@@ -1,4 +1,9 @@
-import { isTelegramConnectionError } from './telegram-retry';
+import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
+
+/** Node's Happy Eyeballs failure shape: empty message, no own code, codes in errors[]. */
+function aggregateConnectError(codes: string[]): AggregateError {
+  return new AggregateError(codes.map((code) => Object.assign(new Error(`connect ${code}`), { code })), '');
+}
 
 describe('isTelegramConnectionError', () => {
   it('retries the connection reset that lost a real post', () => {
@@ -35,5 +40,45 @@ describe('isTelegramConnectionError', () => {
   it('survives a malformed error object', () => {
     expect(isTelegramConnectionError(undefined)).toBe(false);
     expect(isTelegramConnectionError({})).toBe(false);
+  });
+
+  it('retries an AggregateError whose every inner failure is connection-level', () => {
+    // Node v18+ tries IPv4 + IPv6; when both connects die it throws an AggregateError with
+    // an EMPTY message and NO top-level code — the failure that produced a blank
+    // "Telegram: " error_message and, because this check missed it, never got its retry.
+    expect(isTelegramConnectionError(aggregateConnectError(['ECONNREFUSED', 'ENETUNREACH']))).toBe(true);
+  });
+
+  it('does NOT retry an AggregateError containing any non-connection failure', () => {
+    const mixed = new AggregateError([
+      Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+      Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }),
+    ], '');
+    expect(isTelegramConnectionError(mixed)).toBe(false);
+    expect(isTelegramConnectionError(new AggregateError([], ''))).toBe(false);
+  });
+});
+
+describe('telegramErrorText', () => {
+  it('prefers the API description Telegram answered with', () => {
+    expect(telegramErrorText({ message: 'Request failed', response: { data: { description: 'chat not found' } } }))
+      .toBe('chat not found');
+  });
+
+  it('falls back to the error message', () => {
+    expect(telegramErrorText(new Error('read ECONNRESET'))).toBe('read ECONNRESET');
+  });
+
+  it('never returns empty for an AggregateError — names the inner codes', () => {
+    // The blank "Telegram: " bug: empty message hid what happened from the owner AND the
+    // watchdog. The inner connect codes are the diagnosis, so surface them.
+    const text = telegramErrorText(aggregateConnectError(['ECONNREFUSED', 'ENETUNREACH']));
+    expect(text).toContain('ECONNREFUSED');
+    expect(text).toContain('ENETUNREACH');
+    expect(text.length).toBeGreaterThan(0);
+  });
+
+  it('says "connection failure" when there is truly nothing else to report', () => {
+    expect(telegramErrorText({})).toContain('שגיאת חיבור לטלגרם');
   });
 });

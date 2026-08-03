@@ -11,7 +11,7 @@ import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
-import { isTelegramConnectionError } from './telegram-retry';
+import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
@@ -32,7 +32,7 @@ import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
 import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
-import { facebookErrorText } from '../common/facebook-errors';
+import { facebookErrorText, isTransientFacebookError } from '../common/facebook-errors';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
 
@@ -2384,7 +2384,7 @@ export class PostsService {
           const body = await this.buildPostBody(post, creds, target);
           const label = await this.targetLabel(userId, target, multi);
           try { await this.sendToTelegramChannel(post, creds, body, target, media); }
-          catch (err: any) { errors.push(`Telegram: ${label}${err?.response?.data?.description || err.message}`); }
+          catch (err: any) { errors.push(`Telegram: ${label}${telegramErrorText(err)}`); }
         }
       })());
     }
@@ -2456,7 +2456,7 @@ export class PostsService {
           const body = await this.buildPostBody(post, creds, target);
           const label = await this.targetLabel(userId, target, multi);
           try { await this.sendToTelegramChannel(post, creds, body, target, media); anySuccess = true; }
-          catch (err: any) { errors.push(`Telegram: ${label}${err?.response?.data?.description || err.message}`); }
+          catch (err: any) { errors.push(`Telegram: ${label}${telegramErrorText(err)}`); }
         }
       })());
     }
@@ -2748,7 +2748,7 @@ export class PostsService {
             await this.sendToTelegramChannel(post, creds, body, target, media);
             anySuccess = true;
           } catch (err: any) {
-            errors.push(`Telegram: ${label}${err?.response?.data?.description || err.message}`);
+            errors.push(`Telegram: ${label}${telegramErrorText(err)}`);
           }
         }
       })());
@@ -3239,7 +3239,7 @@ export class PostsService {
         : { message: plain, link, access_token: token },
     );
 
-    const res = await axios.post(
+    const attempt = () => axios.post(
       `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/${endpoint}`,
       params.toString(),
       // 20s, not the 8s this used to be. Graph fetches the attached URL — the link to build
@@ -3249,6 +3249,20 @@ export class PostsService {
       // it exists on the page, and the retry duplicates it. Better to wait.
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 },
     );
+    let res;
+    try {
+      res = await attempt();
+    } catch (err: any) {
+      // Graph's transient family (#1 "unknown error, retry your request" / #2 service
+      // unavailable) is an EXPLICIT rejection — nothing was published — and Facebook's own
+      // message says to retry. One paused retry turns these load blips into delivered posts
+      // instead of partial publishes. Timeouts stay non-retryable (see comment above:
+      // Facebook may have published before the reply was lost).
+      if (!isTransientFacebookError(err)) throw err;
+      this.logger.warn(`facebook ${endpoint} → page ${pageId}: transient Graph error, retrying once`);
+      await new Promise((r) => setTimeout(r, 2500));
+      res = await attempt();
+    }
     if (res.data?.error) throw new Error(res.data.error.message);
     // A 200 without an id means nothing was actually published — treat it as a failure
     // instead of marking the post 'sent' (Telegram validates delivery; FB didn't).

@@ -34,6 +34,17 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
   }
 
   switch (code) {
+    case 1:
+    case 2:
+      // Graph's "unknown error" / "service temporarily unavailable" family — including the
+      // "(#1) Please reduce the amount of data you're asking for, then retry your request"
+      // flavour that photo publishes hit under load. Facebook itself says to retry; nothing
+      // was published, nothing on the user's side is wrong.
+      return {
+        code,
+        message: `תקלה זמנית בשרתי פייסבוק — בוצע ניסיון חוזר אוטומטי. (פייסבוק אמרה: ${raw})`,
+        needsUserAction: false,
+      };
     case 10:
       // #10 means two different things depending on the surface, and the Facebook wording
       // sent Instagram users to re-issue a Page token that was never the problem.
@@ -114,4 +125,18 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
 export function facebookErrorText(err: any, platform: MetaPlatform = 'facebook'): string {
   const { code, message } = facebookError(err, platform);
   return code ? `(#${code}) ${message}` : message;
+}
+
+/**
+ * May this Graph failure be sent again safely?
+ *
+ * ONLY an explicit Graph error response with a transient code (#1 unknown / #2 service
+ * unavailable) qualifies: Facebook answered, said "try again", and published nothing — a
+ * retry cannot duplicate. A timeout is deliberately NOT retryable here even though it is
+ * transient too: Facebook may have published before the reply was lost, and a retry would
+ * put the post on the page twice (see the long-timeout comment at the send site).
+ */
+export function isTransientFacebookError(err: any): boolean {
+  const e = err?.response?.data?.error;
+  return typeof e?.code === 'number' && (e.code === 1 || e.code === 2);
 }

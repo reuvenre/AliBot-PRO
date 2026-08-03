@@ -1,4 +1,4 @@
-import { facebookError, facebookErrorText } from './facebook-errors';
+import { facebookError, facebookErrorText, isTransientFacebookError } from './facebook-errors';
 
 const graph = (code: number, message: string, error_subcode?: number) =>
   ({ response: { data: { error: { code, message, ...(error_subcode ? { error_subcode } : {}) } } } });
@@ -21,6 +21,15 @@ describe('facebookError', () => {
 
   it('flags an expired token as the owner\'s to renew', () => {
     expect(facebookError(graph(190, 'Session has expired')).needsUserAction).toBe(true);
+  });
+
+  it('calls #1 "reduce the amount of data" what it is — a transient server blip, not a settings problem', () => {
+    // The exact partial-publish from the watchdog: Graph rejected a photo post under load
+    // and asked to retry. Nothing on the owner's side is wrong.
+    const info = facebookError(graph(1, "Please reduce the amount of data you're asking for, then retry your request"));
+    expect(info.needsUserAction).toBe(false);
+    expect(info.message).toContain('זמנית');
+    expect(info.message).toContain('reduce the amount of data'); // raw kept for traceability
   });
 
   describe('#190 subcodes each need a different owner action', () => {
@@ -128,5 +137,26 @@ describe('#100 — Graph\'s generic "invalid parameter"', () => {
   it('applies the same reading to #803', () => {
     expect(facebookError({ response: { data: { error: { code: 803, message: 'does not exist' } } } })
       .message).toContain('Page ID');
+  });
+});
+
+describe('isTransientFacebookError', () => {
+  const graphErr = (code: number, message: string) =>
+    ({ response: { data: { error: { code, message } } } });
+
+  it('marks #1 and #2 retryable — Graph rejected explicitly and asked for a retry', () => {
+    expect(isTransientFacebookError(graphErr(1, "Please reduce the amount of data you're asking for, then retry your request"))).toBe(true);
+    expect(isTransientFacebookError(graphErr(2, 'Service temporarily unavailable'))).toBe(true);
+  });
+
+  it('does NOT mark a timeout retryable — Facebook may have already published', () => {
+    expect(isTransientFacebookError(Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))).toBe(false);
+  });
+
+  it('does NOT retry real verdicts: bad token, bad params, rate limits', () => {
+    expect(isTransientFacebookError(graphErr(190, 'Session has expired'))).toBe(false);
+    expect(isTransientFacebookError(graphErr(100, 'Invalid parameter'))).toBe(false);
+    expect(isTransientFacebookError(graphErr(4, 'Application request limit reached'))).toBe(false);
+    expect(isTransientFacebookError({})).toBe(false);
   });
 });
