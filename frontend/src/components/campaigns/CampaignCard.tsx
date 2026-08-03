@@ -44,8 +44,14 @@ export function CampaignCard({ campaign, onToggle, onRunNow, onDelete, onClick }
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`למחוק את הטייס האוטומטי "${campaign.name}"?`)) {
+    if (!confirm(`למחוק את הטייס האוטומטי "${campaign.name}"?`)) return;
+    try {
       await onDelete(campaign.id);
+    } catch (err: any) {
+      // A swallowed failure here is how "the delete button does nothing" bugs hide: the
+      // backend rejected the delete (FK constraint, network) and the card just stayed put
+      // with no explanation. Say it failed, and with what.
+      alert(`המחיקה נכשלה: ${err?.response?.data?.message || err?.message || 'שגיאה לא ידועה'}`);
     }
   };
 

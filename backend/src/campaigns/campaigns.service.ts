@@ -167,6 +167,28 @@ export class CampaignsService {
 
   async delete(userId: string, id: string) {
     const campaign = await this.get(userId, id);
+
+    // posts.campaign_id carries a foreign key with no ON DELETE behaviour, so any campaign
+    // that ever produced a post could not be deleted at all: the constraint rejected the
+    // row, the API answered 500, and the UI looked like the click did nothing.
+    //
+    // Deleting a campaign means two different things for its posts, and they get opposite
+    // treatment. Work that has NOT happened yet (scheduled/queued/pending) is the
+    // campaign's future — removing the campaign cancels it, or "deleted" posts would keep
+    // publishing to a live channel. Work that HAS happened is the account's history:
+    // clicks, revenue attribution and the digest all read it, so those rows survive and
+    // simply let go of the campaign (the column is already nullable for manual posts).
+    await this.repo.query(
+      `DELETE FROM posts WHERE user_id = $1 AND campaign_id = $2
+       AND status IN ('scheduled', 'queued', 'pending')`, [userId, id]);
+    await this.repo.query(
+      `UPDATE posts SET campaign_id = NULL WHERE user_id = $1 AND campaign_id = $2`,
+      [userId, id]);
+    // The dedup memory exists solely to serve this campaign's rotation — no campaign, no
+    // point. Best-effort: an orphaned row here blocks nothing.
+    await this.repo.query(
+      `DELETE FROM campaign_posted_products WHERE campaign_id = $1`, [id]).catch(() => {});
+
     await this.repo.remove(campaign);
     return { deleted: true };
   }
