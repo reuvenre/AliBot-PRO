@@ -14,6 +14,7 @@ import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError } from './telegram-retry';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { tidyRtlBody } from './rtl';
 import sharp from 'sharp';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -2308,7 +2309,10 @@ export class PostsService {
 
     const footer = await this.resolveFooterText(post.user_id, creds, channelOverride);
     if (footer && !body.includes(footer)) body = `${body}\n\n${footer}`;
-    return mdBoldToHtml(body);
+    // Hebrew bodies: pin every line right (emoji/price/link-opening lines otherwise render
+    // LTR — each line's direction follows its first strong character) and collapse the
+    // blank-line runs the copy model produces. English bodies pass through untouched.
+    return tidyRtlBody(mdBoldToHtml(body));
   }
 
   /**
