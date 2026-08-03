@@ -6,6 +6,7 @@ import { SupplierCatalog } from './entities/supplier-catalog.entity';
 import { SupplierCatalogsService } from './supplier-catalogs.service';
 import { YupooService } from './yupoo.service';
 import { normalizeSku } from './sku-match.util';
+import { openPostClash } from './flylink-dedup';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { Campaign } from '../campaigns/campaign.entity';
 import { AiService, GenerateImage } from '../ai/ai.service';
@@ -413,6 +414,22 @@ export class SupplierProductsService {
     return this.selectGallery(p, undefined, max);
   }
 
+  /**
+   * Refuse to queue/schedule a product that ALREADY has an open post (queued / scheduled /
+   * pending) to any of the same groups — that open post IS the publish the user asked for,
+   * and a second one duplicates it in the channel (the "one sent + one scheduled again"
+   * bug). Sending NOW is not guarded — an immediate push is an explicit user decision —
+   * and already-sent history never blocks (that's the repost feature).
+   */
+  private async assertNotAlreadyPending(userId: string, p: SupplierProduct, targets: string[]): Promise<void> {
+    const open = await this.posts.openPostsForProduct(userId, String(p.sku || p.id)).catch(() => []);
+    if (openPostClash(open, targets)) {
+      throw new BadRequestException(
+        'המוצר כבר ממתין לפרסום לקבוצה הזו (בתור או מתוזמן). מחק את הפוסט הקיים במסך הפוסטים אם ברצונך לתזמן מחדש.',
+      );
+    }
+  }
+
   /** Send now — to one group or several at once (a single credit for the action). */
   async send(userId: string, id: string, text?: string, channelId?: string, images?: string[], collageCells?: number, channels?: string[]) {
     const p = await this.get(userId, id);
@@ -431,6 +448,7 @@ export class SupplierProductsService {
       channelOverride: targets[0], channels: targets, collageCells,
     });
     p.has_post = true;
+    p.last_posted_at = new Date(); // advance the campaign rotation cursor — a manual publish counts
     await this.repo.save(p);
     return { sent: true, post_id: post.id, channels: targets.length ? targets : ['default'] };
   }
@@ -441,10 +459,12 @@ export class SupplierProductsService {
     if (p.in_stock === false) throw new BadRequestException('המוצר לא זמין (קישור FLYLINK מת)');
     if (!p.flylink_url) throw new BadRequestException('חסר קישור FLYLINK למוצר');
 
+    const targets = await this.targetChannels(p, channels, channelId);
+    await this.assertNotAlreadyPending(userId, p, targets);
+
     const gallery = await this.resolveGallery(userId, p, images, collageCells ? 30 : 10);
     const image = gallery[0] || this.proxyImage(p.image_url) || '';
     const finalText = text?.trim() || (await this.preview(userId, id)).generated_text;
-    const targets = await this.targetChannels(p, channels, channelId);
     const { price } = await this.pricing(userId, p.price);
 
     const post = await this.posts.scheduleCustom(userId, {
@@ -453,6 +473,7 @@ export class SupplierProductsService {
       channelOverride: targets[0], channels: targets, collageCells,
     }, scheduledAt);
     p.has_post = true;
+    p.last_posted_at = new Date(); // advance the campaign rotation cursor — a manual publish counts
     await this.repo.save(p);
     return { scheduled: true, post_id: post.id, at: scheduledAt, channels: targets.length ? targets : ['default'] };
   }
@@ -466,9 +487,11 @@ export class SupplierProductsService {
     if (p.in_stock === false) throw new BadRequestException('המוצר לא זמין (קישור FLYLINK מת)');
     if (!p.flylink_url) throw new BadRequestException('חסר קישור FLYLINK למוצר');
 
+    const targets = await this.targetChannels(p, channels, channelId);
+    await this.assertNotAlreadyPending(userId, p, targets);
+
     const gallery = await this.resolveGallery(userId, p, images, collageCells ? 30 : 10);
     const image = gallery[0] || this.proxyImage(p.image_url) || '';
-    const targets = await this.targetChannels(p, channels, channelId);
     const { price, currency } = await this.pricing(userId, p.price);
 
     const post = await this.posts.createQueuedPost(
@@ -482,6 +505,7 @@ export class SupplierProductsService {
       targets,
     );
     p.has_post = true;
+    p.last_posted_at = new Date(); // advance the campaign rotation cursor — a manual publish counts
     await this.repo.save(p);
     const creds = await this.credentials.getRaw(userId);
     return {
@@ -534,11 +558,27 @@ export class SupplierProductsService {
 
     if (!candidates.length) throw new BadRequestException('אין מוצרי FLYLINK זמינים במלאי לפרסום');
 
+    // CROSS-ORIGIN dedup — the same per-group signal the AliExpress runner uses: exclude
+    // any product that ANY post (a manual queue/schedule from the catalog included) already
+    // targets in this campaign's group(s) — open posts always, sent ones within the
+    // cooldown. Without this the campaign re-posted exactly what the owner had just queued
+    // by hand: manual posts carry no campaign_id (invisible to postedProductIds below) and
+    // don't advance last_posted_at, so they sat at the HEAD of this rotation (observed:
+    // POLO-5349 sent once and queued again).
+    const groupBusy = await this.posts
+      .postedProductIdsToChannels(targets, new Date(Date.now() - FLYLINK_REPEAT_COOLDOWN_MS))
+      .catch(() => new Set<string>());
+    const available = candidates.filter((p) => !groupBusy.has(String(p.sku || p.id)));
+    if (!available.length) {
+      return { queued: 0, failed: 0, keyword: 'מוצרי FLYLINK', searched: 'FLYLINK',
+        errors: ['כל המוצרים הזמינים כבר ממתינים לפרסום או פורסמו לאחרונה לקבוצות היעד — דילוג'] };
+    }
+
     // Explicit dedup — the SAME signal the AliExpress runner uses (and why it never repeats):
     // skip products this campaign already posted. last_posted_at ordering alone let a product
     // get re-selected on the next run (observed: WT1463 posted at 06:00 AND 09:00).
     const postedIds = await this.posts.postedProductIds(campaign.id).catch(() => new Set<string>());
-    const fresh = candidates.filter((p) => !postedIds.has(String(p.sku || p.id)));
+    const fresh = available.filter((p) => !postedIds.has(String(p.sku || p.id)));
     // Once the whole catalog has been posted at least once, repeats are allowed — but ONLY
     // for items past the repeat-cooldown, oldest-first (candidates are ordered by
     // last_posted_at ASC). Without this, a tiny/mostly-out-of-stock catalog re-posted the
@@ -547,7 +587,7 @@ export class SupplierProductsService {
     let pool = fresh;
     if (!pool.length) {
       const cutoff = Date.now() - FLYLINK_REPEAT_COOLDOWN_MS;
-      pool = candidates.filter((p) => !p.last_posted_at || new Date(p.last_posted_at).getTime() < cutoff);
+      pool = available.filter((p) => !p.last_posted_at || new Date(p.last_posted_at).getTime() < cutoff);
     }
     const products = pool.slice(0, limit);
     if (!products.length) {

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
-import { Repository, LessThan, MoreThan, Brackets } from 'typeorm';
+import { Repository, LessThan, MoreThan, In, Brackets } from 'typeorm';
 import axios from 'axios';
 // CommonJS module (no .default) — import-require avoids the `.default is not a
 // constructor` trap under this tsconfig (no esModuleInterop). See collage.service.ts.
@@ -1218,7 +1218,13 @@ export class PostsService {
     if (!ids.length) return new Set();
     const rows = await this.repo.createQueryBuilder('p')
       .select('DISTINCT p.product_id', 'product_id')
-      .where('p.created_at > :since', { since })
+      // An OPEN post (queued/scheduled/pending) blocks its product no matter how long ago it
+      // was created — a post still waiting to publish is a duplicate-in-the-making even if it
+      // was queued before the cooldown window opened. Sent history is time-bounded as before.
+      .where(new Brackets((w) => {
+        w.where('p.created_at > :since', { since })
+          .orWhere(`p.status IN ('queued','scheduled','pending')`);
+      }))
       .andWhere(new Brackets((w) => {
         ids.forEach((c, i) => {
           w.orWhere(`p.channel_override = :cc${i}`, { [`cc${i}`]: c });
@@ -1228,6 +1234,24 @@ export class PostsService {
       .getRawMany()
       .catch(() => [] as { product_id: string }[]);
     return new Set(rows.map((r) => String(r.product_id)));
+  }
+
+  /**
+   * OPEN posts (queued/scheduled/pending — created but not yet published) for a product,
+   * any origin. The FLYLINK manual queue/schedule paths call this before creating a post:
+   * a product already waiting to go out to the same group must not be queued a second time
+   * (the "one sent + one scheduled again" duplication). Sent posts are deliberately NOT
+   * returned — re-pushing an already-published product is the repost feature, not a bug.
+   */
+  async openPostsForProduct(userId: string, productId: string): Promise<Post[]> {
+    if (!productId) return [];
+    return this.repo.find({
+      where: {
+        user_id: userId,
+        product_id: String(productId),
+        status: In(['queued', 'scheduled', 'pending']),
+      },
+    });
   }
 
   /** The distinct product_ids this campaign has already posted (any status) — the explicit
