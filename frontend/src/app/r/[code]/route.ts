@@ -15,8 +15,11 @@ const FALLBACK = (process.env.SHORT_LINK_FALLBACK_URL || '').trim();
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
+  // The platform tag (?s=tg/fb/…) each send path stamps on its link — forwarded so the
+  // backend can record WHICH platform produced the click.
+  const src = req.nextUrl.searchParams.get('s') || '';
   try {
-    const res = await fetch(`${API}/r/${encodeURIComponent(code)}/resolve`, {
+    const res = await fetch(`${API}/r/${encodeURIComponent(code)}/resolve${src ? `?s=${encodeURIComponent(src)}` : ''}`, {
       headers: {
         'x-forwarded-referrer': req.headers.get('referer') || '',
         'user-agent': req.headers.get('user-agent') || '',

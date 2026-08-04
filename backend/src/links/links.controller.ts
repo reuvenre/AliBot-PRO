@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Req, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { LinksService } from './links.service';
 
@@ -10,22 +10,24 @@ export class LinksController {
   /**
    * JSON resolve for the frontend's /r/[code] route handler (the pretty domain).
    * Recording happens here because this call IS the click. Declared before ':code'
-   * so Nest matches the more specific path first.
+   * so Nest matches the more specific path first. `s` is the platform tag the send
+   * path stamped on the published link (?s=tg/fb/…), forwarded by the frontend.
    */
   @Get(':code/resolve')
-  async resolve(@Param('code') code: string, @Req() req: Request) {
+  async resolve(@Param('code') code: string, @Req() req: Request, @Query('s') s?: string) {
     const url = await this.svc.click(
       code,
       (req.headers['x-forwarded-referrer'] as string) || (req.headers.referer as string),
       req.headers['user-agent'] as string,
+      s,
     );
     return { url: url || null };
   }
 
   /** Direct backend redirect — works standalone if a short link points at the API host. */
   @Get(':code')
-  async redirect(@Param('code') code: string, @Req() req: Request, @Res() res: Response) {
-    const url = await this.svc.click(code, req.headers.referer as string, req.headers['user-agent'] as string);
+  async redirect(@Param('code') code: string, @Req() req: Request, @Res() res: Response, @Query('s') s?: string) {
+    const url = await this.svc.click(code, req.headers.referer as string, req.headers['user-agent'] as string, s);
     if (!url) return res.status(404).send('Link not found');
     return res.redirect(302, url);
   }

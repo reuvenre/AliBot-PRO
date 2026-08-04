@@ -27,6 +27,15 @@ export class LinkClick {
   @Column({ nullable: true })
   user_agent: string;
 
+  /**
+   * Which platform the click came from — 'tg' | 'fb' | 'ig' | 'pin' | 'wa', from the
+   * `?s=` tag each send path stamps on the link it publishes (see click-source.ts).
+   * NULL = untagged: a click on a link published before tagging existed, or a share
+   * of the bare link outside the platforms.
+   */
+  @Column({ nullable: true })
+  source: string;
+
   @CreateDateColumn()
   clicked_at: Date;
 }

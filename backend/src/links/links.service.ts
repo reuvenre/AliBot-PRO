@@ -6,6 +6,7 @@ import { Post } from '../posts/post.entity';
 import { LinkClick } from './link-click.entity';
 import { LinkTarget } from './link-target.entity';
 import { isBotAgent } from './bot-agents';
+import { normalizeClickSource } from './click-source';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // no 0/O/1/l/I
 const CODE_LENGTH = 8;
@@ -70,7 +71,7 @@ export class LinksService {
    * Resolve a code to its destination and record the click (fire-and-forget — the
    * visitor's redirect must never wait on our bookkeeping). Returns null for unknown codes.
    */
-  async click(code: string, referrer?: string, userAgent?: string): Promise<string | null> {
+  async click(code: string, referrer?: string, userAgent?: string, source?: string): Promise<string | null> {
     const clean = (code || '').trim();
     if (!clean || clean.length > 16) return null;
     const post = await this.posts.findOne({ where: { short_code: clean } });
@@ -95,6 +96,8 @@ export class LinksService {
           user_id: post.user_id,
           referrer: (referrer || '').slice(0, 500) || null,
           user_agent: (userAgent || '').slice(0, 300) || null,
+          // Validated platform tag ('tg'/'fb'/…) from the link's ?s= — see click-source.ts.
+          source: normalizeClickSource(source),
         } as Partial<LinkClick>);
         await this.posts.increment({ id: post.id }, 'clicks_count', 1);
       } catch (err: any) {

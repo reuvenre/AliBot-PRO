@@ -595,6 +595,11 @@ export const statsApi = {
   /** Dashboard headline — commissions, clicks and posts as weekly series with trends. */
   overview: (weeks = 12) =>
     http.get<OverviewStats>('/stats/overview', { params: { weeks } }).then(extract),
+  /** Clicks per platform (tg/fb/ig/wa; 'other' = untagged history) over the last N days. */
+  clickSources: (days = 30) =>
+    http.get<{ days: number; total: number; sources: Array<{ source: string; clicks: number }> }>(
+      '/stats/click-sources', { params: { days } },
+    ).then(extract),
 };
 
 export const earningsApi = {

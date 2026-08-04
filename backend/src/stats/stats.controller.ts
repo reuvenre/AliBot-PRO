@@ -17,4 +17,10 @@ export class StatsController {
   overview(@Req() req: Request, @Query('weeks') weeks?: string) {
     return this.svc.overview((req.user as any).id, weeks ? +weeks : 12);
   }
+
+  /** Clicks per platform (tg/fb/ig/wa, 'other' = untagged history) over the last N days. */
+  @Get('click-sources')
+  clickSources(@Req() req: Request, @Query('days') days?: string) {
+    return this.svc.clickSources((req.user as any).id, days ? +days : 30);
+  }
 }

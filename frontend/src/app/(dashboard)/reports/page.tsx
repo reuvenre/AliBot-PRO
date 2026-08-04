@@ -5,7 +5,7 @@ import {
   BarChart3, TrendingUp, TrendingDown, Loader2,
   DollarSign, FileText, Award, Calendar,
 } from 'lucide-react';
-import { earningsApi, postsApi, pinterestApi, type PinterestAnalytics, type AttributionSummary } from '@/lib/api-client';
+import { earningsApi, postsApi, pinterestApi, statsApi, type PinterestAnalytics, type AttributionSummary } from '@/lib/api-client';
 import type { EarningsSummary } from '@/types';
 
 const UNIQUE_PERIODS = [
@@ -232,6 +232,7 @@ export default function ReportsPage() {
           )}
 
           <AttributionPanel />
+          <ClickSourcesPanel />
           <PinterestPanel />
         </div>
       )}
@@ -316,6 +317,80 @@ function AttributionPanel() {
             <p className="text-2xs text-white/25 mt-3">
               {data.unattributed.orders} הזמנות (₪{data.unattributed.revenue_ils.toFixed(2)}) ללא שיוך לפוסט —
               בעיקר הזמנות מלפני הפעלת המעקב.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Click sources ────────────────────────────────────────────────────────────
+
+/** Platform labels for the click-source breakdown (the short link's ?s= tag). */
+const CLICK_SOURCE_LABELS: Record<string, string> = {
+  tg: 'טלגרם', fb: 'פייסבוק', ig: 'אינסטגרם', pin: 'פינטרסט', wa: 'וואטסאפ', other: 'לא מזוהה',
+};
+const CLICK_SOURCE_COLORS: Record<string, string> = {
+  tg: 'bg-sky-500', fb: 'bg-blue-600', ig: 'bg-pink-500', pin: 'bg-red-500', wa: 'bg-emerald-500', other: 'bg-white/25',
+};
+
+/**
+ * Where the link clicks come from (30 days): totals per platform from the ?s= tag each
+ * send path stamps on its published short link. 'לא מזוהה' = clicks on links published
+ * before tagging existed — kept so the numbers always add up to the click total.
+ */
+function ClickSourcesPanel() {
+  const [data, setData] = useState<{ days: number; total: number; sources: Array<{ source: string; clicks: number }> } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    statsApi.clickSources(30)
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading || !data) return null;
+
+  return (
+    <div className="bg-surface-secondary border border-edge rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-lg">🔗</span>
+        <h2 className="text-sm font-semibold text-white">מאיפה מגיעים הקליקים — 30 יום</h2>
+      </div>
+      {data.total === 0 ? (
+        <p className="text-xs text-white/35 mt-2">
+          אין עדיין קליקים בתקופה. הפירוק לפי פלטפורמה נאסף על קישורים שפורסמו מרגע הפעלת הסימון —
+          פוסטים חדשים יתחילו למלא את הדוח.
+        </p>
+      ) : (
+        <>
+          {/* One stacked bar — share of each platform at a glance. */}
+          <div className="flex h-2.5 rounded-full overflow-hidden mt-4 mb-3 bg-white/5">
+            {data.sources.map((s) => (
+              <div key={s.source}
+                className={CLICK_SOURCE_COLORS[s.source] || CLICK_SOURCE_COLORS.other}
+                style={{ width: `${(s.clicks / data.total) * 100}%` }}
+                title={`${CLICK_SOURCE_LABELS[s.source] || s.source}: ${s.clicks}`} />
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {data.sources.map((s) => (
+              <span key={s.source} className="inline-flex items-center gap-1.5 text-xs text-white/60">
+                <span className={`w-2 h-2 rounded-full ${CLICK_SOURCE_COLORS[s.source] || CLICK_SOURCE_COLORS.other}`} />
+                {CLICK_SOURCE_LABELS[s.source] || s.source}
+                <b className="text-white/85">{s.clicks}</b>
+                <span className="text-white/30">({Math.round((s.clicks / data.total) * 100)}%)</span>
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-1.5 text-xs text-white/40">
+              סה״כ <b className="text-white/85">{data.total}</b>
+            </span>
+          </div>
+          {data.sources.some((s) => s.source === 'other') && (
+            <p className="text-2xs text-white/25 mt-2">
+              "לא מזוהה" = קליקים על קישורים שפורסמו לפני הפעלת סימון הפלטפורמה — עם הזמן החלק הזה יקטן.
             </p>
           )}
         </>

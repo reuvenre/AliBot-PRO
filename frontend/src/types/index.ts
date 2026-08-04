@@ -611,6 +611,8 @@ export interface Post {
   /** Trackable short-link code (/r/<code>) + cached click total. */
   short_code?: string;
   clicks_count?: number;
+  /** Clicks per platform ('tg'/'fb'/'ig'/'wa'; 'other' = untagged history). */
+  clicks_by_source?: Record<string, number> | null;
   /** Set when this post is an automatic winner-recycle of another post. */
   recycled_from?: string | null;
   /** The campaign search keyword that produced this post — shown in the list so "where did

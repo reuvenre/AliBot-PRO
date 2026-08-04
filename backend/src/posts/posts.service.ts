@@ -12,6 +12,7 @@ import { copyDefect } from './copy-guard';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
+import { tagShortLinks } from '../links/click-source';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
@@ -352,7 +353,33 @@ export class PostsService {
     else if (source === 'aliexpress') qb.andWhere("(p.affiliate_url IS NULL OR p.affiliate_url NOT ILIKE '%flylink%')");
 
     const [raw, total] = await qb.getManyAndCount();
-    const data = raw.map((p) => ({ ...p, campaign_name: p.campaign?.name ?? null }));
+
+    // Per-PLATFORM click breakdown for the listed posts, one grouped query. Sources come
+    // from the ?s= tag each send path stamps on its link (click-source.ts); clicks from
+    // links published before tagging existed have source NULL and report as 'other'.
+    const ids = raw.map((p) => p.id);
+    const clicksBySource = new Map<string, Record<string, number>>();
+    if (ids.length) {
+      const rows: Array<{ post_id: string; source: string | null; n: number }> = await this.repo.manager
+        .query(
+          `SELECT post_id, source, COUNT(*)::int AS n
+           FROM link_clicks WHERE post_id = ANY($1)
+           GROUP BY post_id, source`,
+          [ids],
+        )
+        .catch(() => []);
+      for (const r of rows) {
+        const m = clicksBySource.get(r.post_id) || {};
+        m[r.source || 'other'] = Number(r.n) || 0;
+        clicksBySource.set(r.post_id, m);
+      }
+    }
+
+    const data = raw.map((p) => ({
+      ...p,
+      campaign_name: p.campaign?.name ?? null,
+      clicks_by_source: clicksBySource.get(p.id) ?? null,
+    }));
     return { data, total, page, limit };
   }
 
@@ -2940,6 +2967,9 @@ export class PostsService {
    * omitted it is computed here (single-target callers).
    */
   private async sendToTelegramChannel(post: Post, creds: DecryptedCredentials, caption: string, channelOverride?: string, media?: TgMedia) {
+    // Stamp the short link with its platform BEFORE the anchor rewrite below wraps it —
+    // the tag is how the click recorder knows this click came from Telegram.
+    caption = tagShortLinks(caption, 'tg');
     // Telegram renders HTML anchors — hide the raw link URL behind friendly CTA text so
     // followers see "לרכישה — לחצו כאן" instead of a long address (the URL rides the
     // anchor entity: clicks still track and still credit the affiliate). Telegram-only:
@@ -3221,10 +3251,11 @@ export class PostsService {
     if (!pageId || !token) throw new Error('Missing Facebook credentials');
 
     // Facebook does not render Telegram-style HTML tags — strip them for the FB body.
-    const plain = message.replace(/<\/?[^>]+>/g, '');
+    // The short link is stamped ?s=fb so its clicks report as Facebook's.
+    const plain = tagShortLinks(message, 'fb').replace(/<\/?[^>]+>/g, '');
     // The tracked /r/<code> URL. It already sits inside `plain` (buildPostBody puts it
     // there), so a photo post carries it in the caption and clicks are still counted.
-    const link = (await this.trackedLink(post)) || '';
+    const link = tagShortLinks((await this.trackedLink(post)) || '', 'fb');
     const image = this.facebookImage(post);
 
     // PHOTO post when we have the product image, LINK post only as a fallback.
@@ -3334,6 +3365,9 @@ export class PostsService {
     post: Post, creds: DecryptedCredentials, message: string,
     userId?: string, channelOverride?: string,
   ) {
+    // Instagram captions don't hyperlink URLs, but the text still shows the address a
+    // follower may copy/type — tag it so such clicks report as Instagram's.
+    message = tagShortLinks(message, 'ig');
     let igId = creds?.instagram_business_id;
     let token = creds?.facebook_page_token;
 
@@ -3535,7 +3569,8 @@ export class PostsService {
    * Sends the product image + caption; falls back to a text message when there's no image.
    */
   private async sendToWhatsApp(post: Post, creds: DecryptedCredentials, message: string) {
-    const caption = message.replace(/<\/?[^>]+>/g, ''); // WhatsApp renders plain text (links are clickable)
+    // Tagged ?s=wa + plain text (WhatsApp renders no HTML; links are clickable).
+    const caption = tagShortLinks(message, 'wa').replace(/<\/?[^>]+>/g, '');
     const provider = creds?.whatsapp_provider || 'green';
 
     let image = post.product_image || '';
@@ -3591,6 +3626,8 @@ export class PostsService {
    * HTML text plus every image URL, so the scenario can map whatever it needs.
    */
   private async sendToMakeWebhook(post: Post, creds: DecryptedCredentials, body: string, pageId: string) {
+    // Make relays to Facebook — its links are Facebook clicks.
+    body = tagShortLinks(body, 'fb');
     const url = creds?.make_webhook_url;
     if (!url) throw new Error('Missing Make webhook URL');
     // SSRF guard: the webhook URL is user-configured. Reject internal/private targets and
@@ -3618,7 +3655,7 @@ export class PostsService {
       photos,                      // same gallery pre-shaped for Facebook's photos array
       // Tracked, for the same reason the Graph path is: this link becomes the album's
       // call-to-action, and an untracked one hides the whole channel from the optimizer.
-      link: (await this.trackedLink(post)) || '',
+      link: tagShortLinks((await this.trackedLink(post)) || '', 'fb'),
       price_ils: post.price_ils || 0,
       facebook_page_id: pageId,
       post_id: post.id,

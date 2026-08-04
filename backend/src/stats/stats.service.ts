@@ -128,6 +128,28 @@ export class StatsService {
       .getRawMany();
   }
 
+  /**
+   * Clicks per PLATFORM over the last N days — where the traffic actually comes from.
+   * Source is the ?s= tag each send path stamps on its published link (click-source.ts);
+   * NULL = a click on a link published before tagging existed, reported as 'other' so the
+   * numbers always add up to the total instead of quietly dropping history.
+   */
+  async clickSources(userId: string, days = 30): Promise<{ days: number; total: number; sources: Array<{ source: string; clicks: number }> }> {
+    const d = Math.min(365, Math.max(1, Math.floor(days) || 30));
+    const from = new Date(Date.now() - d * 86_400_000);
+    const rows: Array<{ source: string | null; n: number }> = await this.clicks.createQueryBuilder('c')
+      .select('c.source', 'source')
+      .addSelect('COUNT(*)::int', 'n')
+      .where('c.user_id = :userId', { userId })
+      .andWhere('c.clicked_at >= :from', { from })
+      .groupBy('c.source')
+      .getRawMany();
+    const sources = rows
+      .map((r) => ({ source: r.source || 'other', clicks: Number(r.n) || 0 }))
+      .sort((a, b) => b.clicks - a.clicks);
+    return { days: d, total: sources.reduce((s, r) => s + r.clicks, 0), sources };
+  }
+
   /** Only posts that actually went out — a draft or a failure is not throughput. */
   private postsByWeek(userId: string, from: Date) {
     return this.posts.createQueryBuilder('p')

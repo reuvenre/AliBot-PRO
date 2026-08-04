@@ -92,6 +92,11 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string; Icon: React.El
 
 const LIMITS = [10, 20, 50, 100];
 
+/** Platform labels for the click-source breakdown (the link's ?s= tag). */
+const CLICK_SOURCE_LABELS: Record<string, string> = {
+  tg: 'טלגרם', fb: 'פייסבוק', ig: 'אינסטגרם', pin: 'פינטרסט', wa: 'וואטסאפ', other: 'לא מזוהה',
+};
+
 // ─── Queue Item ───────────────────────────────────────────────────────────────
 
 function QueueItem({
@@ -506,6 +511,16 @@ function PostRow({ post, channels, onRetry, onRetryFailed, onDelete, onEdit, onR
         {(post.clicks_count ?? 0) > 0 && (
           <span className="block text-2xs text-emerald-400 mt-0.5" title="קליקים על הלינק בפוסט">
             🔗 {post.clicks_count} קליקים
+          </span>
+        )}
+        {/* Per-platform breakdown from the link's ?s= tag; 'לא מזוהה' = clicks on links
+            published before tagging existed. */}
+        {post.clicks_by_source && Object.keys(post.clicks_by_source).length > 0 && (
+          <span className="block text-2xs text-white/40 mt-0.5" title="מאיזו פלטפורמה הגיעו הקליקים">
+            {Object.entries(post.clicks_by_source)
+              .sort((a, b) => b[1] - a[1])
+              .map(([s, n]) => `${CLICK_SOURCE_LABELS[s] || s} ${n}`)
+              .join(' · ')}
           </span>
         )}
       </td>
