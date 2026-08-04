@@ -5,7 +5,7 @@ import {
   Store, Plus, Loader2, Trash2, Link2, Sparkles, X,
   Package, CheckCircle2, AlertTriangle, Search, Pencil, Grid3x3, Images, Wand2,
   Globe, FileText, CheckCheck, ShoppingBag, Layers,
-  Maximize2, ChevronLeft, ChevronRight, Check,
+  Maximize2, ChevronLeft, ChevronRight, Check, Bot, BotOff,
 } from 'lucide-react';
 import { suppliersApi, channelsApi, credentialsApi, templatesApi, yupooImg } from '@/lib/api-client';
 import { PostPreview } from '@/components/products/PostPreview';
@@ -1089,6 +1089,12 @@ function SupplierRow({ product, catalogName, onCompose, onEdit, reload }: {
     catch (e: any) { alert(e?.response?.data?.message || 'שגיאה ביצירת תיאור'); }
     finally { setLoadingDesc(false); }
   };
+  // Per-product autopilot opt-out: the FLYLINK campaign skips it entirely; manual
+  // send/schedule/queue keep working — the owner decides where it goes, by hand.
+  const handleAutoPostToggle = async () => {
+    try { await suppliersApi.updateProduct(product.id, { no_auto_post: !product.no_auto_post } as any); reload(); }
+    catch (e: any) { alert(e?.response?.data?.message || 'עדכון נכשל'); }
+  };
 
   return (
     <tr className="border-b border-edge hover:bg-white/[0.02] transition-colors">
@@ -1105,6 +1111,7 @@ function SupplierRow({ product, catalogName, onCompose, onEdit, reload }: {
             <div className="flex items-center gap-2 flex-wrap">
               {product.sku && <span className="text-2xs text-white/25" dir="ltr">#{product.sku}</span>}
               {product.has_post && <span className="px-1.5 py-0.5 bg-blue-500/15 border border-blue-500/25 text-[9px] text-blue-400 rounded-md font-medium">פוסט</span>}
+              {product.no_auto_post && <span className="px-1.5 py-0.5 bg-purple-500/15 border border-purple-500/25 text-[9px] text-purple-400 rounded-md font-medium" title="הטייס האוטומטי מדלג על המוצר — פרסום ידני בלבד">ידני בלבד</span>}
             </div>
           </div>
         </div>
@@ -1136,6 +1143,9 @@ function SupplierRow({ product, catalogName, onCompose, onEdit, reload }: {
               queue/schedule shortcuts bypassed image selection (always sent the full
               album ≤10), so they were removed to keep "what you pick is what sends". */}
           <ActionBtn icon={FileText} label="צור פוסט (שליחה / תזמון / תור)" onClick={onCompose} color="purple" />
+          <ActionBtn icon={product.no_auto_post ? BotOff : Bot}
+            label={product.no_auto_post ? 'הטייס מדלג על המוצר — לחץ להחזרה לפרסום אוטומטי' : 'לא לפרסום אוטומטי (הטייס ידלג על המוצר)'}
+            onClick={handleAutoPostToggle} color={product.no_auto_post ? 'red' : 'blue'} />
           <ActionBtn icon={Pencil} label="ערוך מוצר" onClick={onEdit} color="blue" />
         </div>
       </td>

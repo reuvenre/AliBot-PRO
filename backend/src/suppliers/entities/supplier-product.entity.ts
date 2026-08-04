@@ -69,6 +69,15 @@ export class SupplierProduct {
   has_post: boolean;
 
   /**
+   * Owner opt-out from the FLYLINK campaign rotation: the autopilot never publishes this
+   * product on its own. Manual send/schedule/queue stay fully available — the owner keeps
+   * hand-picking where such a product goes (e.g. a Takti-only item the mama campaign must
+   * not re-post to its own group).
+   */
+  @Column({ default: false })
+  no_auto_post: boolean;
+
+  /**
    * When this product was last queued by a FLYLINK campaign. The campaign rotates the
    * catalog by picking the oldest (NULLs = never posted) first, so this is the round-robin
    * cursor. Distinct from has_post (a one-shot "ever posted?" flag).

@@ -14,7 +14,7 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { RatesService } from '../rates/rates.service';
 
-const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'flylink_url', 'status'] as const;
+const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'flylink_url', 'status', 'no_auto_post'] as const;
 
 /**
  * A FLYLINK product isn't re-posted until at least this long after its last post. FLYLINK
@@ -550,6 +550,8 @@ export class SupplierProductsService {
       .where('p.user_id = :userId', { userId })
       .andWhere('p.status = :status', { status: 'active' })
       .andWhere('p.in_stock IS DISTINCT FROM false')
+      // The owner's per-product opt-out: never rotated by the autopilot (manual sends only).
+      .andWhere('p.no_auto_post IS DISTINCT FROM true')
       .andWhere("p.flylink_url IS NOT NULL AND p.flylink_url <> ''")
       .orderBy('p.last_posted_at', 'ASC', 'NULLS FIRST')
       .addOrderBy('p.created_at', 'ASC')
