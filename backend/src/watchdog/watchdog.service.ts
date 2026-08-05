@@ -725,7 +725,12 @@ export class WatchdogService implements OnModuleInit {
       .take(20)
       .getRawMany()
       .catch(() => []);
-    if (partials.length >= 2) {
+    // EVERY partial publish alerts — the owner asked for exactly this after finding a
+    // "פורסם חלקית" by eye that the old ≥2 threshold had classified as channel noise. A
+    // single miss IS actionable now that transient Meta failures get an automatic retry:
+    // whatever still fails after that deserves eyes. The 6h per-key throttle keeps a
+    // repeating platform from spamming an issue per post.
+    if (partials.length >= 1) {
       // The platform tokens involved ("Instagram", "Facebook"…) key the alert, so a new
       // platform starting to fail is its own alert instead of riding an old throttle.
       const platforms = Array.from(new Set(partials.flatMap((p) =>

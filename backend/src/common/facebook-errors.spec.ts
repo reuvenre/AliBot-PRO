@@ -1,4 +1,4 @@
-import { facebookError, facebookErrorText, isTransientFacebookError } from './facebook-errors';
+import { facebookError, facebookErrorText, isTransientFacebookError, isMetaConnectionError } from './facebook-errors';
 
 const graph = (code: number, message: string, error_subcode?: number) =>
   ({ response: { data: { error: { code, message, ...(error_subcode ? { error_subcode } : {}) } } } });
@@ -158,5 +158,37 @@ describe('isTransientFacebookError', () => {
     expect(isTransientFacebookError(graphErr(100, 'Invalid parameter'))).toBe(false);
     expect(isTransientFacebookError(graphErr(4, 'Application request limit reached'))).toBe(false);
     expect(isTransientFacebookError({})).toBe(false);
+  });
+});
+
+describe('connection-level Meta failures', () => {
+  const aggregate = (codes: string[]) =>
+    new AggregateError(codes.map((code) => Object.assign(new Error(`connect ${code}`), { code })), '');
+
+  it('names the network codes instead of a bare "שגיאה לא ידועה"', () => {
+    // The exact partial-publish symptom: an AggregateError has an EMPTY message, so the
+    // owner saw "Instagram: שגיאה לא ידועה" with nothing to act on.
+    const info = facebookError(aggregate(['ECONNRESET']), 'instagram');
+    expect(info.message).toContain('ECONNRESET');
+    expect(info.message).toContain('הרשת');
+    expect(info.needsUserAction).toBe(false);
+  });
+
+  it('keeps real code-thrown messages untouched (they are not network noise)', () => {
+    expect(facebookError(new Error('Missing Instagram credentials')).message).toBe('Missing Instagram credentials');
+  });
+
+  describe('isMetaConnectionError', () => {
+    it('recognises plain and aggregate connection failures', () => {
+      expect(isMetaConnectionError(Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }))).toBe(true);
+      expect(isMetaConnectionError(aggregate(['ECONNREFUSED', 'ENETUNREACH']))).toBe(true);
+    });
+
+    it('rejects timeouts, HTTP responses and plain errors', () => {
+      expect(isMetaConnectionError(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))).toBe(false);
+      expect(isMetaConnectionError({ code: 'ECONNRESET', response: { status: 400 } })).toBe(false);
+      expect(isMetaConnectionError(new Error('anything'))).toBe(false);
+      expect(isMetaConnectionError({})).toBe(false);
+    });
   });
 });

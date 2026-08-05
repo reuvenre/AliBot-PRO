@@ -18,6 +18,31 @@ export interface FacebookErrorInfo {
 
 export type MetaPlatform = 'facebook' | 'instagram';
 
+/** Codes that mean the request died at the wire — DNS/socket — before reaching Graph. */
+const CONNECTION_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
+]);
+
+/** Every error code hiding in the failure — its own plus an AggregateError's inner ones
+ *  (Node's Happy Eyeballs connect throws those with an EMPTY top-level message). */
+function errorCodes(err: any): string[] {
+  const inner = Array.isArray((err as AggregateError)?.errors) ? (err as AggregateError).errors : [];
+  return Array.from(new Set(
+    [err?.code, ...inner.map((e: any) => e?.code)].filter((c): c is string => typeof c === 'string' && !!c),
+  ));
+}
+
+/**
+ * True when a Graph request provably never REACHED Meta — a connection-level failure with
+ * no HTTP response. Safe to send again: nothing was published. (A timeout is NOT this —
+ * the request may have arrived and only the reply was lost.)
+ */
+export function isMetaConnectionError(err: any): boolean {
+  if (err?.response) return false;
+  const codes = errorCodes(err);
+  return codes.length > 0 && codes.every((c) => CONNECTION_CODES.has(c));
+}
+
 export function facebookError(err: any, platform: MetaPlatform = 'facebook'): FacebookErrorInfo {
   const e = err?.response?.data?.error ?? err?.error;
   const code: number | null = typeof e?.code === 'number' ? e.code : null;
@@ -31,6 +56,19 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
   // answers, so the round trip can outlast a short client timeout.
   if (!code && /timeout|ETIMEDOUT|ECONNABORTED/i.test(String(raw))) {
     return { code: null, message: 'פייסבוק לא השיבה בזמן. הפרסום יינסה שוב בריצה הבאה.', needsUserAction: false };
+  }
+
+  // No Graph response and no usable message — the wire failed before Meta ever answered
+  // (an AggregateError's message is EMPTY, so `raw` fell through to the generic fallback,
+  // and the owner used to see a bare "שגיאה לא ידועה" with nothing to act on). Name the
+  // network codes: they ARE the diagnosis, and there is nothing to fix in the settings.
+  if (!code && !err?.response && raw === 'שגיאה לא ידועה') {
+    const codes = errorCodes(err);
+    return {
+      code: null,
+      message: `החיבור לשרתי מטא נכשל ברמת הרשת (${codes.join(', ') || 'שגיאת חיבור'}) — תקלה זמנית, נסה שוב.`,
+      needsUserAction: false,
+    };
   }
 
   switch (code) {

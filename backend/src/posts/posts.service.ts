@@ -33,7 +33,7 @@ import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
 import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
-import { facebookErrorText, isTransientFacebookError } from '../common/facebook-errors';
+import { facebookErrorText, isTransientFacebookError, isMetaConnectionError } from '../common/facebook-errors';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
 
@@ -3342,13 +3342,13 @@ export class PostsService {
     try {
       res = await attempt();
     } catch (err: any) {
-      // Graph's transient family (#1 "unknown error, retry your request" / #2 service
-      // unavailable) is an EXPLICIT rejection — nothing was published — and Facebook's own
-      // message says to retry. One paused retry turns these load blips into delivered posts
-      // instead of partial publishes. Timeouts stay non-retryable (see comment above:
-      // Facebook may have published before the reply was lost).
-      if (!isTransientFacebookError(err)) throw err;
-      this.logger.warn(`facebook ${endpoint} → page ${pageId}: transient Graph error, retrying once`);
+      // Two failure families earn ONE paused retry, because in both nothing was published:
+      // Graph's explicit transient rejections (#1 "retry your request" / #2 service
+      // unavailable), and connection-level failures where the request never reached Meta
+      // at all. Timeouts stay non-retryable (see comment above: Facebook may have
+      // published before the reply was lost).
+      if (!isTransientFacebookError(err) && !isMetaConnectionError(err)) throw err;
+      this.logger.warn(`facebook ${endpoint} → page ${pageId}: transient failure, retrying once`);
       await new Promise((r) => setTimeout(r, 2500));
       res = await attempt();
     }
@@ -3464,12 +3464,23 @@ export class PostsService {
     const caption = this.instagramCaption(message, post);
     const base = `https://graph.facebook.com/${GRAPH_VERSION}/${igId}`;
 
-    // 1) Create the media container.
-    const create = await axios.post(
+    // 1) Create the media container. A connection-level failure (request never reached
+    // Meta — the "Instagram: שגיאה לא ידועה" partial publish) gets one paused retry:
+    // no container was created, so a resend cannot duplicate anything.
+    const createContainer = () => axios.post(
       `${base}/media`,
       new URLSearchParams({ image_url: image, caption, access_token: token }).toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 },
     );
+    let create;
+    try {
+      create = await createContainer();
+    } catch (err: any) {
+      if (!isMetaConnectionError(err)) throw err;
+      this.logger.warn('instagram container create: connection never reached Meta, retrying once');
+      await new Promise((r) => setTimeout(r, 2500));
+      create = await createContainer();
+    }
     if (create.data?.error) throw new Error(create.data.error.message);
     const creationId = create.data?.id;
     if (!creationId) throw new Error('Instagram container creation failed');
