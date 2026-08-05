@@ -14,7 +14,7 @@ import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
-import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
 import sharp from 'sharp';
 import { Template } from '../templates/template.entity';
@@ -3459,7 +3459,7 @@ export class PostsService {
     // supplier fashion shots are routinely taller. When the ratio is illegal, hand
     // Instagram our ig-image URL instead, which serves the photo letterboxed onto the
     // nearest legal canvas. Best-effort: any failure here publishes the original.
-    image = await this.instagramFitImage(image);
+    image = this.instagramFitImage(image);
 
     const caption = this.instagramCaption(message, post);
     const base = `https://graph.facebook.com/${GRAPH_VERSION}/${igId}`;
@@ -3528,25 +3528,20 @@ export class PostsService {
    * public proxy). Any failure — fetch, decode, disallowed host — returns the original:
    * the gate must never turn a maybe-fine image into a certain failure.
    */
-  private async instagramFitImage(imageUrl: string): Promise<string> {
+  private instagramFitImage(imageUrl: string): string {
+    // ALWAYS route an eligible image through our ig-image endpoint instead of measuring
+    // the ratio here first. The old measure-then-decide version failed OPEN: when the
+    // pre-fetch couldn't run (network blip, Yupoo hiccup) it handed Instagram the
+    // ORIGINAL, and a too-tall product shot then died with #36003 — the exact rejection
+    // the letterbox exists to prevent. The endpoint itself is the ratio decision: a legal
+    // image streams through byte-identical, an illegal one is padded — so the only thing
+    // this method needs to decide is eligibility (allowlisted host + a public base URL).
     try {
       const target = unwrapOwnProxy(imageUrl);
       const host = new URL(target).hostname;
       if (!isIgFittableHost(host)) return imageUrl;
-
-      const resp = await axios.get(target, {
-        responseType: 'arraybuffer',
-        maxRedirects: 0,
-        headers: igFetchHeaders(host),
-        timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
-      });
-      if (resp.status !== 200) return imageUrl;
-      const meta = await sharp(Buffer.from(resp.data)).metadata();
-      if (!igFitBox(meta.width, meta.height)) return imageUrl;
-
       const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
       if (!base) return imageUrl;
-      this.logger.log(`instagram image ${meta.width}x${meta.height} is outside 4:5–1.91:1 — serving the letterboxed variant`);
       return `${base}/posts/ig-image?src=${encodeURIComponent(target)}`;
     } catch {
       return imageUrl;
