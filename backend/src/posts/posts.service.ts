@@ -13,6 +13,7 @@ import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
+import { stripInlineLink } from './strip-inline-link';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
@@ -2334,11 +2335,10 @@ export class PostsService {
     const linkAlreadyInText = post.affiliate_url && post.generated_text.includes(post.affiliate_url);
     let body: string;
     if (linkAlreadyInText) {
-      const stripped = post.generated_text
-        .split(post.affiliate_url).join('')
-        .replace(/\n{3,}/g, '\n\n')
-        .trimEnd();
-      body = `${stripped}\n\n🔗 ${link}`;
+      // stripInlineLink removes the URL together with its 🔗 line — deleting only the URL
+      // used to leave an orphan "🔗" above the re-attached standard link (the FLYLINK
+      // "רווחים מיותרים" bug: price line, blank, bare 🔗, blank, CTA).
+      body = `${stripInlineLink(post.generated_text, post.affiliate_url)}\n\n🔗 ${link}`;
     } else {
       body = post.affiliate_url ? `${post.generated_text}\n\n🔗 ${link}` : post.generated_text;
     }
