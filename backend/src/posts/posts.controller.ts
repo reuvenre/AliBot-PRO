@@ -40,6 +40,13 @@ export class PostsController {
     return this.svc.preview(this.uid(req), productId, language, customProduct, template, undefined, hint, false, promo);
   }
 
+  /** One-image AI-redesign preview (Nano Banana) — see the style before enabling it. */
+  @Post('enhance-preview')
+  @HttpCode(200)
+  enhancePreview(@Req() req: Request, @Body('image_url') imageUrl?: string) {
+    return this.svc.enhancePreview(this.uid(req), imageUrl);
+  }
+
   @Post('schedule')
   schedulePost(
     @Req() req: Request,

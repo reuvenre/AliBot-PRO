@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2 } from 'lucide-react';
-import { credentialsApi, channelsApi, amazonApi } from '@/lib/api-client';
+import { credentialsApi, channelsApi, amazonApi, postsApi } from '@/lib/api-client';
 import { SettingsSaveBar } from './SettingsSaveBar';
 import type { Channel } from '@/types';
 
@@ -36,6 +36,22 @@ export function IntegrationsForm() {
   // Auto image enhancement (local sharp pass, applied on the Telegram album)
   const [imageEnhance, setImageEnhance] = useState(false);
   const [imageEnhanceMode, setImageEnhanceMode] = useState<'studio' | 'ai'>('studio');
+  // AI-redesign preview (before/after) — lets the owner SEE the style before enabling.
+  const [enhancePreviewLoading, setEnhancePreviewLoading] = useState(false);
+  const [enhancePreview, setEnhancePreview] = useState<{ before: string; after: string } | null>(null);
+  const [enhancePreviewErr, setEnhancePreviewErr] = useState('');
+
+  const handleEnhancePreview = async () => {
+    setEnhancePreviewLoading(true); setEnhancePreviewErr('');
+    try {
+      const r = await postsApi.enhancePreview();
+      setEnhancePreview({ before: r.before, after: r.after_data_url });
+    } catch (e: any) {
+      setEnhancePreviewErr(e?.response?.data?.message || 'התצוגה המקדימה נכשלה — נסה שוב');
+    } finally {
+      setEnhancePreviewLoading(false);
+    }
+  };
 
   // Facebook throttle: min minutes between FB posts per page (0 = every post). Paces FB
   // independently of Telegram so high-frequency posting doesn't hit Facebook's spam block.
@@ -659,10 +675,43 @@ export function IntegrationsForm() {
             >
               <span className="text-sm text-white/85">🍌 ננו בננה — עיצוב AI</span>
               <p className="text-2xs text-white/35 mt-0.5">
-                מודל התמונות של Gemini מעצב מחדש את התמונה: רקע סטודיו נקי, תאורה מקצועית — המוצר עצמו נשמר זהה.
+                מודל התמונות של Gemini מעצב מחדש את התמונה: המוצר נשמר זהה לחלוטין, והרקע מוחלף בסצנה מושכת שמתאימה לשימוש במוצר.
                 משתמש במפתח ה-Gemini שלך (עלות לפי תמונה אצל Google). חל על עד 3 התמונות הראשונות בפוסט; השאר עוברות סטודיו מהיר. בכל תקלה — נופל אוטומטית לסטודיו.
               </p>
             </button>
+
+            {/* Before/after preview on the owner's own latest product image — one Gemini
+                call, changes nothing. Decide with your eyes, not from a description. */}
+            <button
+              type="button"
+              onClick={handleEnhancePreview}
+              disabled={enhancePreviewLoading}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 text-sm text-amber-300 disabled:opacity-60 transition-all"
+            >
+              {enhancePreviewLoading ? <Loader2 size={14} className="animate-spin" /> : <span>👁️</span>}
+              {enhancePreviewLoading ? 'מעצב את התמונה… (עד דקה)' : 'תצוגה מקדימה — ראה לפני/אחרי על מוצר שלך'}
+            </button>
+            {enhancePreviewErr && <p className="text-2xs text-red-400">⚠️ {enhancePreviewErr}</p>}
+            {enhancePreview && (
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-2xs text-white/40 mb-1 text-center">לפני</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={enhancePreview.before} alt="לפני" className="w-full rounded-lg border border-edge object-cover" />
+                  </div>
+                  <div>
+                    <p className="text-2xs text-amber-300/80 mb-1 text-center">אחרי (ננו בננה)</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={enhancePreview.after} alt="אחרי" className="w-full rounded-lg border border-amber-500/30 object-cover" />
+                  </div>
+                </div>
+                <p className="text-2xs text-white/30 mt-1.5">
+                  התצוגה רצה על תמונת המוצר מהפוסט האחרון שלך. כל הרצה מייצרת עיצוב חדש (ועולה קריאת Gemini אחת) —
+                  אפשר ללחוץ שוב לדוגמה נוספת. ההגדרה נשמרת רק בלחיצה על כפתור השמירה.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </section>

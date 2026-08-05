@@ -519,6 +519,12 @@ export const postsApi = {
   quickPost: (data: { product_id: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
     http.post<Post>('/posts/quick', data, { timeout: AI_TIMEOUT }).then(extract),
 
+  /** One-image Nano Banana preview (before/after) — costs one Gemini call on the user's key. */
+  enhancePreview: (imageUrl?: string) =>
+    http.post<{ before: string; after_data_url: string }>(
+      '/posts/enhance-preview', { image_url: imageUrl }, { timeout: 90_000 },
+    ).then(extract),
+
   list: (params?: { page?: number; limit?: number; status?: string; campaign_id?: string; source?: 'aliexpress' | 'flylink' }) =>
     http.get<PaginatedResponse<Post>>('/posts', { params }).then(extract),
 

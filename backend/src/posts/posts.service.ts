@@ -2942,6 +2942,46 @@ export class PostsService {
     + 'Photorealistic only — no added text, no watermarks, no people, no invented branding.';
 
   /**
+   * One-image AI-redesign preview so the owner can SEE the Nano Banana style before
+   * enabling it for real posts. Explicit user action → exactly one Gemini call on the
+   * user's own key. `imageUrl` optional: defaults to the newest post's product image, so
+   * the preview shows the owner's OWN merchandise, not a stock demo. Errors are thrown
+   * in Hebrew — this surfaces directly in the settings screen.
+   */
+  async enhancePreview(userId: string, imageUrl?: string): Promise<{ before: string; after_data_url: string }> {
+    if (!(await this.subscription.allows(userId, 'image_enhancer'))) {
+      throw new BadRequestException('שדרוג תמונות אינו כלול בתוכנית שלך — שדרג בהגדרות ← מנוי');
+    }
+    const creds = await this.credentials.getRaw(userId);
+    if (!creds?.gemini_api_key) {
+      throw new BadRequestException('חסר מפתח Gemini — הדבק אותו בהגדרות ← אינטגרציות כדי להשתמש בעיצוב AI');
+    }
+
+    let src = (imageUrl || '').trim();
+    if (!src) {
+      const recent = await this.repo.createQueryBuilder('p')
+        .where('p.user_id = :userId', { userId })
+        .andWhere("p.product_image IS NOT NULL AND p.product_image <> ''")
+        .orderBy('p.created_at', 'DESC')
+        .getOne();
+      src = recent?.product_image || '';
+    }
+    if (!src) throw new BadRequestException('אין תמונת מוצר לתצוגה מקדימה — פרסם פוסט אחד קודם');
+
+    const raw = await this.collage.fetchAsJpeg(src);
+    if (!raw) throw new BadRequestException('לא הצלחתי להוריד את תמונת המוצר — נסה שוב');
+    const gen = await this.ai.generateProductImage(
+      creds, { mime: 'image/jpeg', data: raw.toString('base64') }, PostsService.NANO_BANANA_PROMPT,
+    );
+    if (!gen?.data?.length) {
+      throw new BadRequestException('מודל התמונות לא החזיר תוצאה — בדוק את מפתח ה-Gemini ונסה שוב');
+    }
+    // Same bounding the real send path applies — the preview must show what actually ships.
+    const bounded = (await this.collage.boundJpeg(gen.data)) || gen.data;
+    return { before: src, after_data_url: `data:image/jpeg;base64,${bounded.toString('base64')}` };
+  }
+
+  /**
    * AI-redesign the first few images (cost control — the image model bills per image),
    * studio-pass the rest so the album stays visually coherent. Any per-image failure
    * degrades to the studio pass for that image; an empty result makes the caller fall
