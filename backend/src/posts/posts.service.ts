@@ -2924,10 +2924,22 @@ export class PostsService {
     return { kind: 'single', image: post.product_image };
   }
 
-  /** The redesign brief for Nano Banana. Fidelity first: an affiliate post must show the
-   *  REAL product — the model may restage lighting/background, never the item itself. */
+  /**
+   * The redesign brief for Nano Banana. Two rules, in order:
+   *  1. FIDELITY — an affiliate post must show the REAL product. The model may restage
+   *     everything around it, never the item itself.
+   *  2. THE BACKGROUND SELLS — the photo is the first (often only) thing a follower sees,
+   *     so instead of a sterile studio sweep, stage the product in an appealing setting
+   *     that matches what it is FOR. The product must remain the unmistakable hero:
+   *     razor-sharp against a softly blurred scene, never lost in it.
+   */
   private static readonly NANO_BANANA_PROMPT =
-    'Enhance this e-commerce product photo: place the product on a clean, professional studio background with soft, even lighting and a subtle natural shadow. Keep the product itself 100% identical — same shape, colors, materials, printed text and logos; do not add, remove or alter anything on the product. No added text, no watermarks, no people. Output a photorealistic, sharp, well-lit product shot.';
+    'Redesign this e-commerce product photo into a scroll-stopping ad shot. '
+    + 'RULE 1 — the product itself must stay 100% identical: same shape, colors, materials, printed text and logos; do not add, remove or alter anything on the product. '
+    + 'RULE 2 — replace the background with an attractive, premium setting that fits the product\'s real use context (outdoor gear in nature, fashion against a stylish urban or interior backdrop, home items in a beautiful modern room, electronics on a sleek desk, toys in a bright playful space). '
+    + 'Keep the product large in frame and razor-sharp as the clear hero, with the background softly blurred (shallow depth of field) so it adds interest without stealing attention. '
+    + 'Dramatic but natural lighting, rich tasteful colors, strong contrast between product and scene, a subtle grounding shadow. '
+    + 'Photorealistic only — no added text, no watermarks, no people, no invented branding.';
 
   /**
    * AI-redesign the first few images (cost control — the image model bills per image),
