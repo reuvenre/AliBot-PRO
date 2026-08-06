@@ -3543,10 +3543,19 @@ export class PostsService {
     try {
       create = await createContainer();
     } catch (err: any) {
-      if (!isMetaConnectionError(err)) throw err;
-      this.logger.warn('instagram container create: connection never reached Meta, retrying once');
-      await new Promise((r) => setTimeout(r, 2500));
-      create = await createContainer();
+      if (isMetaConnectionError(err)) {
+        this.logger.warn('instagram container create: connection never reached Meta, retrying once');
+        await new Promise((r) => setTimeout(r, 2500));
+        create = await createContainer();
+      } else if (err?.response?.data?.error?.code === 36003) {
+        // The letterbox pipeline exists precisely to prevent #36003 — reaching here means
+        // some URL slipped past it. Name the URL Instagram actually measured, so the next
+        // occurrence is self-diagnosing instead of a guessing game over which image path
+        // failed open.
+        throw new Error(`(#36003) יחס התמונה לא נתמך. התמונה שאינסטגרם מדדה: ${image}`);
+      } else {
+        throw err;
+      }
     }
     if (create.data?.error) throw new Error(create.data.error.message);
     const creationId = create.data?.id;
@@ -3589,11 +3598,10 @@ export class PostsService {
   }
 
   /**
-   * The image URL Instagram should ingest: the original when its aspect ratio is legal,
-   * our /posts/ig-image letterbox variant when it is not. Checking the ratio requires the
-   * pixels, so the image is fetched once here (upstream directly, not through our own
-   * public proxy). Any failure — fetch, decode, disallowed host — returns the original:
-   * the gate must never turn a maybe-fine image into a certain failure.
+   * The image URL Instagram should ingest: our /posts/ig-image letterbox route for every
+   * eligible (allowlisted-host) image — the endpoint itself streams a legal image
+   * byte-identical and pads an illegal one. A non-allowlisted host or a missing
+   * BACKEND_URL returns the original untouched.
    */
   private instagramFitImage(imageUrl: string): string {
     // ALWAYS route an eligible image through our ig-image endpoint instead of measuring

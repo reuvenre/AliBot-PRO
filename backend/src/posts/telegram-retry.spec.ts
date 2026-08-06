@@ -49,10 +49,21 @@ describe('isTelegramConnectionError', () => {
     expect(isTelegramConnectionError(aggregateConnectError(['ECONNREFUSED', 'ENETUNREACH']))).toBe(true);
   });
 
-  it('does NOT retry an AggregateError containing any non-connection failure', () => {
+  it('retries an aggregate whose inner failures are CONNECT timeouts', () => {
+    // Node aggregates errors only in the Happy Eyeballs connect loop, so an inner
+    // ETIMEDOUT is a handshake that never completed — the request never left the box.
+    // (The 06/08 19:06 partial publish: "שגיאת חיבור לטלגרם (ETIMEDOUT)", no retry.)
+    expect(isTelegramConnectionError(aggregateConnectError(['ETIMEDOUT', 'ECONNREFUSED']))).toBe(true);
+  });
+
+  it('still does NOT retry a TOP-LEVEL timeout — the reply may have been lost after publish', () => {
+    expect(isTelegramConnectionError(Object.assign(new Error(''), { code: 'ETIMEDOUT' }))).toBe(false);
+  });
+
+  it('does NOT retry an AggregateError containing an unknown failure code', () => {
     const mixed = new AggregateError([
       Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
-      Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }),
+      Object.assign(new Error('boom'), { code: 'ESOMETHINGELSE' }),
     ], '');
     expect(isTelegramConnectionError(mixed)).toBe(false);
     expect(isTelegramConnectionError(new AggregateError([], ''))).toBe(false);

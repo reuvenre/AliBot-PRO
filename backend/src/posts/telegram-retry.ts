@@ -19,6 +19,15 @@ const CONNECTION_ERRORS = new Set([
 ]);
 
 /**
+ * Codes acceptable INSIDE an AggregateError. Node aggregates errors in exactly one place —
+ * the Happy Eyeballs CONNECT loop — so an inner ETIMEDOUT is a connect-phase timeout: the
+ * TCP handshake never completed and the request provably never left the machine, making a
+ * retry safe. A TOP-LEVEL ETIMEDOUT stays non-retryable (see below): on an established
+ * socket it can mean the reply was lost after Telegram already published.
+ */
+const AGGREGATE_CONNECT_ERRORS = new Set([...CONNECTION_ERRORS, 'ETIMEDOUT']);
+
+/**
  * True when a failed Telegram send never reached Telegram and may be retried.
  *
  * Excluded on purpose:
@@ -42,7 +51,7 @@ export function isTelegramConnectionError(err: any): boolean {
   // is connection-level — a mix means something unknown happened, and unknown never retries.
   const inner = (err as AggregateError)?.errors;
   return Array.isArray(inner) && inner.length > 0
-    && inner.every((e: any) => CONNECTION_ERRORS.has(e?.code));
+    && inner.every((e: any) => AGGREGATE_CONNECT_ERRORS.has(e?.code));
 }
 
 /**
