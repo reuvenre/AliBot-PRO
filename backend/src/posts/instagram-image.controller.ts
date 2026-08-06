@@ -1,8 +1,9 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import axios from 'axios';
 import sharp from 'sharp';
 import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { PostsService } from './posts.service';
 
 /**
  * Serves an Instagram-legal variant of a product photo: the original letterboxed onto the
@@ -16,6 +17,37 @@ import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './in
  */
 @Controller('posts')
 export class InstagramImageController {
+  constructor(private readonly posts: PostsService) {}
+
+  /**
+   * The DESIGNED frame (studio/AI enhancement, collage sheet) prepared for a post's
+   * publish — the exact image Telegram uploads — served briefly so Facebook and Instagram
+   * (URL-ingest platforms) can publish the same one. PUBLIC on purpose: platform fetchers
+   * cannot authenticate; post ids are unguessable UUIDs and frames expire within minutes.
+   * `?fit=ig` letterboxes onto the nearest Instagram-legal canvas (never crops).
+   */
+  @Get('enhanced/:id')
+  async enhanced(@Param('id') id: string, @Query('fit') fit: string, @Res() res: Response) {
+    const buf = this.posts.getEnhancedFrame(id);
+    if (!buf) { res.status(404).send('frame expired'); return; }
+    let out = buf;
+    if (fit === 'ig') {
+      try {
+        const meta = await sharp(buf).metadata();
+        const box = igFitBox(meta.width, meta.height);
+        if (box) {
+          out = await sharp(buf)
+            .resize(box.width, box.height, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+            .jpeg({ quality: 90 })
+            .toBuffer();
+        }
+      } catch { /* a broken pad step must not block the publish — serve the frame as-is */ }
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(out);
+  }
+
   @Get('ig-image')
   async igImage(@Query('src') src: string, @Res() res: Response) {
     const target = unwrapOwnProxy(String(src || ''));

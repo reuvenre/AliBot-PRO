@@ -2316,6 +2316,49 @@ export class PostsService {
     return post.affiliate_url;
   }
 
+  // ── Designed frames for URL-ingest platforms ──────────────────────────────
+  //
+  // Telegram receives the designed image (studio/AI enhancement, collage sheets) as raw
+  // UPLOADED bytes — but Facebook and Instagram ingest by URL, so they used to get the
+  // ORIGINAL image while Telegram showed the designed one. The bridge: keep each publish's
+  // first designed frame briefly in memory and serve it at a public URL the platform
+  // fetchers hit seconds later. In-memory on purpose: the frame is consumed immediately
+  // after the send, and losing it on a restart only means a fallback to the original URL.
+
+  private readonly enhancedFrames = new Map<string, { buf: Buffer; at: number }>();
+  private static readonly ENHANCED_FRAME_TTL_MS = 45 * 60_000;
+
+  /** Remember a publish's first designed frame (no-op for URL-based media). */
+  registerEnhancedFrame(postId: string, media: TgMedia): void {
+    const now = Date.now();
+    for (const [k, v] of this.enhancedFrames) {
+      if (now - v.at > PostsService.ENHANCED_FRAME_TTL_MS) this.enhancedFrames.delete(k);
+    }
+    if (media?.kind !== 'buffers' || !media.buffers?.length) return;
+    this.enhancedFrames.set(postId, { buf: media.buffers[0], at: now });
+  }
+
+  /** The frame bytes for the public /posts/enhanced/:id endpoint; null once expired. */
+  getEnhancedFrame(postId: string): Buffer | null {
+    const key = String(postId || '');
+    const entry = this.enhancedFrames.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.at > PostsService.ENHANCED_FRAME_TTL_MS) {
+      this.enhancedFrames.delete(key);
+      return null;
+    }
+    return entry.buf;
+  }
+
+  /** Public URL serving this post's designed frame, or null when none was prepared.
+   *  `fitIg` letterboxes it onto an Instagram-legal canvas server-side. */
+  private enhancedFrameUrl(post: Post, opts?: { fitIg?: boolean }): string | null {
+    if (!this.getEnhancedFrame(post.id)) return null;
+    const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+    if (!base) return null;
+    return `${base}/posts/enhanced/${post.id}${opts?.fitIg ? '?fit=ig' : ''}`;
+  }
+
   /** Composes the final message body: affiliate link + per-channel footer + HTML
    *  normalisation. Shared by the publisher and the failed-channel retry. */
   private async buildPostBody(post: Post, creds: DecryptedCredentials, channelOverride?: string): Promise<string> {
@@ -2402,9 +2445,15 @@ export class PostsService {
     const anyGroupNamed = targets.some(isNamed);
     const groupFailed = (t: string | undefined): boolean => !multi || !anyGroupNamed || isNamed(t);
 
+    // Media up front (see the main send path): a Facebook/Instagram retry should also
+    // publish the designed frame, not fall back to the raw original.
+    const media = (failed('Telegram') || failed('Facebook') || failed('Make') || failed('Instagram'))
+      ? await this.prepareTelegramMedia(post, creds)
+      : undefined;
+    if (media) this.registerEnhancedFrame(post.id, media);
+
     // Telegram: re-send to each failed target group (media prepared once, sent sequentially).
     if (failed('Telegram')) {
-      const media = await this.prepareTelegramMedia(post, creds);
       tasks.push((async () => {
         for (const target of targets) {
           if (!groupFailed(target)) continue;
@@ -2476,8 +2525,14 @@ export class PostsService {
     const tasks: Promise<void>[] = [];
     let anySuccess = false;
 
+    // Media up front (see the main send path): the designed frame must be registered
+    // before Facebook/Instagram build their image URLs.
+    const media = (want.has('telegram') || want.has('facebook') || want.has('instagram'))
+      ? await this.prepareTelegramMedia(post, creds)
+      : undefined;
+    if (media) this.registerEnhancedFrame(post.id, media);
+
     if (want.has('telegram')) {
-      const media = await this.prepareTelegramMedia(post, creds);
       tasks.push((async () => {
         for (const target of targetList) {
           const body = await this.buildPostBody(post, creds, target);
@@ -2761,12 +2816,17 @@ export class PostsService {
     // full timeout on top of the others. Each group's body uses that group's own footer.
     const tasks: Promise<void>[] = [];
 
-    // Telegram: prepare the album media ONCE, then send to each target group SEQUENTIALLY
-    // (reusing the same media) — recomputing collage/enhancement per group in parallel
-    // overloaded the instance and timed out the 2nd upload. This whole block still runs
-    // concurrently with Facebook/Make below.
+    // Prepare the album media ONCE, UP FRONT (not inside the Telegram task): recomputing
+    // collage/enhancement per group in parallel overloaded the instance, and hoisting it
+    // above the tasks lets the designed frame be REGISTERED before Facebook/Instagram
+    // build their image URLs — so URL-ingest platforms publish the same designed image
+    // Telegram uploads, instead of the raw original.
+    const media = (wantTelegram || wantFacebook || wantInstagram)
+      ? await this.prepareTelegramMedia(post, creds)
+      : undefined;
+    if (media) this.registerEnhancedFrame(post.id, media);
+
     if (wantTelegram) {
-      const media = await this.prepareTelegramMedia(post, creds);
       tasks.push((async () => {
         for (const target of targets) {
           const body = await this.buildPostBody(post, creds, target);
@@ -3308,7 +3368,9 @@ export class PostsService {
     // The tracked /r/<code> URL. It already sits inside `plain` (buildPostBody puts it
     // there), so a photo post carries it in the caption and clicks are still counted.
     const link = tagShortLinks((await this.trackedLink(post)) || '', 'fb');
-    const image = this.facebookImage(post);
+    // The designed frame (enhancement/collage) when this publish prepared one — the same
+    // image Telegram uploads — else the original gallery/product image.
+    const image = this.enhancedFrameUrl(post) || this.facebookImage(post);
 
     // PHOTO post when we have the product image, LINK post only as a fallback.
     //
@@ -3440,26 +3502,31 @@ export class PostsService {
 
     if (!igId || !token) throw new Error('Missing Instagram credentials');
 
-    // First gallery image, else the main product image.
-    let image = post.product_image || '';
-    try {
-      const g = post.gallery_json ? JSON.parse(post.gallery_json) : [];
-      if (Array.isArray(g) && g[0]) image = g[0];
-    } catch { /* ignore */ }
-    if (!image) throw new Error('אין תמונת מוצר לפרסום באינסטגרם');
+    // The designed frame (enhancement/collage) when this publish prepared one — the same
+    // image Telegram uploads — letterboxed server-side onto an Instagram-legal canvas via
+    // ?fit=ig. Otherwise: first gallery image, else the main product image.
+    let image = this.enhancedFrameUrl(post, { fitIg: true }) || '';
+    if (!image) {
+      image = post.product_image || '';
+      try {
+        const g = post.gallery_json ? JSON.parse(post.gallery_json) : [];
+        if (Array.isArray(g) && g[0]) image = g[0];
+      } catch { /* ignore */ }
+      if (!image) throw new Error('אין תמונת מוצר לפרסום באינסטגרם');
 
-    // AliExpress CDN often serves ".jpg_.webp" variants; Instagram can't ingest WebP and
-    // fails the container. Cut back to the underlying JPEG/PNG URL when one is embedded.
-    if (/\.webp(\?|$)/i.test(image)) {
-      const m = image.match(/^(.*?\.(?:jpe?g|png))/i);
-      if (m) image = m[1];
+      // AliExpress CDN often serves ".jpg_.webp" variants; Instagram can't ingest WebP and
+      // fails the container. Cut back to the underlying JPEG/PNG URL when one is embedded.
+      if (/\.webp(\?|$)/i.test(image)) {
+        const m = image.match(/^(.*?\.(?:jpe?g|png))/i);
+        if (m) image = m[1];
+      }
+
+      // Aspect-ratio gate: Instagram rejects anything outside 4:5–1.91:1 with #36003 —
+      // supplier fashion shots are routinely taller. When the ratio is illegal, hand
+      // Instagram our ig-image URL instead, which serves the photo letterboxed onto the
+      // nearest legal canvas. Best-effort: any failure here publishes the original.
+      image = this.instagramFitImage(image);
     }
-
-    // Aspect-ratio gate: Instagram rejects anything outside 4:5–1.91:1 with #36003 —
-    // supplier fashion shots are routinely taller. When the ratio is illegal, hand
-    // Instagram our ig-image URL instead, which serves the photo letterboxed onto the
-    // nearest legal canvas. Best-effort: any failure here publishes the original.
-    image = this.instagramFitImage(image);
 
     const caption = this.instagramCaption(message, post);
     const base = `https://graph.facebook.com/${GRAPH_VERSION}/${igId}`;
