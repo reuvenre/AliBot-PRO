@@ -46,6 +46,24 @@ const UNFILLED_PLACEHOLDER = /\[(?:מחיר|שם|price|name|product|title)\]/i;
 const MIN_USABLE_LENGTH = 20;
 
 /**
+ * Degenerate word-index numbering: the model interleaves an ascending counter between the
+ * words — "₪7 (76) בלבד (77) במקום (78) ₪17 (79)…" (published verbatim to מאמא on 06/08).
+ * Real copy does contain parenthesised numbers ("(56% הנחה)", "(2)"), so a count alone
+ * would false-positive; what marketing copy can never plausibly contain is FIVE bare
+ * integers in parentheses forming a consecutive ascending run.
+ */
+function hasWordIndexNumbering(text: string): boolean {
+  const nums = Array.from(text.matchAll(/\((\d{1,4})\)/g)).map((m) => Number(m[1]));
+  if (nums.length < 5) return false;
+  let run = 1;
+  for (let i = 1; i < nums.length; i++) {
+    run = nums[i] === nums[i - 1] + 1 ? run + 1 : 1;
+    if (run >= 5) return true;
+  }
+  return false;
+}
+
+/**
  * Why this generated copy must not be published, or null when it is usable.
  * The reason is a short English tag meant for the log line, not for the owner.
  */
@@ -63,6 +81,7 @@ export function copyDefect(text: string): string | null {
     if (hit) return `model reasoning ("${hit[0]}")`;
   }
   if (UNFILLED_PLACEHOLDER.test(t)) return 'unfilled placeholder';
+  if (hasWordIndexNumbering(t)) return 'word-index numbering';
 
   return null;
 }

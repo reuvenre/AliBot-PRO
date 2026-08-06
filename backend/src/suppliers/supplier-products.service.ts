@@ -7,6 +7,7 @@ import { SupplierCatalogsService } from './supplier-catalogs.service';
 import { YupooService } from './yupoo.service';
 import { normalizeSku } from './sku-match.util';
 import { openPostClash } from './flylink-dedup';
+import { coverFirst } from './gallery-order';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { Campaign } from '../campaigns/campaign.entity';
 import { AiService, GenerateImage } from '../ai/ai.service';
@@ -393,7 +394,10 @@ export class SupplierProductsService {
       const chosen = selected.filter((u) => set.has(u)).slice(0, max);
       if (chosen.length) return chosen;
     }
-    return full.slice(0, max);
+    // No manual pick → album order, but the CATALOG COVER leads. Yupoo fashion albums
+    // routinely open with a size chart / color-code sheet, and Facebook (which posts ONE
+    // photo = gallery[0]) then advertised a Height/Weight table instead of the product.
+    return coverFirst(full, this.proxyImage(p.image_url), max);
   }
 
   /**

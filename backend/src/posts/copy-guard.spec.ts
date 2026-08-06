@@ -66,3 +66,20 @@ Pliers, knife and screwdrivers in one pocket-sized body. Only $4.20 — grab it 
     expect(copyDefect('אל תחכו — המבצע נגמר הלילה ויש מלאי מוגבל! 🔥')).toBeNull();
   });
 });
+
+describe('word-index numbering (the 06/08 מאמא post)', () => {
+  it('rejects copy with an ascending counter interleaved between the words', () => {
+    // Reconstruction of the text that reached the channel verbatim.
+    const numbered = '💰 ₪7 (76) בלבד (77) במקום (78) ₪17 (79) (56% (80) הנחה)! (81) '
+      + 'אזהרת (82) מלאי: (83) במחיר (84) כזה (85) היחידות (86) נחטפות';
+    expect(copyDefect(numbered)).toBe('word-index numbering');
+  });
+
+  it('does not flag legitimate parenthesised numbers in real copy', () => {
+    expect(copyDefect('💰 ₪7 בלבד במקום ₪17 (56% הנחה)! סט (2) חלקים לבחירה — מלאי מוגבל!')).toBeNull();
+  });
+
+  it('does not flag a short non-consecutive scatter of numbers', () => {
+    expect(copyDefect('דירוג (5) כוכבים, (120) הזמנות, חיסכון של (30) אחוז — שווה בדיקה עכשיו!')).toBeNull();
+  });
+});
