@@ -1,8 +1,14 @@
-import { BadRequestException, Controller, Get, Param, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Logger, Param, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import axios from 'axios';
-import sharp from 'sharp';
 import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+// sharp's runtime is CommonJS (module.exports = sharp) but its types use `export default`,
+// and this tsconfig has NO esModuleInterop — so `import sharp from 'sharp'` compiles to
+// `sharp_1.default`, which is UNDEFINED at runtime. Every sharp() call here then threw
+// "sharp_1.default is not a function", the catch blocks swallowed it, and this endpoint
+// served ORIGINAL bytes — the letterbox NEVER actually padded anything, which is exactly
+// how #36003 kept recurring "despite the fix". Same trap collage.service.ts documents.
+const sharp = require('sharp') as typeof import('sharp').default;
 import { PostsService } from './posts.service';
 
 /**
@@ -17,6 +23,8 @@ import { PostsService } from './posts.service';
  */
 @Controller('posts')
 export class InstagramImageController {
+  private readonly logger = new Logger(InstagramImageController.name);
+
   constructor(private readonly posts: PostsService) {}
 
   /**
@@ -41,7 +49,11 @@ export class InstagramImageController {
             .jpeg({ quality: 90 })
             .toBuffer();
         }
-      } catch { /* a broken pad step must not block the publish — serve the frame as-is */ }
+      } catch (e: any) {
+        // A broken pad step must not block the publish — serve the frame as-is. But LOG:
+        // this exact catch silently swallowed a broken sharp import for weeks.
+        this.logger.error(`enhanced-frame pad failed (serving unfitted): ${e?.message}`);
+      }
     }
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -86,9 +98,11 @@ export class InstagramImageController {
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=604800');
       res.send(padded);
-    } catch {
+    } catch (e: any) {
       // Unreadable image data → give Instagram the original and let it say so; a broken
-      // pad step must not turn a maybe-fine image into a certain failure.
+      // pad step must not turn a maybe-fine image into a certain failure. But LOG: this
+      // exact catch silently swallowed a broken sharp import for weeks.
+      this.logger.error(`ig-image pad failed (serving original): ${e?.message}`);
       res.setHeader('Content-Type', String(upstream.headers['content-type'] || 'image/jpeg'));
       res.send(buf);
     }

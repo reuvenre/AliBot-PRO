@@ -17,7 +17,6 @@ import { stripInlineLink } from './strip-inline-link';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
-import sharp from 'sharp';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { nextRunAt } from '../campaigns/next-run';
