@@ -73,6 +73,7 @@ export class ChannelsService {
     // Only overwrite the FB token when a new one is actually provided (the form sends the
     // field blank unless the user re-enters it), so editing other fields never wipes it.
     if (dto.facebook_page_token?.trim()) channel.facebook_page_token_enc = encrypt(dto.facebook_page_token.trim());
+    if (dto.smart_timing !== undefined) channel.smart_timing = dto.smart_timing === true;
     // Per-group queue overrides — an explicit null clears the override (back to inherit).
     if (dto.schedule_enabled !== undefined) channel.schedule_enabled = dto.schedule_enabled;
     if (dto.schedule_interval_minutes !== undefined) channel.schedule_interval_minutes = dto.schedule_interval_minutes;
@@ -757,6 +758,7 @@ export class ChannelsService {
       // FB token status only — never return the token itself; masked for display.
       has_fb_token: !!c.facebook_page_token_enc,
       fb_token_masked: c.facebook_page_token_enc ? mask(decrypt(c.facebook_page_token_enc)) : null,
+      smart_timing: c.smart_timing === true,
       // Per-group queue settings — null means "inherit the global schedule".
       schedule_enabled: c.schedule_enabled ?? null,
       schedule_interval_minutes: c.schedule_interval_minutes ?? null,

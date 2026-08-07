@@ -85,6 +85,15 @@ export class Channel {
   @Column({ type: 'int', nullable: true })
   schedule_end_hour: number | null;
 
+  /**
+   * OPT-IN smart timing: when true, the scheduler nudges this group's posts into its
+   * learned golden hours (the hours its audience actually clicks — see optimizer's
+   * hot-hours). Default false: the owner flips this knowingly, per group — timing behaviour
+   * must never change behind their back.
+   */
+  @Column({ type: 'boolean', default: false })
+  smart_timing: boolean;
+
   /** When this group last received a queued post — its own interval clock. */
   @Column({ type: 'timestamp', nullable: true })
   schedule_last_sent_at: Date | null;

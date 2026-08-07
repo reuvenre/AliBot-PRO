@@ -15,6 +15,8 @@ import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
+import { snapToHotHour } from './smart-timing';
+import { hotHours } from '../optimizer/hot-hours';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
@@ -1333,6 +1335,59 @@ export class PostsService {
   }
 
   /**
+   * The group's golden hours for slot-snapping — or null when smart timing is off, the
+   * data is too thin for a verdict, or every golden hour falls outside the group's own
+   * send window (clicks arrive after hours too; a snap must never escape the window).
+   * Cached 30 minutes per group: this runs on every slot booking.
+   */
+  private readonly smartTimingCache = new Map<string, { at: number; hours: number[] | null }>();
+
+  private async smartTimingHours(userId: string, groupId: string): Promise<number[] | null> {
+    const cached = this.smartTimingCache.get(groupId);
+    if (cached && Date.now() - cached.at < 30 * 60_000) return cached.hours;
+
+    let hours: number[] | null = null;
+    try {
+      const [ch] = await this.repo.manager.query(
+        `SELECT smart_timing, schedule_start_hour, schedule_end_hour
+         FROM channels WHERE id = $1 AND user_id = $2`,
+        [groupId, userId],
+      );
+      if (ch?.smart_timing === true) {
+        const rows: Array<{ hour: number; clicks: number }> = await this.repo.manager.query(
+          `SELECT extract(hour from (lc.clicked_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')::int AS hour,
+                  count(*)::int AS clicks
+           FROM link_clicks lc
+           JOIN posts p ON p.id = lc.post_id
+           WHERE lc.user_id = $1
+             AND lc.clicked_at > now() - interval '30 days'
+             AND (p.channel_override = $2 OR p.channel_overrides LIKE $3)
+           GROUP BY 1`,
+          [userId, groupId, `%"${groupId}"%`],
+        );
+        const verdict = hotHours(rows.map((r) => ({ hour: Number(r.hour), clicks: Number(r.clicks) })));
+        if (verdict) {
+          // Clicks land outside posting hours too (people open the channel late) — a
+          // golden hour outside the group's send window must never pull a post out of it.
+          const s = ch.schedule_start_hour;
+          const e0 = ch.schedule_end_hour;
+          let inWindow = verdict.hours;
+          if (s != null && e0 != null) {
+            const e = e0 === 0 ? 24 : e0;
+            inWindow = s < e
+              ? verdict.hours.filter((h) => h >= s && h < e)
+              : verdict.hours.filter((h) => h >= s || h < e0);
+          }
+          hours = inWindow.length ? inWindow : null;
+        }
+      }
+    } catch { hours = null; }
+
+    this.smartTimingCache.set(groupId, { at: Date.now(), hours });
+    return hours;
+  }
+
+  /**
    * Place a new post to `groupId` in that group's NEXT FREE slot: spaced by the group's
    * interval from the latest pending (scheduled/queued) OR just-sent post targeting the group —
    * from any campaign or source THAT PUBLISHES TO TELEGRAM (a platform-filtered campaign,
@@ -1348,6 +1403,22 @@ export class PostsService {
    * keeps the queue from growing without bound.
    */
   async nextGroupSlot(
+    userId: string, groupId: string, notBefore: Date, campaignId?: string,
+    stackUntil?: Date | null,
+  ): Promise<{ slot: Date; skip: boolean }> {
+    const res = await this.nextGroupSlotRaw(userId, groupId, notBefore, campaignId, stackUntil);
+    if (res.skip) return res;
+    // OPT-IN smart timing: nudge the free slot into the group's learned golden hours.
+    // The nudge is bounded (≤3h, never earlier — see smart-timing.ts) and runs only for
+    // groups whose owner flipped the toggle; everyone else gets the slot untouched. The
+    // caller stores the snapped time as scheduled_at, so the interval chain anchors on it
+    // and the group's one-post-per-interval rate is preserved by construction.
+    const golden = await this.smartTimingHours(userId, groupId);
+    if (!golden) return res;
+    return { slot: snapToHotHour(res.slot, golden), skip: false };
+  }
+
+  private async nextGroupSlotRaw(
     userId: string, groupId: string, notBefore: Date, campaignId?: string,
     stackUntil?: Date | null,
   ): Promise<{ slot: Date; skip: boolean }> {

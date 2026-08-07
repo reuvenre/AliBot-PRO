@@ -83,6 +83,11 @@ export class UpdateChannelDto {
   @IsString()
   instagram_business_id?: string;
 
+  /** Opt-in: nudge this group's posts into its learned golden hours. */
+  @IsOptional()
+  @IsBoolean()
+  smart_timing?: boolean;
+
   // ── Per-group send queue (explicit null = inherit the user's global schedule) ──
   @IsOptional()
   @ValidateIf((_o, v) => v !== null)

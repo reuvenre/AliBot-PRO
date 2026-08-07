@@ -726,6 +726,8 @@ export interface Channel {
   /** Whether this channel has its own Facebook Page token (never the token itself). */
   has_fb_token: boolean;
   fb_token_masked: string | null;
+  /** Opt-in: nudge this group's posts into its learned golden hours. */
+  smart_timing?: boolean;
   /** Per-group send queue. null on any field = inherit the global schedule setting. */
   schedule_enabled: boolean | null;
   schedule_interval_minutes: number | null;
@@ -791,6 +793,8 @@ export interface UpdateChannelInput {
   facebook_page_id?: string;
   facebook_page_token?: string;
   instagram_business_id?: string;
+  /** Opt-in: nudge this group's posts into its learned golden hours. */
+  smart_timing?: boolean;
   /** Per-group send queue. Send null to clear an override (back to the global schedule). */
   schedule_enabled?: boolean | null;
   schedule_interval_minutes?: number | null;

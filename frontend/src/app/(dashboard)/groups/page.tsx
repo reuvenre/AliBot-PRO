@@ -338,6 +338,7 @@ function EditChannelModal({
   // This group has its OWN queue + clock. Leaving "custom" off inherits the global
   // schedule (הגדרות ← תזמון אוטומטי) — which is the default for every group.
   const [inQueue, setInQueue] = useState(channel.schedule_enabled !== false);
+  const [smartTiming, setSmartTiming] = useState(channel.smart_timing === true);
   const [customSched, setCustomSched] = useState(
     channel.schedule_interval_minutes != null ||
     channel.schedule_start_hour != null ||
@@ -375,6 +376,7 @@ function EditChannelModal({
         // null = inherit the global schedule; false on schedule_enabled = skip this
         // group's auto-queue entirely.
         schedule_enabled: inQueue ? null : false,
+        smart_timing: smartTiming,
         // Only what the user actually typed is stored; an empty field stays null and keeps
         // inheriting the global schedule. Note hour 0 (midnight) is a legitimate value, so
         // the empty-check is on the string — `Number('') || 0` would have stored midnight.
@@ -450,6 +452,22 @@ function EditChannelModal({
                 תזמון מותאם לקבוצה (אחרת יורש מההגדרה הכללית)
               </span>
             </label>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={smartTiming} disabled={!inQueue}
+                onChange={(e) => setSmartTiming(e.target.checked)}
+                className="w-4 h-4 rounded accent-amber-500 disabled:opacity-40" />
+              <span className={`text-xs ${inQueue ? 'text-white/70' : 'text-white/30'}`}>
+                ⏰ תזמון חכם — רכז פוסטים בשעות הזהב של הקבוצה
+              </span>
+            </label>
+            {smartTiming && inQueue && (
+              <p className="text-2xs text-white/30 leading-relaxed">
+                המערכת לומדת מהקליקים באילו שעות הקהל של הקבוצה הכי פעיל (מוצג בדוח הבוקר),
+                ומזיזה פוסטים עד 3 שעות קדימה כדי לנחות בשעה חמה. לעולם לא מוקדם יותר, לעולם
+                לא מחוץ לחלון השעות שהגדרת, וקצב הפרסום נשמר. דורש מספיק קליקים (25+ בחודש).
+              </p>
+            )}
 
             {inQueue && customSched && (
               <>
