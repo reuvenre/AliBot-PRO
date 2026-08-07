@@ -83,3 +83,25 @@ describe('word-index numbering (the 06/08 מאמא post)', () => {
     expect(copyDefect('דירוג (5) כוכבים, (120) הזמנות, חיסכון של (30) אחוז — שווה בדיקה עכשיו!')).toBeNull();
   });
 });
+
+describe('self-review checklist (the 07/08 Ali4You post)', () => {
+  it('rejects the checklist that actually got published', () => {
+    // The tail of the real post, verbatim (HTML-escaped arrows and all).
+    const leaked = `ות מוצרים מותר להשאיר כפי שהם). No other English words.
+*   *No link?* Checked.
+*   *Structure*: Hook -&gt; Value -&gt; Original/Sale Price -&gt; Performance -&gt; CTA. Checked.
+*   *HTML tags only*: \`\` and \`\` used properly. No Markdown \`\` or \`#\`.`;
+    expect(copyDefect(leaked)).not.toBeNull();
+  });
+
+  it('rejects each marker independently', () => {
+    expect(copyDefect('פוסט יפה על מוצר נהדר שכולם אוהבים. No other English words.')).toMatch(/prompt leaked/);
+    expect(copyDefect('מבנה הפוסט: Hook -> Value -> CTA, ממש קליט וזורם לקריאה')).toMatch(/model reasoning/);
+    expect(copyDefect('שורה ראשונה בסדר גמור\n* לינק? Checked.\n* מבנה? Checked.')).toBe('self-review checklist');
+  });
+
+  it('does not flag one incidental English "checked" in real copy', () => {
+    expect(copyDefect('מזוודה מעולה לטיסות — cabin size checked.\nמתאימה לכל חברות התעופה ונוחה לגלגול!'))
+      .toBeNull();
+  });
+});

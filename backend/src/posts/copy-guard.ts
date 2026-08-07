@@ -25,6 +25,11 @@ const PROMPT_LEAK: string[] = [
   'קישור השותפים יצורף אוטומטית',
   'reproduce the template',
   'system instructions (override',
+  // Instruction echoes from the 07/08 Ali4You leak — phrases from the brief itself,
+  // impossible in real marketing copy.
+  'no other english words',
+  'html tags only',
+  'no markdown',
 ];
 
 /** Deliberation the model was supposed to keep to itself. */
@@ -36,7 +41,24 @@ const THINKING: RegExp[] = [
   /\bwhat\s+if\s+the\s+instruction\b/i,
   /\bactually,\s*let\s+me\b/i,
   /\bon\s+second\s+thought\b/i,
+  // The brief's structure recipe quoted back ("Structure: Hook -> Value -> ... -> CTA"),
+  // in raw or HTML-escaped arrow form — the 07/08 Ali4You leak.
+  /\bhook\b\s*(?:->|→|-&gt;)\s*\bvalue\b/i,
 ];
+
+/**
+ * The model GRADING its own draft — a self-review checklist published verbatim on 07/08:
+ *
+ *     *   *No link?* Checked.
+ *     *   *Structure*: Hook -> Value -> ... Checked.
+ *
+ * One line ending in "Checked." could conceivably be copy; a post is condemned only when
+ * TWO OR MORE lines end that way — a checklist shape no marketing text has.
+ */
+function looksLikeSelfReview(text: string): boolean {
+  const checks = text.split('\n').filter((l) => /\bchecked\.?\s*$/i.test(l.trim()));
+  return checks.length >= 2;
+}
 
 /** A placeholder the template asked the model to FILL. Left bracketed, the reader sees
  *  "[מחיר]₪ בלבד" — the skeleton was copied without substituting the real values. */
@@ -82,6 +104,7 @@ export function copyDefect(text: string): string | null {
   }
   if (UNFILLED_PLACEHOLDER.test(t)) return 'unfilled placeholder';
   if (hasWordIndexNumbering(t)) return 'word-index numbering';
+  if (looksLikeSelfReview(t)) return 'self-review checklist';
 
   return null;
 }
