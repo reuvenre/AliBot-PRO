@@ -466,9 +466,13 @@ export class OptimizerService {
     const [posts] = await q(
       `SELECT count(*)::int AS n FROM posts
        WHERE user_id = $1 AND status = 'sent' AND sent_at > now() - interval '1 day'`, [userId]);
+    // link_clicks' timestamp column is clicked_at — there IS no created_at on that table.
+    // These two queries filtered on created_at, Postgres errored, the best-effort catch
+    // swallowed it, and the digest reported 0 clicks (and no golden hours) every single
+    // morning while the posts screen — fed by posts.clicks_count — showed the truth.
     const [clicks] = await q(
       `SELECT count(*)::int AS n FROM link_clicks
-       WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [userId]);
+       WHERE user_id = $1 AND clicked_at > now() - interval '1 day'`, [userId]);
     const [rev] = await q(
       `SELECT count(*)::int AS orders, coalesce(sum(commission_ils), 0)::float AS ils
        FROM earnings WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [userId]);
@@ -477,9 +481,9 @@ export class OptimizerService {
        WHERE user_id = $1 AND sent_at > now() - interval '7 days' AND clicks_count > 0
        ORDER BY clicks_count DESC LIMIT 1`, [userId]);
     const goldenHours: any[] = await q(
-      `SELECT extract(hour from (created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')::int AS hour,
+      `SELECT extract(hour from (clicked_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')::int AS hour,
               count(*)::int AS n
-       FROM link_clicks WHERE user_id = $1 AND created_at > now() - ($2 || ' days')::interval
+       FROM link_clicks WHERE user_id = $1 AND clicked_at > now() - ($2 || ' days')::interval
        GROUP BY 1 ORDER BY n DESC LIMIT 3`, [userId, String(WINDOW_DAYS)]);
     return {
       posts_yesterday: Number(posts?.n) || 0,
