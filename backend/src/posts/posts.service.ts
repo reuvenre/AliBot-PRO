@@ -9,6 +9,7 @@ import FormData = require('form-data');
 import { Post } from './post.entity';
 import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
+import { COPY_JUDGE_SYSTEM, parseJudgeVerdict } from './copy-judge';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
@@ -3960,6 +3961,29 @@ export class PostsService {
 
   // ── OpenAI text generation ────────────────────────────────────────────────
 
+  /**
+   * The AI judge — last gate before a generated draft is accepted (see copy-judge.ts for
+   * why it exists alongside the deterministic copyDefect patterns). Returns a defect tag
+   * like copyDefect does, or null when the draft passes. FAIL-OPEN: any judge failure —
+   * missing key, timeout, unparseable answer — passes the draft; the deterministic gate
+   * already approved it, and a broken judge must never be why a post didn't go out.
+   */
+  private async copySanityVerdict(creds: DecryptedCredentials, candidate: string): Promise<string | null> {
+    try {
+      const res = await this.ai.generate(creds, {
+        system: COPY_JUDGE_SYSTEM,
+        // The defects this judge hunts (meta-commentary, checklists, numbering) show up
+        // in the opening or the flow of the text — 3000 chars covers every real post.
+        prompt: candidate.slice(0, 3000),
+        maxTokens: 10,
+        temperature: 0,
+      });
+      return parseJudgeVerdict(res?.text) === 'bad' ? 'ai judge: not clean marketing copy' : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async generateText(product: any, language: string, rate: number, creds: DecryptedCredentials, template?: string, priceLocalOverride?: number, images?: GenerateImage[], hint?: string, forceVision = false, opts?: { currencyPair?: string; style?: 'pinterest'; seasonHint?: string | null; copyHint?: string | null; promo?: { discount?: number | null; endsLabel?: string | null } }): Promise<string> {
     // Use direct local price if already converted, otherwise multiply by rate
     const priceLocal = priceLocalOverride !== undefined
@@ -4087,7 +4111,10 @@ export class PostsService {
       });
 
       const candidate = result?.text ? mdBoldToHtml(result.text) : '';
-      const defect = copyDefect(candidate);
+      // Two gates, in order: the deterministic patterns (free, catches every KNOWN defect
+      // shape), then the AI judge (one tiny call, catches NOVEL shapes the first time —
+      // three different leak shapes reached channels before this existed).
+      const defect = copyDefect(candidate) || await this.copySanityVerdict(creds, candidate);
       if (!defect) { text = candidate; break; }
       this.logger.warn(`generateText rejected ${result?.provider || 'ai'} draft (${defect}) `
         + `for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
