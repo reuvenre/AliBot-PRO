@@ -1696,9 +1696,22 @@ export class PostsService {
     // permanently — the rotation now repeats proven keywords while still reaching every
     // keyword each cycle (an unproven keyword needs its chance to BE measured, and retiring
     // one is the optimizer's job, where it is capped and reversible).
+    // Manager 24h pauses: a collapsed keyword (earned before, dead in the last 48h) sits
+    // out one day. The pause is a manager_actions row that expires by until_at — nothing
+    // to clean up. If EVERY keyword happens to be paused, the full list stands: a pause
+    // must never silence a campaign outright.
+    const pausedRows: Array<{ target_label: string }> = await this.repo.manager.query(
+      `SELECT target_label FROM manager_actions
+       WHERE kind = 'keyword_pause' AND target_id = $1 AND until_at > now()`,
+      [campaign.id],
+    ).catch(() => []);
+    const pausedKw = new Set(pausedRows.map((r) => String(r.target_label || '').trim().toLowerCase()));
+    const kwActive = pausedKw.size ? kwList.filter((k) => !pausedKw.has(k.toLowerCase())) : kwList;
+    const kwEffective = kwActive.length ? kwActive : kwList;
+
     const perf = await this.keywordPerformance(campaign.id).catch(() => new Map());
-    const rotation = weightedRotation(kwList, perf);
-    const rotationList = rotation.length ? rotation : kwList;
+    const rotation = weightedRotation(kwEffective, perf);
+    const rotationList = rotation.length ? rotation : kwEffective;
 
     // One keyword per post SLOT (repeats when there are fewer keywords than posts).
     const slotKeywords: string[] = [];

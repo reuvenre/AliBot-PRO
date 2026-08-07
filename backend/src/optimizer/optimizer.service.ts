@@ -15,6 +15,7 @@ import { AiService } from '../ai/ai.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
 import { soldPriceBand } from './sold-price-band';
+import { collapsedKeywords, hoursChanged, postsPerRunDelta } from './manager-rules';
 import {
   CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
   buildFitPrompt, lexicalFit, parseFitVerdicts, rankFitted,
@@ -192,7 +193,16 @@ export class OptimizerService {
     const stats = await this.digestStats(userId);
     const copyAngles = await this.copyAngleReport(userId);
     const hotByGroup = await this.groupHotHours(userId).catch(() => []);
-    const digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles, hotByGroup);
+    // The daily manager: three owner-approved bounded actions, every one logged and
+    // reported below. Failures never break the digest.
+    const managerLines = await this.runManagerActions(userId, active, hotByGroup).catch((e) => {
+      this.logger.warn(`manager actions failed for ${userId}: ${e?.message}`);
+      return [] as string[];
+    });
+    let digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles, hotByGroup);
+    if (managerLines.length) {
+      digest += `\n\n🤖 סוכן-המנהל — מה שיניתי היום:\n${managerLines.map((l) => `  • ${l}`).join('\n')}`;
+    }
 
     await this.runs.save(this.runs.create({
       user_id: userId,
@@ -500,6 +510,117 @@ export class OptimizerService {
       .filter(([id]) => nameOf.has(id)) // clicks for a deleted group teach nothing actionable
       .map(([id, hours]) => ({ channel_id: id, name: nameOf.get(id)!, verdict: hotHours(hours) }))
       .sort((a, b) => (b.verdict?.total || 0) - (a.verdict?.total || 0));
+  }
+
+  /**
+   * The daily manager (project 3): reviews the account once a day and takes small actions
+   * from the OWNER-APPROVED list — nothing else, nothing silent. Each action inserts a
+   * manager_actions row (the audit log AND the manager's own memory) and returns a Hebrew
+   * line for the digest. Deterministic rules (manager-rules.ts): a bounded numeric change
+   * needs a reproducible reason, not a vibe.
+   */
+  private async runManagerActions(
+    userId: string,
+    campaigns: Campaign[],
+    hotByGroup: Array<{ channel_id: string; name: string; verdict: HotHoursResult | null }>,
+  ): Promise<string[]> {
+    const q = (sql: string, params: any[]) => this.campaigns.query(sql, params);
+    const lines: string[] = [];
+    const act = (kind: string, targetId: string, targetLabel: string, before: string | null,
+      after: string | null, baseline: string | null, reason: string, untilAt: Date | null) =>
+      q(
+        `INSERT INTO manager_actions (user_id, kind, target_id, target_label, "before", "after", baseline, reason, until_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [userId, kind, targetId, targetLabel, before, after, baseline, reason, untilAt],
+      );
+
+    // 1) Golden-hours refresh for groups the owner opted into smart timing. The snap cache
+    //    refreshes itself half-hourly anyway; what the manager adds is the RECORD — the
+    //    owner sees the shift instead of wondering why posts moved.
+    const smartGroups: Array<{ id: string; name: string }> = await q(
+      `SELECT id, name FROM channels WHERE user_id = $1 AND smart_timing = true`, [userId],
+    ).catch(() => []);
+    for (const g of smartGroups) {
+      const current = hotByGroup.find((h) => h.channel_id === g.id)?.verdict?.hours ?? null;
+      const [last] = await q(
+        `SELECT "after" FROM manager_actions
+         WHERE user_id = $1 AND kind = 'golden_hours' AND target_id = $2
+         ORDER BY created_at DESC LIMIT 1`, [userId, g.id],
+      ).catch(() => []);
+      let prev: number[] | null = null;
+      try { prev = last?.after ? JSON.parse(last.after) : null; } catch { prev = null; }
+      if (hoursChanged(prev, current)) {
+        await act('golden_hours', g.id, g.name, prev ? JSON.stringify(prev) : null,
+          current ? JSON.stringify(current) : null, null,
+          'שעות הזהב חושבו מחדש מ-30 ימי קליקים', null).catch(() => {});
+        // The scheduler's own snap cache refreshes itself within 30 minutes — the manager's
+        // job here is the RECORD, so the owner sees the shift instead of wondering.
+        lines.push(`⏰ ${g.name}: שעות הזהב עודכנו — ${prev?.length ? formatHours(prev) : 'טרם נלמדו'} ← ${current?.length ? formatHours(current) : 'אין מספיק דאטה'}`);
+      }
+    }
+
+    // 2) posts_per_run ±1, never drifting more than ±1 from the OWNER's own value. The
+    //    baseline rides the action log: the last row's baseline continues the chain, and a
+    //    current value that doesn't match the last row's `after` means the owner changed it
+    //    since — the baseline resets to THEIR value.
+    for (const c of campaigns) {
+      const [perf] = await q(
+        `SELECT count(*)::int AS posts, coalesce(sum(clicks_count), 0)::int AS clicks
+         FROM posts WHERE campaign_id = $1 AND status = 'sent' AND sent_at > now() - interval '7 days'`,
+        [c.id],
+      ).catch(() => [null]);
+      if (!perf) continue;
+      const [lastAct] = await q(
+        `SELECT "after", baseline FROM manager_actions
+         WHERE kind = 'posts_per_run' AND target_id = $1
+         ORDER BY created_at DESC LIMIT 1`, [c.id],
+      ).catch(() => []);
+      const current = Number(c.posts_per_run) || 1;
+      const baseline = lastAct && Number(lastAct.after) === current
+        ? Number(lastAct.baseline) || current
+        : current;
+      const delta = postsPerRunDelta(current, baseline,
+        { posts7d: Number(perf.posts) || 0, clicks7d: Number(perf.clicks) || 0 });
+      if (!delta) continue;
+      await q(`UPDATE campaigns SET posts_per_run = $1 WHERE id = $2`, [delta.next, c.id]).catch(() => {});
+      await act('posts_per_run', c.id, c.name, String(current), String(delta.next),
+        String(baseline), delta.reason, null).catch(() => {});
+      lines.push(`📈 [${c.name}] פוסטים לריצה: ${current} ← ${delta.next} (${delta.reason})`);
+    }
+
+    // 3) 24h pause for a COLLAPSED keyword — earned before, dead in the last 48h while the
+    //    campaign as a whole still earns. One keyword per campaign per day, auto-expires.
+    for (const c of campaigns) {
+      const pulses: Array<{ keyword: string; before_clicks: number; recent_clicks: number }> = await q(
+        `SELECT keyword,
+                sum(CASE WHEN sent_at <= now() - interval '2 days' THEN clicks_count ELSE 0 END)::int AS before_clicks,
+                sum(CASE WHEN sent_at >  now() - interval '2 days' THEN clicks_count ELSE 0 END)::int AS recent_clicks
+         FROM posts
+         WHERE campaign_id = $1 AND status = 'sent' AND keyword IS NOT NULL
+           AND sent_at > now() - interval '9 days'
+         GROUP BY keyword`, [c.id],
+      ).catch(() => []);
+      if (!pulses.length) continue;
+      const campaignRecent = pulses.reduce((s, p) => s + (Number(p.recent_clicks) || 0), 0);
+      const collapsed = collapsedKeywords(
+        pulses.map((p) => ({ keyword: String(p.keyword), clicksBefore: Number(p.before_clicks) || 0, clicksRecent: Number(p.recent_clicks) || 0 })),
+        campaignRecent,
+      );
+      for (const k of collapsed.slice(0, 1)) {
+        const [already] = await q(
+          `SELECT id FROM manager_actions
+           WHERE kind = 'keyword_pause' AND target_id = $1 AND target_label = $2 AND until_at > now()`,
+          [c.id, k.keyword],
+        ).catch(() => []);
+        if (already) continue;
+        const until = new Date(Date.now() + 24 * 3600_000);
+        await act('keyword_pause', c.id, k.keyword, null, null, null,
+          `${k.clicksBefore} קליקים בשבוע שקדם, 0 ב-48 השעות האחרונות — הפסקה של 24 שעות`, until).catch(() => {});
+        lines.push(`⏸️ [${c.name}] "${k.keyword}" בהפסקה של 24 שעות (${k.clicksBefore} קליקים קודם, 0 ב-48 שעות — מילים אחרות ממשיכות כרגיל)`);
+      }
+    }
+
+    return lines;
   }
 
   /** Yesterday's numbers + golden hours + top product — the digest's raw material. */
