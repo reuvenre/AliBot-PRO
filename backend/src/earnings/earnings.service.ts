@@ -85,9 +85,17 @@ export class EarningsService {
    * we inherit keyword + campaign, which powers the "what actually earns" report.
    */
   async attributeEarnings(userId: string): Promise<number> {
+    // NEWEST FIRST, and with headroom. The old `take: 500` had no ORDER BY — Postgres
+    // returned an arbitrary 500 rows, and once the account accumulated more than 500
+    // permanently-unmatchable orders (pre-tracking history, other-traffic purchases),
+    // they could occupy the whole batch on every run and STARVE fresh orders of their
+    // attribution attempt — observed as "the orders column never moves" while the owner
+    // knew published products were being bought. Newest-first guarantees every new order
+    // is examined while its matching post is still inside the 30-day window.
     const unattributed = await this.repo.find({
       where: { user_id: userId, post_id: IsNull() },
-      take: 500,
+      order: { order_date: 'DESC' },
+      take: 1500,
     });
     const withProduct = unattributed.filter((e) => e.product_id && e.product_id !== 'unknown');
     if (!withProduct.length) return 0;
