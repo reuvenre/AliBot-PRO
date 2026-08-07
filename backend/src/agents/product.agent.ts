@@ -31,6 +31,9 @@ export class ProductAgent {
     keywords: string[],
     filters: { category_id?: string; min_price?: number; max_price?: number; min_discount?: number },
     count = 3,
+    /** The account's proven price band (from real orders) — steers ranking toward what
+     *  this audience demonstrably BUYS, not just what looks shiny. */
+    soldBand?: { low: number; high: number; median: number; orders: number } | null,
   ): Promise<{ products: RankedProduct[]; tokens: number }> {
     const tools: Anthropic.Tool[] = [
       {
@@ -54,7 +57,8 @@ export class ProductAgent {
     const systemPrompt = `You are a product discovery agent for an affiliate marketing platform.
 Your task: find the best-converting products from AliExpress for Telegram channel posts.
 Ranking criteria: high discount_percent, high orders_count, good rating (>4.0), reasonable price.
-Score = (discount_percent * 0.4) + (min(orders_count, 10000) / 10000 * 40) + (rating / 5 * 20).
+Score = (discount_percent * 0.4) + (min(orders_count, 10000) / 10000 * 40) + (rating / 5 * 20).${soldBand ? `
+ACCOUNT SALES PROFILE: this account's real buyers mostly purchase between $${soldBand.low} and $${soldBand.high} (median $${soldBand.median}, based on ${soldBand.orders} actual orders). Add 15 points to the score of products priced inside that range — proven willingness to pay beats looks. Do NOT exclude products outside it.` : ''}
 After searching, select the top ${count} products by score and return them as JSON.`;
 
     const keywordsText = keywords.slice(0, 3).join(', ');

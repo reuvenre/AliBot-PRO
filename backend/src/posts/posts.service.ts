@@ -17,6 +17,7 @@ import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { snapToHotHour } from './smart-timing';
 import { hotHours } from '../optimizer/hot-hours';
+import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { tidyRtlBody } from './rtl';
@@ -1335,6 +1336,31 @@ export class PostsService {
   }
 
   /**
+   * The account's proven price band (USD, from 90 days of real orders) — the sales-profile
+   * signal product selection prefers. Null when the account hasn't enough orders to claim
+   * one. Cached 6h per user: selection runs on every campaign tick.
+   */
+  private readonly priceBandCache = new Map<string, { at: number; band: PriceBand | null }>();
+
+  async soldPriceBandFor(userId: string): Promise<PriceBand | null> {
+    const cached = this.priceBandCache.get(userId);
+    if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.band;
+    let band: PriceBand | null = null;
+    try {
+      const rows: Array<{ amt: number }> = await this.repo.manager.query(
+        `SELECT order_amount_usd AS amt FROM earnings
+         WHERE user_id = $1 AND order_amount_usd > 0
+           AND order_date > now() - interval '90 days'
+         LIMIT 3000`,
+        [userId],
+      );
+      band = soldPriceBand(rows.map((r) => r.amt));
+    } catch { band = null; }
+    this.priceBandCache.set(userId, { at: Date.now(), band });
+    return band;
+  }
+
+  /**
    * The group's golden hours for slot-snapping — or null when smart timing is off, the
    * data is too thin for a verdict, or every golden hour falls outside the group's own
    * send window (clicks arrive after hours too; a snap must never escape the window).
@@ -1812,7 +1838,11 @@ export class PostsService {
           this.logger.warn(`campaign ${campaign.id} kw "${kw}": pool via fallback tier ${tier} `
             + `(rating≥${minRating}, discount≥${minDiscount}%, ${PRODUCT_REPEAT_COOLDOWN_DAYS}d cooldown exhausted) — staying live instead of silent`);
         }
-        return pool;
+        // SALES-PROFILE preference: products priced inside the account's PROVEN band (what
+        // its buyers actually pay, from real orders) rank first; everything else follows in
+        // its original order. A preference, never a filter — exploration survives, and an
+        // account without enough orders gets the pool untouched.
+        return preferInBand(pool, (p) => Number(p?.sale_price) || 0, await this.soldPriceBandFor(userId));
       } catch (err: any) {
         kwErrors.push(`"${kw}": ${err?.message || 'החיפוש נכשל'}`);
         return null;

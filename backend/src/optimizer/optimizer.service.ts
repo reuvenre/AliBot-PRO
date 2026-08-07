@@ -14,6 +14,7 @@ import { EarningsService } from '../earnings/earnings.service';
 import { AiService } from '../ai/ai.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
+import { soldPriceBand } from './sold-price-band';
 import {
   CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
   buildFitPrompt, lexicalFit, parseFitVerdicts, rankFitted,
@@ -521,6 +522,14 @@ export class OptimizerService {
       `SELECT product_title, clicks_count FROM posts
        WHERE user_id = $1 AND sent_at > now() - interval '7 days' AND clicks_count > 0
        ORDER BY clicks_count DESC LIMIT 1`, [userId]);
+    // The account's proven price band (what buyers actually pay) — the sales-profile
+    // signal product selection now prefers; shown so the owner sees what steers it.
+    const bandRows: any[] = await q(
+      `SELECT order_amount_usd AS amt FROM earnings
+       WHERE user_id = $1 AND order_amount_usd > 0
+         AND order_date > now() - interval '90 days'
+       LIMIT 3000`, [userId]);
+    const priceBand = soldPriceBand(bandRows.map((r) => r.amt));
     const goldenHours: any[] = await q(
       `SELECT extract(hour from (clicked_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')::int AS hour,
               count(*)::int AS n
@@ -534,6 +543,7 @@ export class OptimizerService {
       top_product: topProduct?.product_title ? String(topProduct.product_title).slice(0, 60) : null,
       top_product_clicks: Number(topProduct?.clicks_count) || 0,
       golden_hours: goldenHours.map((h) => `${String(h.hour).padStart(2, '0')}:00`),
+      price_band: priceBand,
     };
   }
 
@@ -593,6 +603,10 @@ export class OptimizerService {
       }
     } else if (stats.golden_hours.length) {
       lines.push(`⏰ שעות הזהב שלך: ${stats.golden_hours.join(', ')}`);
+    }
+    if (stats.price_band) {
+      lines.push(`💵 פרופיל הקנייה שלך: רוב ההזמנות בין $${stats.price_band.low} ל-$${stats.price_band.high} `
+        + `(חציון $${stats.price_band.median}, ${stats.price_band.orders} הזמנות ב-90 יום) — בחירת המוצרים מעדיפה את הטווח הזה`);
     }
     if (actions.length) {
       lines.push('');

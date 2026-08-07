@@ -61,8 +61,11 @@ export class OrchestratorAgent {
       const currencySymbol = CURRENCY_SYMBOLS[targetCurrency] || '₪';
       const rate = await this.rates.getRate(currencyPair);
 
-      // 1. Product Agent — find best products
-      this.logger.log(`[Orchestrator] Finding products for campaign "${campaign.name}"`);
+      // 1. Product Agent — find best products, steered by the account's PROVEN price band
+      // (what its buyers actually pay, from real orders; null on thin accounts).
+      const soldBand = await this.posts.soldPriceBandFor(userId).catch(() => null);
+      this.logger.log(`[Orchestrator] Finding products for campaign "${campaign.name}"`
+        + (soldBand ? ` (sales profile: $${soldBand.low}–$${soldBand.high})` : ''));
       const { products, tokens: productTokens } = await this.productAgent.findBestProducts(
         userId,
         campaign.keywords,
@@ -73,6 +76,7 @@ export class OrchestratorAgent {
           min_discount: campaign.min_discount,
         },
         campaign.posts_per_run,
+        soldBand,
       );
       totalTokens += productTokens;
       this.logger.log(`[Orchestrator] Found ${products.length} products`);
