@@ -13,6 +13,7 @@ import { ProductsService } from '../products/products.service';
 import { EarningsService } from '../earnings/earnings.service';
 import { AiService } from '../ai/ai.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
+import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
 import {
   CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
   buildFitPrompt, lexicalFit, parseFitVerdicts, rankFitted,
@@ -189,7 +190,8 @@ export class OptimizerService {
 
     const stats = await this.digestStats(userId);
     const copyAngles = await this.copyAngleReport(userId);
-    const digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles);
+    const hotByGroup = await this.groupHotHours(userId).catch(() => []);
+    const digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles, hotByGroup);
 
     await this.runs.save(this.runs.create({
       user_id: userId,
@@ -460,6 +462,45 @@ export class OptimizerService {
     return { fitted: rankFitted(candidates, verdicts, profile, claimed, max), rejected };
   }
 
+  /**
+   * Golden hours PER GROUP — when each group's own audience actually clicks (local
+   * Asia/Jerusalem hours, last 30 days). A click is attributed to the post's primary
+   * target group (channel_override). Groups below the data floor come back with
+   * `verdict: null` so the digest can say "not enough data yet" instead of guessing.
+   */
+  async groupHotHours(userId: string): Promise<Array<{ channel_id: string; name: string; verdict: HotHoursResult | null }>> {
+    const rows: Array<{ channel_id: string; hour: number; clicks: number }> = await this.campaigns.query(
+      `SELECT p.channel_override AS channel_id,
+              extract(hour from (lc.clicked_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')::int AS hour,
+              count(*)::int AS clicks
+       FROM link_clicks lc
+       JOIN posts p ON p.id = lc.post_id
+       WHERE lc.user_id = $1
+         AND lc.clicked_at > now() - interval '30 days'
+         AND p.channel_override IS NOT NULL
+       GROUP BY 1, 2`,
+      [userId],
+    ).catch(() => []);
+    if (!rows.length) return [];
+
+    const byChannel = new Map<string, HourClicks[]>();
+    for (const r of rows) {
+      const list = byChannel.get(r.channel_id) || [];
+      list.push({ hour: Number(r.hour), clicks: Number(r.clicks) });
+      byChannel.set(r.channel_id, list);
+    }
+
+    const names: Array<{ id: string; name: string }> = await this.campaigns.query(
+      `SELECT id, name FROM channels WHERE user_id = $1`, [userId],
+    ).catch(() => []);
+    const nameOf = new Map(names.map((n) => [String(n.id), String(n.name || '')]));
+
+    return Array.from(byChannel.entries())
+      .filter(([id]) => nameOf.has(id)) // clicks for a deleted group teach nothing actionable
+      .map(([id, hours]) => ({ channel_id: id, name: nameOf.get(id)!, verdict: hotHours(hours) }))
+      .sort((a, b) => (b.verdict?.total || 0) - (a.verdict?.total || 0));
+  }
+
   /** Yesterday's numbers + golden hours + top product — the digest's raw material. */
   private async digestStats(userId: string) {
     const q = (sql: string, params: any[]) => this.campaigns.query(sql, params).catch(() => []);
@@ -528,6 +569,7 @@ export class OptimizerService {
     soldCategories: CategoryScore[] = [],
     campaigns: Campaign[] = [],
     copyAngles: { scored: VariantScore[]; winner: VariantScore | null } = { scored: [], winner: null },
+    hotByGroup: Array<{ channel_id: string; name: string; verdict: HotHoursResult | null }> = [],
   ): string {
     const lines: string[] = [];
     lines.push('🧠 דו"ח הבוקר של המנוע הלומד');
@@ -536,7 +578,22 @@ export class OptimizerService {
     // 10:00 close, so it covers the day that just shut rather than a calendar yesterday.
     lines.push(`📊 24 השעות האחרונות (עד סגירת היום באלי אקספרס): ${stats.posts_yesterday} פוסטים · ${stats.clicks_yesterday} קליקים · ${stats.orders_yesterday} הזמנות (₪${stats.revenue_yesterday_ils})`);
     if (stats.top_product) lines.push(`🏆 המוביל השבוע: ${stats.top_product} (${stats.top_product_clicks} קליקים)`);
-    if (stats.golden_hours.length) lines.push(`⏰ שעות הזהב שלך: ${stats.golden_hours.join(', ')}`);
+    // Per-group golden hours (30 days) beat the account-wide line when we have them —
+    // each group's audience has its own rhythm, and per-group is what the scheduler will
+    // act on. The account-wide line stays as the fallback for thin data.
+    const withVerdict = hotByGroup.filter((g) => g.verdict);
+    if (withVerdict.length) {
+      lines.push('⏰ שעות הזהב לפי קבוצה (30 יום):');
+      for (const g of withVerdict) {
+        const v = g.verdict!;
+        lines.push(`  • ${g.name}: ${formatHours(v.hours)} — ${Math.round(v.share * 100)}% מ-${v.total} קליקים`);
+      }
+      for (const g of hotByGroup.filter((x) => !x.verdict)) {
+        lines.push(`  • ${g.name}: עוד אין מספיק קליקים למסקנה`);
+      }
+    } else if (stats.golden_hours.length) {
+      lines.push(`⏰ שעות הזהב שלך: ${stats.golden_hours.join(', ')}`);
+    }
     if (actions.length) {
       lines.push('');
       lines.push('🔧 מה כיוונתי הלילה:');
