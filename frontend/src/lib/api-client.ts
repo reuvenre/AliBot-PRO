@@ -519,6 +519,12 @@ export const postsApi = {
   quickPost: (data: { product_id: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
     http.post<Post>('/posts/quick', data, { timeout: AI_TIMEOUT }).then(extract),
 
+  /** Bulk file import: rows parsed client-side, resolved+queued server-side per batch. */
+  importRows: (rows: Array<{ keyword?: string; title: string; benefits: string[]; link: string }>, channels?: string[]) =>
+    http.post<{ queued: number; duplicates: number; failed: number; results: Array<{ title: string; status: string; reason?: string }> }>(
+      '/posts/import', { rows, channels }, { timeout: 120_000 },
+    ).then(extract),
+
   /** One-image Nano Banana preview (before/after) — costs one Gemini call on the user's key. */
   enhancePreview: (imageUrl?: string) =>
     http.post<{ before: string; after_data_url: string }>(

@@ -5,7 +5,7 @@ import {
   FileText, RefreshCw, Loader2, RotateCcw,
   CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, Settings2,
   ListOrdered, Trash2, Package, AlertTriangle, Pencil, X, Save, SendHorizontal, Eye, Users, Megaphone,
-  ExternalLink, Wand2, Copy, Check, Star,
+  ExternalLink, Wand2, Copy, Check, Star, Upload,
 } from 'lucide-react';
 import Link from 'next/link';
 import { postsApi, credentialsApi, channelsApi, suppliersApi } from '@/lib/api-client';
@@ -1017,6 +1017,7 @@ export default function PostsPage() {
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [republishingPost, setRepublishingPost] = useState<Post | null>(null);
   const [pushingPost, setPushingPost] = useState<Post | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -1031,6 +1032,11 @@ export default function PostsPage() {
           <h1 className="text-2xl font-bold text-white">ניהול פוסטים</h1>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setImporting(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-sm rounded-xl transition-all">
+            <Upload size={13} />
+            ייבוא מקובץ
+          </button>
           <Link href="/settings"
             className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all">
             <Settings2 size={13} />
@@ -1194,6 +1200,170 @@ export default function PostsPage() {
           onDone={() => { setPushingPost(null); load({ silent: true }); }}
         />
       )}
+
+      {importing && (
+        <ImportFileModal
+          channels={channels}
+          onClose={() => setImporting(false)}
+          onDone={() => { setImporting(false); load({ silent: true }); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── File import (the owner's old products spreadsheet → queued posts) ─────────
+//
+// Columns are detected by their Hebrew headers with positional fallback, matching the
+// real file: Keyword | שם המוצר | ✔️יתרון 1..3 | קישור למוצר. Parsing happens here in the
+// browser (SheetJS, dynamically imported); rows are sent to the backend in batches of 10 —
+// each batch resolves short links + enriches price/image server-side, so the whole file
+// imports with live progress instead of one long request.
+interface ImportRow { keyword?: string; title: string; benefits: string[]; link: string }
+
+function ImportFileModal({ channels, onClose, onDone }: {
+  channels: Channel[]; onClose: () => void; onDone: () => void;
+}) {
+  const [rows, setRows] = useState<ImportRow[] | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [skippedRows, setSkippedRows] = useState(0);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [summary, setSummary] = useState<{ queued: number; duplicates: number; failed: number } | null>(null);
+  const [error, setError] = useState('');
+
+  const onFile = async (f: File) => {
+    setError('');
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(await f.arrayBuffer());
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (!aoa.length) { setError('הקובץ ריק'); return; }
+      const header = (aoa[0] || []).map((c) => String(c ?? ''));
+      const col = (pred: (h: string) => boolean, fallback: number) => {
+        const i = header.findIndex(pred);
+        return i >= 0 ? i : fallback;
+      };
+      const iKw = col((h) => /keyword/i.test(h), 0);
+      const iTitle = col((h) => /שם/.test(h), 1);
+      const iB1 = col((h) => /יתרון\s*1/.test(h), 2);
+      const iB2 = col((h) => /יתרון\s*2/.test(h), 3);
+      const iB3 = col((h) => /יתרון\s*3/.test(h), 4);
+      const iLink = col((h) => /קישור|link/i.test(h), 5);
+      const parsed: ImportRow[] = [];
+      let skipped = 0;
+      for (const r of aoa.slice(1)) {
+        const title = String(r?.[iTitle] ?? '').trim();
+        const link = String(r?.[iLink] ?? '').trim();
+        if (!title || !/^https?:\/\//i.test(link)) { if (title || link) skipped++; continue; }
+        parsed.push({
+          keyword: String(r?.[iKw] ?? '').trim() || undefined,
+          title,
+          benefits: [r?.[iB1], r?.[iB2], r?.[iB3]].map((x) => String(x ?? '').trim()).filter(Boolean),
+          link,
+        });
+      }
+      if (!parsed.length) { setError('לא נמצאו שורות תקינות (שם מוצר + קישור)'); return; }
+      setRows(parsed); setFileName(f.name); setSkippedRows(skipped);
+    } catch {
+      setError('קריאת הקובץ נכשלה — ודא שזה קובץ Excel/CSV תקין');
+    }
+  };
+
+  const start = async () => {
+    if (!rows?.length || running) return;
+    setRunning(true); setError(''); setProgress(0);
+    const totals = { queued: 0, duplicates: 0, failed: 0 };
+    try {
+      for (let i = 0; i < rows.length; i += 10) {
+        const r = await postsApi.importRows(rows.slice(i, i + 10), groupIds.length ? groupIds : undefined);
+        totals.queued += r.queued; totals.duplicates += r.duplicates; totals.failed += r.failed;
+        setProgress(Math.min(rows.length, i + 10));
+      }
+      setSummary(totals);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'הייבוא נעצר באמצע — אפשר להריץ שוב, שורות שכבר נכנסו לא ישוכפלו');
+    }
+    setRunning(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={running ? undefined : onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative bg-surface-secondary border border-edge rounded-2xl w-full max-w-md p-6" dir="rtl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-semibold text-white flex items-center gap-2"><Upload size={15} className="text-emerald-400" /> ייבוא מוצרים מקובץ</h3>
+          {!running && <button onClick={onClose} className="text-white/30 hover:text-white/60"><X size={16} /></button>}
+        </div>
+        <p className="text-2xs text-white/35 mb-4 leading-relaxed">
+          קובץ Excel עם העמודות: שם מוצר, יתרונות, קישור שותפים. הפוסטים נבנים מהטקסט שבקובץ,
+          מועשרים בתמונה ומחיר מאלי אקספרס, ונכנסים לתור השליחה האוטומטי.
+        </p>
+
+        {!rows && (
+          <label className="block border-2 border-dashed border-edge-hover hover:border-emerald-500/40 rounded-xl p-8 text-center cursor-pointer transition-colors">
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+            <Upload size={22} className="mx-auto text-white/25 mb-2" />
+            <span className="text-sm text-white/50">לחץ לבחירת קובץ (xlsx / csv)</span>
+          </label>
+        )}
+
+        {rows && !summary && (
+          <>
+            <div className="bg-white/3 border border-edge rounded-xl px-3 py-2.5 mb-3 text-xs text-white/70">
+              📄 {fileName} — <b className="text-emerald-400">{rows.length}</b> מוצרים מוכנים לייבוא
+              {skippedRows > 0 && <span className="text-white/35"> · {skippedRows} שורות חלקיות דולגו</span>}
+            </div>
+            <label className="block text-xs text-white/50 mb-1.5">לאילו קבוצות לפרסם</label>
+            <GroupMultiSelect channels={channels} value={groupIds} onChange={setGroupIds} />
+            <p className="text-2xs text-white/30 mt-1.5 mb-3">
+              ללא בחירה — הפוסטים ילכו לערוץ ברירת המחדל. הפוסטים יוצאים בקצב הרגיל של התור
+              (אחד למרווח, בחלון השעות) — לא בבת אחת.
+            </p>
+            {running && (
+              <div className="mb-3">
+                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(progress / rows.length) * 100}%` }} />
+                </div>
+                <p className="text-2xs text-white/40 mt-1">{progress} / {rows.length} (פתיחת קישורים ומשיכת מחירים — לוקח זמן)</p>
+              </div>
+            )}
+            {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={start} disabled={running}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl">
+                {running ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {running ? 'מייבא…' : `ייבא ${rows.length} מוצרים לתור`}
+              </button>
+              {!running && (
+                <button onClick={() => { setRows(null); setFileName(''); }} className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl">
+                  קובץ אחר
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {summary && (
+          <div className="text-center py-2">
+            <p className="text-3xl mb-2">✅</p>
+            <p className="text-sm text-white/85 mb-1">
+              נוספו לתור <b className="text-emerald-400">{summary.queued}</b> פוסטים
+            </p>
+            <p className="text-2xs text-white/40 mb-4">
+              {summary.duplicates > 0 && <>‏{summary.duplicates} דולגו (כבר קיימים במערכת) · </>}
+              {summary.failed > 0 && <span className="text-amber-400">‏{summary.failed} נכשלו</span>}
+              {summary.failed === 0 && summary.duplicates === 0 && 'הכל עבר חלק'}
+            </p>
+            <button onClick={onDone} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl">
+              לתור השליחה
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

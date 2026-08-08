@@ -40,6 +40,14 @@ export class PostsController {
     return this.svc.preview(this.uid(req), productId, language, customProduct, template, undefined, hint, false, promo);
   }
 
+  /** Bulk import from the owner's product file — rows are parsed client-side, sent in
+   *  batches (short-link resolution is slow), composed from the file's own copy, queued. */
+  @Post('import')
+  @HttpCode(200)
+  importRows(@Req() req: Request, @Body() body: { rows?: any[]; channels?: string[] }) {
+    return this.svc.importCustomPosts(this.uid(req), body?.rows || [], body?.channels);
+  }
+
   /** One-image AI-redesign preview (Nano Banana) — see the style before enabling it. */
   @Post('enhance-preview')
   @HttpCode(200)

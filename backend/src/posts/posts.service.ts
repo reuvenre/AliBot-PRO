@@ -16,6 +16,7 @@ import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { snapToHotHour } from './smart-timing';
+import { ImportRowInput, composeImportText, extractAliProductId, validImportRow } from './import-rows';
 import { hotHours } from '../optimizer/hot-hours';
 import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
@@ -770,7 +771,7 @@ export class PostsService {
      * by campaigns, whose own cron is the cadence — see runCampaign / runFlylinkCampaign.
      * `campaignId` links the post back to its campaign.
      */
-    opts?: { scheduledAt?: Date; campaignId?: string },
+    opts?: { scheduledAt?: Date; campaignId?: string; keyword?: string },
   ): Promise<Post> {
     const creds = await this.credentials.getRaw(userId);
 
@@ -834,6 +835,7 @@ export class PostsService {
     const post = this.repo.create({
       user_id: userId,
       campaign_id: opts?.campaignId,
+      keyword: opts?.keyword || null,
       product_id: product.product_id,
       product_title: product.title,
       product_image: product.image_url,
@@ -1042,6 +1044,106 @@ export class PostsService {
       if (post.status === 'failed') post.status = 'scheduled'; // reschedule a failed post
     }
     return this.repo.save(post);
+  }
+
+  /**
+   * Follow an AliExpress short link (s.click.aliexpress.com/e/…) server-side until a
+   * product id appears in the URL. Redirects are followed manually, at most 4 hops, and
+   * ONLY while the host stays on aliexpress — the link comes from the owner's own file,
+   * but an open follower would still be an SSRF surface. Null when nothing resolves.
+   */
+  private async resolveAliShortLink(url: string): Promise<string | null> {
+    let current = String(url || '').trim();
+    for (let hop = 0; hop < 4; hop++) {
+      let host = '';
+      try { host = new URL(current).hostname; } catch { return null; }
+      if (!/aliexpress\.(com|us|ru)$|aliexpress\./i.test(host)) return null;
+      const found = extractAliProductId(current);
+      if (found) return found;
+      const res = await axios.get(current, {
+        maxRedirects: 0, timeout: 8000, validateStatus: () => true,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      }).catch(() => null);
+      const loc = res?.headers?.location;
+      if (!loc) return extractAliProductId(current);
+      try { current = new URL(loc, current).toString(); } catch { return null; }
+    }
+    return extractAliProductId(current);
+  }
+
+  /**
+   * Import rows from the owner's product FILE (name + hand-written benefits + short
+   * affiliate link) into the auto-send queue. Per row: skip links already imported
+   * (re-uploading the file is safe), resolve the short link to a product id and enrich
+   * image/price from the affiliate API (best-effort — a row that doesn't resolve still
+   * imports, text-only, price line omitted), compose the post FROM THE FILE'S OWN COPY
+   * (no AI credits), and queue it — the drip paces it like any other queued post.
+   * Batched by the caller (the resolution round-trips are slow); capped per call.
+   */
+  async importCustomPosts(
+    userId: string,
+    rows: ImportRowInput[],
+    channels?: string[],
+  ): Promise<{ queued: number; duplicates: number; failed: number; results: Array<{ title: string; status: string; reason?: string }> }> {
+    const creds = await this.credentials.getRaw(userId);
+    const list = (rows || []).slice(0, 10);
+    const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS').catch(() => 0);
+    const targets = Array.from(new Set((channels || []).filter((c) => typeof c === 'string' && c.trim())));
+    const results: Array<{ title: string; status: string; reason?: string }> = [];
+
+    for (const raw of list) {
+      if (!validImportRow(raw)) {
+        results.push({ title: String((raw as any)?.title || '(ללא שם)').slice(0, 60), status: 'failed', reason: 'חסר שם מוצר או קישור' });
+        continue;
+      }
+      const link = raw.link.trim();
+      const dup = await this.repo.findOne({ where: { user_id: userId, affiliate_url: link } });
+      if (dup) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate' }); continue; }
+
+      let details: any = null;
+      try {
+        const productId = await this.resolveAliShortLink(link);
+        if (productId && creds) {
+          const found = await this.searchProducts({ keyword: productId, limit: 3 }, creds).catch(() => []);
+          details = found.find((p: any) => String(p.product_id) === productId) || found[0] || null;
+          if (details) details.__resolved_id = productId;
+        }
+      } catch { details = null; }
+
+      const saleUsd = Number(details?.sale_price) || 0;
+      const priceIls = saleUsd && rate ? Math.round(saleUsd * rate) : null;
+      const text = composeImportText(raw, priceIls);
+      const product = {
+        product_id: details?.__resolved_id || `file_${Buffer.from(link).toString('base64url').slice(0, 16)}`,
+        title: raw.title.trim(),
+        image_url: details?.image_url || '',
+        affiliate_url: link,
+        sale_price: saleUsd,
+        original_price: Number(details?.original_price) || saleUsd,
+        // USD only when the API actually priced it; an unresolved row must not be
+        // multiplied by the exchange rate.
+        currency: saleUsd ? 'USD' : 'ILS',
+        discount_percent: Number(details?.discount_percent) || 0,
+        orders_count: Number(details?.orders_count) || 0,
+        rating: Number(details?.rating) || 0,
+      };
+      try {
+        await this.createQueuedPost(
+          userId, product, undefined, text, targets[0], undefined, undefined, targets,
+          { keyword: raw.keyword?.trim() || undefined },
+        );
+        results.push({ title: raw.title.slice(0, 60), status: 'queued' });
+      } catch (e: any) {
+        results.push({ title: raw.title.slice(0, 60), status: 'failed', reason: String(e?.message || '').slice(0, 120) });
+      }
+    }
+
+    return {
+      queued: results.filter((r) => r.status === 'queued').length,
+      duplicates: results.filter((r) => r.status === 'duplicate').length,
+      failed: results.filter((r) => r.status === 'failed').length,
+      results,
+    };
   }
 
   /** An owned post or 404 — for cross-module readers (e.g. the suppliers gallery editor). */
