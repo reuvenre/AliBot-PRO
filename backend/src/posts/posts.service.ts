@@ -4437,6 +4437,7 @@ export class PostsService {
     // post, and charging twice to repair our own bad draft would be wrong), then the
     // deterministic template copy takes over.
     let text = '';
+    const reasons: string[] = [];
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await this.ai.generate(creds, {
         system: systemPrompt,
@@ -4451,16 +4452,43 @@ export class PostsService {
       });
 
       const candidate = result?.text ? mdBoldToHtml(result.text) : '';
+      if (!candidate) {
+        // All keyed providers errored or answered empty — nothing to judge.
+        reasons.push('ספקי ה-AI לא החזירו טקסט');
+        this.logger.warn(`generateText: empty AI result for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
+        continue;
+      }
       // Two gates, in order: the deterministic patterns (free, catches every KNOWN defect
       // shape), then the AI judge (one tiny call, catches NOVEL shapes the first time —
       // three different leak shapes reached channels before this existed).
-      const defect = copyDefect(candidate) || await this.copySanityVerdict(creds, candidate);
+      let defect = copyDefect(candidate);
+      if (!defect) {
+        defect = await this.copySanityVerdict(creds, candidate);
+        // Final attempt + patterns passed: a single judge BAD now kills the post outright
+        // (no silent fallback below), so require a SECOND independent BAD before failing —
+        // a flaky verdict gets overturned, a systematic one stays authoritative.
+        if (defect && attempt === 1) defect = await this.copySanityVerdict(creds, candidate);
+      }
       if (!defect) { text = candidate; break; }
+      reasons.push(defect);
       this.logger.warn(`generateText rejected ${result?.provider || 'ai'} draft (${defect}) `
         + `for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
     }
 
-    if (!text) return this.defaultText(product, priceLocal, originalLocal, discount, language, symbol);
+    if (!text) {
+      // An AI-configured account must never publish the generic English-titled template to
+      // a live audience (the "דיל לוהט" fallback shipped raw AliExpress titles to all three
+      // groups). Fail LOUDLY instead: a campaign run records the reason and skips the
+      // product (retried next cycle); manual screens show the reason to the user. The
+      // AI credit consumed above is refunded — nothing was delivered for it.
+      if (creds?.user_id) {
+        await this.subscription.refund(creds.user_id, this.subscription.costs.ai_generate, 'ai-generate-failed')
+          .catch(() => {});
+      }
+      const why = reasons.join(' | ') || 'סיבה לא ידועה';
+      this.logger.error(`generateText: all drafts failed for "${String(product?.title || '').slice(0, 60)}" — ${why}`);
+      throw new BadRequestException(`יצירת הטקסט נכשלה (${why}) — הפוסט לא נוצר כדי שלא תישלח תבנית גנרית לקבוצות`);
+    }
 
     // Numbers are data, not prose: the price anchor and the social proof are rendered from
     // the same facts the model was given, so they can't come out unfilled, invented or
