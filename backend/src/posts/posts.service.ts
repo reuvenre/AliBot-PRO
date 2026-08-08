@@ -1048,23 +1048,29 @@ export class PostsService {
 
   /**
    * Follow an AliExpress short link (s.click.aliexpress.com/e/…) server-side until a
-   * product id appears in the URL. Redirects are followed manually, at most 4 hops, and
+   * product id appears in the URL. Redirects are followed manually, at most 6 hops, and
    * ONLY while the host stays on aliexpress — the link comes from the owner's own file,
    * but an open follower would still be an SSRF surface. Null when nothing resolves.
    */
   private async resolveAliShortLink(url: string): Promise<string | null> {
     let current = String(url || '').trim();
-    for (let hop = 0; hop < 4; hop++) {
+    for (let hop = 0; hop < 6; hop++) {
       let host = '';
       try { host = new URL(current).hostname; } catch { return null; }
       if (!/aliexpress\.(com|us|ru)$|aliexpress\./i.test(host)) return null;
       const found = extractAliProductId(current);
       if (found) return found;
-      const res = await axios.get(current, {
-        maxRedirects: 0, timeout: 8000, validateStatus: () => true,
-        maxContentLength: 512 * 1024,
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      }).catch(() => null);
+      // One retry per hop — a single connection blip on a 211-row import otherwise
+      // permanently leaves that row text-only.
+      let res: any = null;
+      for (let attempt = 0; attempt < 2 && !res; attempt++) {
+        res = await axios.get(current, {
+          maxRedirects: 0, timeout: 8000, validateStatus: () => true,
+          maxContentLength: 512 * 1024,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        }).catch(() => null);
+        if (!res && attempt === 0) await new Promise((r) => setTimeout(r, 700));
+      }
       const loc = res?.headers?.location;
       if (!loc) {
         // No redirect header — often a page that redirects via JavaScript; the item
@@ -1105,16 +1111,19 @@ export class PostsService {
       }
       const link = raw.link.trim();
       const dup = await this.repo.findOne({ where: { user_id: userId, affiliate_url: link } });
-      // Re-uploading the file is the repair path: a row that imported text-only (the
-      // short link didn't resolve at the time) gets a second enrichment chance while it
-      // is still queued. Anything already enriched, or already sent, is left alone.
-      const healable = dup && dup.status === 'queued' && !dup.product_image;
+      // Re-uploading the file is the repair path: a row that imported text-only or
+      // price-less (the short link / API didn't deliver at the time) gets another
+      // enrichment chance while it is still queued. Anything already sent is left alone.
+      const healable = dup && dup.status === 'queued' && (!dup.product_image || !(Number(dup.price_ils) > 0));
       if (dup && !healable) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate' }); continue; }
 
       let details: any = null;
+      let enrichMiss: string | undefined;
       try {
         const productId = await this.resolveAliShortLink(link);
-        if (productId && creds) {
+        if (!productId) {
+          enrichMiss = 'הקישור המקוצר לא נפתח לעמוד מוצר';
+        } else if (creds) {
           details = await this.productDetailById(productId, creds).catch(() => null);
           if (!details) {
             // Exact match ONLY — a keyword search for a numeric id can return unrelated
@@ -1123,8 +1132,10 @@ export class PostsService {
             details = found.find((p: any) => String(p.product_id) === productId) || null;
           }
           if (details) details.__resolved_id = productId;
+          else enrichMiss = `מוצר ${productId} לא הוחזר מה-API`;
         }
-      } catch { details = null; }
+      } catch { details = null; enrichMiss = enrichMiss || 'שגיאה זמנית בהעשרה'; }
+      if (enrichMiss) this.logger.warn(`importCustomPosts: ${enrichMiss} — ${link}`);
 
       // productdetail.get returns the price already in the target currency (₪) — only a
       // genuinely-USD price is multiplied by the exchange rate.
@@ -1134,7 +1145,8 @@ export class PostsService {
       const text = composeImportText(raw, priceIls);
 
       if (healable) {
-        if (!details) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate' }); continue; }
+        // Still couldn't enrich — report WHY so the user sees which rows stayed bare.
+        if (!details) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate', reason: enrichMiss }); continue; }
         dup.product_id = details.__resolved_id;
         dup.product_image = details.image_url || dup.product_image;
         if (priceIls) {
@@ -1168,10 +1180,14 @@ export class PostsService {
           userId, product, undefined, text, targets[0], undefined, undefined, targets,
           { keyword: raw.keyword?.trim() || undefined },
         );
-        results.push({ title: raw.title.slice(0, 60), status: 'queued' });
+        results.push({ title: raw.title.slice(0, 60), status: 'queued', reason: enrichMiss });
       } catch (e: any) {
         results.push({ title: raw.title.slice(0, 60), status: 'failed', reason: String(e?.message || '').slice(0, 120) });
       }
+
+      // Gentle pacing between rows — the affiliate API throttles bursty callers, and a
+      // throttled call is exactly how a live product ends up imported without an image.
+      await new Promise((r) => setTimeout(r, 250));
     }
 
     return {
@@ -4212,11 +4228,28 @@ export class PostsService {
       target_currency: targetCcy,
       tracking_id: creds.aliexpress_tracking_id,
     }, creds.aliexpress_app_secret);
-    const res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
-    const items: any[] =
-      res.data?.aliexpress_affiliate_productdetail_get_response?.resp_result?.result?.products?.product || [];
-    const exact = items.find((p: any) => String(p.product_id) === String(productId)) || items[0];
-    return exact ? this.mapAliItem(exact, targetCcy) : null;
+    // Bulk import fires many of these back-to-back; the API throttles with an HTTP-200
+    // error_response ("App Call Limited") rather than a 5xx, so both shapes retry here.
+    for (let attempt = 1; ; attempt++) {
+      let res: any;
+      try {
+        res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
+      } catch (e: any) {
+        if (attempt >= 3) throw e;
+        await new Promise((r) => setTimeout(r, attempt * 900));
+        continue;
+      }
+      const apiErr = res.data?.error_response;
+      if (apiErr) {
+        if (attempt < 3) { await new Promise((r) => setTimeout(r, attempt * 1200)); continue; }
+        this.logger.warn(`productDetailById(${productId}): API error ${apiErr.code} ${apiErr.msg || ''}`);
+        return null;
+      }
+      const items: any[] =
+        res.data?.aliexpress_affiliate_productdetail_get_response?.resp_result?.result?.products?.product || [];
+      const exact = items.find((p: any) => String(p.product_id) === String(productId)) || items[0];
+      return exact ? this.mapAliItem(exact, targetCcy) : null;
+    }
   }
 
   /**

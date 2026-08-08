@@ -1231,6 +1231,7 @@ function ImportFileModal({ channels, onClose, onDone }: {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [summary, setSummary] = useState<{ queued: number; duplicates: number; enriched: number; failed: number } | null>(null);
+  const [misses, setMisses] = useState<Array<{ title: string; reason: string }>>([]);
   const [error, setError] = useState('');
 
   const onFile = async (f: File) => {
@@ -1276,13 +1277,17 @@ function ImportFileModal({ channels, onClose, onDone }: {
     if (!rows?.length || running) return;
     setRunning(true); setError(''); setProgress(0);
     const totals = { queued: 0, duplicates: 0, enriched: 0, failed: 0 };
+    const missList: Array<{ title: string; reason: string }> = [];
     try {
       for (let i = 0; i < rows.length; i += 10) {
         const r = await postsApi.importRows(rows.slice(i, i + 10), groupIds.length ? groupIds : undefined);
         totals.queued += r.queued; totals.duplicates += r.duplicates; totals.enriched += r.enriched || 0; totals.failed += r.failed;
+        // Rows that imported (or already existed) but stayed without image/price carry
+        // the reason — surface them so "why is this one bare?" is answerable.
+        for (const x of r.results || []) if (x.reason) missList.push({ title: x.title, reason: x.reason });
         setProgress(Math.min(rows.length, i + 10));
       }
-      setSummary(totals);
+      setSummary(totals); setMisses(missList);
     } catch (e: any) {
       setError(e?.response?.data?.message || 'הייבוא נעצר באמצע — אפשר להריץ שוב, שורות שכבר נכנסו לא ישוכפלו');
     }
@@ -1359,6 +1364,20 @@ function ImportFileModal({ channels, onClose, onDone }: {
               {summary.failed > 0 && <span className="text-amber-400">‏{summary.failed} נכשלו</span>}
               {summary.failed === 0 && summary.duplicates === 0 && summary.enriched === 0 && 'הכל עבר חלק'}
             </p>
+            {misses.length > 0 && (
+              <div className="text-right mb-4">
+                <p className="text-2xs text-amber-400/90 mb-1.5">
+                  ⚠️ {misses.length} מוצרים נשארו בלי תמונה/מחיר — העלאה חוזרת של הקובץ תנסה אותם שוב:
+                </p>
+                <div className="max-h-36 overflow-y-auto bg-white/3 border border-edge rounded-lg px-3 py-2 space-y-1">
+                  {misses.map((m, i) => (
+                    <p key={i} className="text-2xs text-white/50 leading-relaxed">
+                      <span className="text-white/75">{m.title}</span> — {m.reason}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
             <button onClick={onDone} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl">
               לתור השליחה
             </button>
