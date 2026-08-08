@@ -1230,7 +1230,7 @@ function ImportFileModal({ channels, onClose, onDone }: {
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [summary, setSummary] = useState<{ queued: number; duplicates: number; failed: number } | null>(null);
+  const [summary, setSummary] = useState<{ queued: number; duplicates: number; enriched: number; failed: number } | null>(null);
   const [error, setError] = useState('');
 
   const onFile = async (f: File) => {
@@ -1275,11 +1275,11 @@ function ImportFileModal({ channels, onClose, onDone }: {
   const start = async () => {
     if (!rows?.length || running) return;
     setRunning(true); setError(''); setProgress(0);
-    const totals = { queued: 0, duplicates: 0, failed: 0 };
+    const totals = { queued: 0, duplicates: 0, enriched: 0, failed: 0 };
     try {
       for (let i = 0; i < rows.length; i += 10) {
         const r = await postsApi.importRows(rows.slice(i, i + 10), groupIds.length ? groupIds : undefined);
-        totals.queued += r.queued; totals.duplicates += r.duplicates; totals.failed += r.failed;
+        totals.queued += r.queued; totals.duplicates += r.duplicates; totals.enriched += r.enriched || 0; totals.failed += r.failed;
         setProgress(Math.min(rows.length, i + 10));
       }
       setSummary(totals);
@@ -1352,11 +1352,12 @@ function ImportFileModal({ channels, onClose, onDone }: {
             <p className="text-3xl mb-2">✅</p>
             <p className="text-sm text-white/85 mb-1">
               נוספו לתור <b className="text-emerald-400">{summary.queued}</b> פוסטים
+              {summary.enriched > 0 && <> · עודכנו <b className="text-sky-400">{summary.enriched}</b> קיימים (תמונה/מחיר)</>}
             </p>
             <p className="text-2xs text-white/40 mb-4">
               {summary.duplicates > 0 && <>‏{summary.duplicates} דולגו (כבר קיימים במערכת) · </>}
               {summary.failed > 0 && <span className="text-amber-400">‏{summary.failed} נכשלו</span>}
-              {summary.failed === 0 && summary.duplicates === 0 && 'הכל עבר חלק'}
+              {summary.failed === 0 && summary.duplicates === 0 && summary.enriched === 0 && 'הכל עבר חלק'}
             </p>
             <button onClick={onDone} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl">
               לתור השליחה

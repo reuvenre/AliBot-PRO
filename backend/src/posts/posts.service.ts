@@ -16,7 +16,7 @@ import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { snapToHotHour } from './smart-timing';
-import { ImportRowInput, composeImportText, extractAliProductId, validImportRow } from './import-rows';
+import { ImportRowInput, composeImportText, extractAliProductId, extractAliProductIdFromHtml, validImportRow } from './import-rows';
 import { hotHours } from '../optimizer/hot-hours';
 import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
@@ -1062,10 +1062,16 @@ export class PostsService {
       if (found) return found;
       const res = await axios.get(current, {
         maxRedirects: 0, timeout: 8000, validateStatus: () => true,
+        maxContentLength: 512 * 1024,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       }).catch(() => null);
       const loc = res?.headers?.location;
-      if (!loc) return extractAliProductId(current);
+      if (!loc) {
+        // No redirect header — often a page that redirects via JavaScript; the item
+        // URL is still in the markup (raw or percent-encoded).
+        return extractAliProductId(current)
+          || extractAliProductIdFromHtml(typeof res?.data === 'string' ? res.data : '');
+      }
       try { current = new URL(loc, current).toString(); } catch { return null; }
     }
     return extractAliProductId(current);
@@ -1074,7 +1080,8 @@ export class PostsService {
   /**
    * Import rows from the owner's product FILE (name + hand-written benefits + short
    * affiliate link) into the auto-send queue. Per row: skip links already imported
-   * (re-uploading the file is safe), resolve the short link to a product id and enrich
+   * (re-uploading the file is safe — and heals still-queued rows that imported without
+   * an image), resolve the short link to a product id and enrich
    * image/price from the affiliate API (best-effort — a row that doesn't resolve still
    * imports, text-only, price line omitted), compose the post FROM THE FILE'S OWN COPY
    * (no AI credits), and queue it — the drip paces it like any other queued post.
@@ -1084,7 +1091,7 @@ export class PostsService {
     userId: string,
     rows: ImportRowInput[],
     channels?: string[],
-  ): Promise<{ queued: number; duplicates: number; failed: number; results: Array<{ title: string; status: string; reason?: string }> }> {
+  ): Promise<{ queued: number; duplicates: number; enriched: number; failed: number; results: Array<{ title: string; status: string; reason?: string }> }> {
     const creds = await this.credentials.getRaw(userId);
     const list = (rows || []).slice(0, 10);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS').catch(() => 0);
@@ -1098,31 +1105,60 @@ export class PostsService {
       }
       const link = raw.link.trim();
       const dup = await this.repo.findOne({ where: { user_id: userId, affiliate_url: link } });
-      if (dup) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate' }); continue; }
+      // Re-uploading the file is the repair path: a row that imported text-only (the
+      // short link didn't resolve at the time) gets a second enrichment chance while it
+      // is still queued. Anything already enriched, or already sent, is left alone.
+      const healable = dup && dup.status === 'queued' && !dup.product_image;
+      if (dup && !healable) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate' }); continue; }
 
       let details: any = null;
       try {
         const productId = await this.resolveAliShortLink(link);
         if (productId && creds) {
-          const found = await this.searchProducts({ keyword: productId, limit: 3 }, creds).catch(() => []);
-          details = found.find((p: any) => String(p.product_id) === productId) || found[0] || null;
+          details = await this.productDetailById(productId, creds).catch(() => null);
+          if (!details) {
+            // Exact match ONLY — a keyword search for a numeric id can return unrelated
+            // products, and a wrong image on the owner's product is worse than none.
+            const found = await this.searchProducts({ keyword: productId, limit: 5 }, creds).catch(() => []);
+            details = found.find((p: any) => String(p.product_id) === productId) || null;
+          }
           if (details) details.__resolved_id = productId;
         }
       } catch { details = null; }
 
-      const saleUsd = Number(details?.sale_price) || 0;
-      const priceIls = saleUsd && rate ? Math.round(saleUsd * rate) : null;
+      // productdetail.get returns the price already in the target currency (₪) — only a
+      // genuinely-USD price is multiplied by the exchange rate.
+      const sale = Number(details?.sale_price) || 0;
+      const saleIsUsd = (details?.currency || 'USD') === 'USD';
+      const priceIls = sale ? (saleIsUsd ? (rate ? Math.round(sale * rate) : null) : Math.round(sale)) : null;
       const text = composeImportText(raw, priceIls);
+
+      if (healable) {
+        if (!details) { results.push({ title: raw.title.slice(0, 60), status: 'duplicate' }); continue; }
+        dup.product_id = details.__resolved_id;
+        dup.product_image = details.image_url || dup.product_image;
+        if (priceIls) {
+          const orig = Number(details?.original_price) || sale;
+          dup.price_ils = priceIls;
+          dup.sale_price_usd = saleIsUsd ? sale : (rate ? +(sale / rate).toFixed(2) : dup.sale_price_usd);
+          dup.original_price_usd = saleIsUsd ? orig : (rate ? +(orig / rate).toFixed(2) : dup.original_price_usd);
+          dup.generated_text = text;
+        }
+        await this.repo.save(dup);
+        results.push({ title: raw.title.slice(0, 60), status: 'enriched' });
+        continue;
+      }
+
       const product = {
         product_id: details?.__resolved_id || `file_${Buffer.from(link).toString('base64url').slice(0, 16)}`,
         title: raw.title.trim(),
         image_url: details?.image_url || '',
         affiliate_url: link,
-        sale_price: saleUsd,
-        original_price: Number(details?.original_price) || saleUsd,
-        // USD only when the API actually priced it; an unresolved row must not be
+        sale_price: sale,
+        original_price: Number(details?.original_price) || sale,
+        // Priced rows keep the API's currency; an unresolved row must not be
         // multiplied by the exchange rate.
-        currency: saleUsd ? 'USD' : 'ILS',
+        currency: sale ? (details?.currency || 'USD') : 'ILS',
         discount_percent: Number(details?.discount_percent) || 0,
         orders_count: Number(details?.orders_count) || 0,
         rating: Number(details?.rating) || 0,
@@ -1141,6 +1177,7 @@ export class PostsService {
     return {
       queued: results.filter((r) => r.status === 'queued').length,
       duplicates: results.filter((r) => r.status === 'duplicate').length,
+      enriched: results.filter((r) => r.status === 'enriched').length,
       failed: results.filter((r) => r.status === 'failed').length,
       results,
     };
@@ -4114,40 +4151,72 @@ export class PostsService {
       }
 
       const items = res.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
-      return items.map((p: any) => {
-        const rawEval = String(p.evaluate_rate || '').replace('%', '').trim();
-        const evalPct = parseFloat(rawEval) || 0;
-        const rating  = evalPct > 5 ? +(evalPct / 20).toFixed(1) : +evalPct.toFixed(1);
-
-        // Prefer the site-accurate target (₪) price; raw sale_price is only usable
-        // when it's genuinely USD.
-        const targetSale = parseFloat(p.target_sale_price);
-        const targetOrig = parseFloat(p.target_original_price);
-        const rawIsUsd = (p.sale_price_currency || 'USD') === 'USD';
-        const sale = targetSale > 0 ? targetSale : (rawIsUsd ? parseFloat(p.sale_price) || 0 : 0);
-        const orig = targetOrig > 0 ? targetOrig : (rawIsUsd ? parseFloat(p.original_price) || 0 : 0);
-
-        return {
-          product_id: String(p.product_id),
-          title: p.product_title,
-          original_price: orig,
-          sale_price: sale,
-          discount_percent: parseInt(p.discount) || 0,
-          image_url: p.product_main_image_url,
-          product_url: p.product_detail_url,
-          affiliate_url: p.promotion_link || undefined,
-          category: p.first_level_category_name,
-          orders_count: parseInt(String(p.lastest_volume || '0').replace(/,/g, ''), 10) || 0,
-          rating,
-          currency: targetSale > 0 ? (p.target_sale_price_currency || targetCcy) : 'USD',
-        };
-      });
+      return items.map((p: any) => this.mapAliItem(p, targetCcy));
     } catch (err: any) {
       // Campaigns run unattended — inventing products here would publish fabricated
       // deals to the user's real audience. Fail the run instead; the scheduler logs it.
       this.logger.error(`searchProducts failed: ${err?.message}`);
       throw err;
     }
+  }
+
+  /** One raw affiliate-API product → the internal product shape (shared by query + detail). */
+  private mapAliItem(p: any, targetCcy: string) {
+    const rawEval = String(p.evaluate_rate || '').replace('%', '').trim();
+    const evalPct = parseFloat(rawEval) || 0;
+    const rating  = evalPct > 5 ? +(evalPct / 20).toFixed(1) : +evalPct.toFixed(1);
+
+    // Prefer the site-accurate target (₪) price; raw sale_price is only usable
+    // when it's genuinely USD.
+    const targetSale = parseFloat(p.target_sale_price);
+    const targetOrig = parseFloat(p.target_original_price);
+    const rawIsUsd = (p.sale_price_currency || 'USD') === 'USD';
+    const sale = targetSale > 0 ? targetSale : (rawIsUsd ? parseFloat(p.sale_price) || 0 : 0);
+    const orig = targetOrig > 0 ? targetOrig : (rawIsUsd ? parseFloat(p.original_price) || 0 : 0);
+
+    return {
+      product_id: String(p.product_id),
+      title: p.product_title,
+      original_price: orig,
+      sale_price: sale,
+      discount_percent: parseInt(p.discount) || 0,
+      image_url: p.product_main_image_url,
+      product_url: p.product_detail_url,
+      affiliate_url: p.promotion_link || undefined,
+      category: p.first_level_category_name,
+      orders_count: parseInt(String(p.lastest_volume || '0').replace(/,/g, ''), 10) || 0,
+      rating,
+      currency: targetSale > 0 ? (p.target_sale_price_currency || targetCcy) : 'USD',
+    };
+  }
+
+  /**
+   * The EXACT product by id via productdetail.get. A keyword search for a numeric id
+   * (product.query) usually returns nothing — or unrelated items — which is why the
+   * file import came back image-less; the detail endpoint is authoritative.
+   */
+  private async productDetailById(productId: string, creds: DecryptedCredentials): Promise<any | null> {
+    if (!creds?.aliexpress_app_key) return null;
+    const currencyPair = creds.currency_pair || 'USD_ILS';
+    const targetCcy = currencyPair.split('_')[1] || 'ILS';
+    const signed = signAliexpress({
+      method: 'aliexpress.affiliate.productdetail.get',
+      app_key: creds.aliexpress_app_key,
+      product_ids: productId,
+      // Local price for the destination country — without it the API returns a
+      // default-country price that does NOT match what the user sees on the site.
+      country: process.env.SHIP_TO_COUNTRY || ({ ILS: 'IL', GBP: 'GB' } as any)[targetCcy],
+      fields: 'product_id,product_title,original_price,sale_price,sale_price_currency,' +
+        'target_original_price,target_sale_price,target_sale_price_currency,promotion_link,' +
+        'discount,product_main_image_url,product_detail_url,evaluate_rate,first_level_category_name,lastest_volume',
+      target_currency: targetCcy,
+      tracking_id: creds.aliexpress_tracking_id,
+    }, creds.aliexpress_app_secret);
+    const res = await axios.get(ALI_API, { params: signed, timeout: 10000 });
+    const items: any[] =
+      res.data?.aliexpress_affiliate_productdetail_get_response?.resp_result?.result?.products?.product || [];
+    const exact = items.find((p: any) => String(p.product_id) === String(productId)) || items[0];
+    return exact ? this.mapAliItem(exact, targetCcy) : null;
   }
 
   /**

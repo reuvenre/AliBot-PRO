@@ -52,12 +52,42 @@ export function composeImportText(row: ImportRowInput, priceIls?: number | null)
   return lines.join('\n');
 }
 
-/** The numeric AliExpress product id inside a (resolved) URL, or null. */
+/**
+ * The numeric AliExpress product id inside a (resolved) URL, or null.
+ *
+ * Redirect hops often carry the real item URL percent-encoded inside a query param
+ * (star.aliexpress.com/share/share.htm?...&redirectUrl=https%3A%2F%2F...%2Fitem%2F100500....html),
+ * so the decoded form is scanned too — without it the whole short-link chain "resolves"
+ * to nothing and every imported row stays image-less.
+ */
 export function extractAliProductId(url: string): string | null {
   const s = String(url || '');
-  const item = s.match(/\/item\/(?:[^/]*\/)?(\d{6,})(?:\.html|\b)/i);
+  const candidates = [s];
+  try {
+    const decoded = decodeURIComponent(s);
+    if (decoded !== s) candidates.push(decoded);
+  } catch { /* malformed % sequence — raw form only */ }
+  for (const c of candidates) {
+    const item = c.match(/\/item\/(?:[^/]*\/)?(\d{6,})(?:\.html|\b)/i);
+    if (item) return item[1];
+    const param = c.match(/[?&](?:productId|productIds|itemId)=(\d{6,})/i);
+    if (param) return param[1];
+  }
+  return null;
+}
+
+/**
+ * The product id inside an HTML page body. The last hop of an AliExpress short link is
+ * frequently a page that redirects via JavaScript (no Location header) — the item URL
+ * is only present in the markup, raw or percent-encoded.
+ */
+export function extractAliProductIdFromHtml(html: string): string | null {
+  const s = String(html || '');
+  const item = s.match(/\/item\/(?:[^/"'\\\s]*\/)?(\d{6,})(?:\.html)?/i);
   if (item) return item[1];
-  const param = s.match(/[?&](?:productId|productIds|itemId)=(\d{6,})/i);
-  if (param) return param[1];
+  const encoded = s.match(/%2Fitem%2F(?:[^"'\\\s&]*%2F)?(\d{6,})/i);
+  if (encoded) return encoded[1];
+  const prop = s.match(/["']?(?:productId|itemId)["']?\s*[:=]\s*["']?(\d{6,})/i);
+  if (prop) return prop[1];
   return null;
 }

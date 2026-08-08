@@ -521,7 +521,7 @@ export const postsApi = {
 
   /** Bulk file import: rows parsed client-side, resolved+queued server-side per batch. */
   importRows: (rows: Array<{ keyword?: string; title: string; benefits: string[]; link: string }>, channels?: string[]) =>
-    http.post<{ queued: number; duplicates: number; failed: number; results: Array<{ title: string; status: string; reason?: string }> }>(
+    http.post<{ queued: number; duplicates: number; enriched: number; failed: number; results: Array<{ title: string; status: string; reason?: string }> }>(
       '/posts/import', { rows, channels }, { timeout: 120_000 },
     ).then(extract),
 
