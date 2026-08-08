@@ -61,6 +61,12 @@ export class SuppliersController {
     return this.products.list(this.uid(req), catalogId);
   }
 
+  /** Image choices for a post's gallery editor (posts screen): current + full catalog album. */
+  @Get('post-gallery/:postId')
+  postGallery(@Req() req: Request, @Param('postId') postId: string) {
+    return this.products.postGalleryOptions(this.uid(req), postId);
+  }
+
   @Post('products/link')
   @HttpCode(201)
   link(@Req() req: Request, @Body() dto: { catalogId: string; yupooUrl: string; flylinkUrl: string; code?: string }) {

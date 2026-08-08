@@ -419,6 +419,31 @@ export class SupplierProductsService {
   }
 
   /**
+   * The image choices for a POST's gallery editor (posts screen): the post's current
+   * gallery plus the product's full catalog album, so the owner can re-pick from scratch.
+   * The post's product_id is `sku || id` of the supplier product — both are tried. A post
+   * whose product no longer exists in the catalog still gets its own current images.
+   */
+  async postGalleryOptions(userId: string, postId: string): Promise<{ current: string[]; catalog: string[] }> {
+    const post = await this.posts.getOwnedPost(userId, postId);
+    let current: string[] = [];
+    try { current = post.gallery_json ? JSON.parse(post.gallery_json) : []; } catch { current = []; }
+    if (!current.length && post.product_image) current = [post.product_image];
+
+    const key = String(post.product_id || '').trim();
+    let product = key
+      ? await this.repo.findOne({ where: { user_id: userId, sku: key } })
+      : null;
+    if (!product && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
+      product = await this.repo.findOne({ where: { user_id: userId, id: key } });
+    }
+    const catalog = product ? this.proxiedGallery(product) : [];
+    // The union keeps any current image the catalog no longer carries selectable.
+    const seen = new Set(catalog);
+    return { current, catalog: [...catalog, ...current.filter((u) => !seen.has(u))] };
+  }
+
+  /**
    * Refuse to queue/schedule a product that ALREADY has an open post (queued / scheduled /
    * pending) to any of the same groups — that open post IS the publish the user asked for,
    * and a second one duplicates it in the channel (the "one sent + one scheduled again"

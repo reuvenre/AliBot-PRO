@@ -169,6 +169,7 @@ export class PostsController {
   updatePost(@Req() req: Request, @Param('id') id: string, @Body() dto: {
     text?: string; scheduled_at?: string;
     product_title?: string; price_ils?: number; product_image?: string; affiliate_url?: string;
+    gallery?: string[];
   }) {
     return this.svc.updatePost(this.uid(req), id, dto);
   }

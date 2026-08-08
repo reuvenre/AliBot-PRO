@@ -1011,6 +1011,7 @@ export class PostsService {
   async updatePost(userId: string, postId: string, dto: {
     text?: string; scheduled_at?: string;
     product_title?: string; price_ils?: number; product_image?: string; affiliate_url?: string;
+    gallery?: string[];
   }): Promise<Post> {
     const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
     if (!post) throw new NotFoundException('פוסט לא נמצא');
@@ -1018,6 +1019,20 @@ export class PostsService {
     if (typeof dto.product_title === 'string') post.product_title = dto.product_title;
     if (typeof dto.product_image === 'string' && dto.product_image.trim()) post.product_image = dto.product_image.trim();
     if (typeof dto.affiliate_url === 'string') post.affiliate_url = dto.affiliate_url.trim();
+    // Full gallery re-selection (the posts-screen editor): the ORDERED list the owner
+    // picked becomes the album, and its first image becomes the main one — same "first
+    // pick is the cover" rule as the supplier composer. This is what a REPUBLISH (and a
+    // campaign repost that mirrors this post) will carry from now on.
+    if (Array.isArray(dto.gallery)) {
+      const clean = dto.gallery
+        .filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u.trim()))
+        .map((u) => u.trim())
+        .slice(0, 30);
+      if (clean.length) {
+        post.gallery_json = JSON.stringify(clean);
+        post.product_image = clean[0];
+      }
+    }
     if (dto.price_ils !== undefined && dto.price_ils !== null) {
       const p = Number(dto.price_ils);
       if (Number.isFinite(p) && p >= 0) post.price_ils = p;
@@ -1027,6 +1042,13 @@ export class PostsService {
       if (post.status === 'failed') post.status = 'scheduled'; // reschedule a failed post
     }
     return this.repo.save(post);
+  }
+
+  /** An owned post or 404 — for cross-module readers (e.g. the suppliers gallery editor). */
+  async getOwnedPost(userId: string, postId: string): Promise<Post> {
+    const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
+    if (!post) throw new NotFoundException('פוסט לא נמצא');
+    return post;
   }
 
   /** Lists all queued posts for a user in order */

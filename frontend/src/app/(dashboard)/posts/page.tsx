@@ -8,7 +8,7 @@ import {
   ExternalLink, Wand2, Copy, Check, Star,
 } from 'lucide-react';
 import Link from 'next/link';
-import { postsApi, credentialsApi, channelsApi } from '@/lib/api-client';
+import { postsApi, credentialsApi, channelsApi, suppliersApi } from '@/lib/api-client';
 import { GroupMultiSelect } from '@/components/GroupMultiSelect';
 import type { Post, Channel } from '@/types';
 
@@ -617,18 +617,42 @@ function EditPostModal({ post, onClose, onSaved }: {
   const [copied, setCopied] = useState('');
   const [error, setError] = useState('');
 
+  // Gallery re-selection (FLYLINK posts): the full catalog album to pick from, and the
+  // ORDERED selection — click order decides, first pick is the main image, exactly like
+  // the supplier composer. Loaded lazily; a post with no catalog match still shows its
+  // own current images so they can be reordered/trimmed.
+  const isFlylink = /flylink/i.test(post.affiliate_url || '');
+  const [galleryChoices, setGalleryChoices] = useState<string[] | null>(null);
+  const [gallerySel, setGallerySel] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isFlylink) return;
+    suppliersApi.postGalleryOptions(post.id)
+      .then((r) => {
+        const choices = r.catalog.length ? r.catalog : r.current;
+        if (!choices.length) return;
+        setGalleryChoices(choices);
+        setGallerySel(r.current);
+      })
+      .catch(() => { /* editor simply doesn't show the gallery section */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const toggleGalleryImage = (u: string) =>
+    setGallerySel((prev) => (prev.includes(u) ? prev.filter((x) => x !== u) : [...prev, u]));
+
   const directUrl = directProductUrl(post);
 
   const save = async () => {
+    if (galleryChoices && gallerySel.length === 0) { setError('בחר לפחות תמונה אחת לגלריה'); return; }
     setSaving(true); setError('');
     try {
       await postsApi.update(post.id, {
         text,
         product_title: title,
         price_ils: price.trim() !== '' ? Number(price) : undefined,
-        product_image: image,
+        product_image: galleryChoices && gallerySel.length ? gallerySel[0] : image,
         affiliate_url: link,
         scheduled_at: isScheduled && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        gallery: galleryChoices ? gallerySel : undefined,
       });
       onSaved();
     } catch (e: any) { setError(e?.response?.data?.message || 'שמירה נכשלה'); setSaving(false); }
@@ -722,8 +746,41 @@ function EditPostModal({ post, onClose, onSaved }: {
           </div>
         </div>
 
-        <label className="block text-xs text-white/50 mb-1.5">כתובת תמונה ראשית</label>
-        <input value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://…" className={`${inputCls} mb-3`} dir="ltr" />
+        {/* Gallery re-selection (FLYLINK): full catalog album, click-to-pick in order.
+            The first pick (amber 1) is the main image — same rule as the composer. */}
+        {galleryChoices ? (
+          <div className="mb-3">
+            <label className="block text-xs text-white/50 mb-1.5">
+              גלריית הפוסט — לחץ לבחירה לפי סדר; הבחירה הראשונה (1, בכתום) היא התמונה הראשית
+            </label>
+            <div className="grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto pr-1">
+              {galleryChoices.map((u) => {
+                const idx = gallerySel.indexOf(u);
+                const picked = idx >= 0;
+                return (
+                  <button key={u} type="button" onClick={() => toggleGalleryImage(u)}
+                    className={`relative rounded-lg overflow-hidden border transition-all aspect-square
+                      ${picked ? (idx === 0 ? 'border-amber-400 ring-1 ring-amber-400/60' : 'border-blue-500 ring-1 ring-blue-500/50') : 'border-edge opacity-60 hover:opacity-100'}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={u} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    {picked && (
+                      <span className={`absolute top-1 right-1 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white
+                        ${idx === 0 ? 'bg-amber-500' : 'bg-blue-600'}`}>{idx + 1}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-2xs text-white/30 mt-1.5">
+              נבחרו {gallerySel.length} תמונות. השמירה קובעת את האלבום לפרסום מחדש ולריפוסטים של הטייס מהפוסט הזה.
+            </p>
+          </div>
+        ) : (
+          <>
+            <label className="block text-xs text-white/50 mb-1.5">כתובת תמונה ראשית</label>
+            <input value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://…" className={`${inputCls} mb-3`} dir="ltr" />
+          </>
+        )}
 
         <div className="flex items-center justify-between mb-1.5">
           <label className="block text-xs text-white/50">טקסט הפוסט</label>

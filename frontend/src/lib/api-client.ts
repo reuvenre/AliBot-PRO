@@ -549,6 +549,8 @@ export const postsApi = {
   update: (id: string, data: {
     text?: string; scheduled_at?: string;
     product_title?: string; price_ils?: number; product_image?: string; affiliate_url?: string;
+    /** Ordered gallery re-selection — first image becomes the main one. */
+    gallery?: string[];
   }) => http.patch<Post>(`/posts/${id}`, data).then(extract),
 
   /** Delete any post (queued/scheduled/sent/failed). */
@@ -793,6 +795,9 @@ export const suppliersApi = {
   updateProduct: (id: string, data: Partial<SupplierProduct>) =>
     http.patch<SupplierProduct>(`/suppliers/products/${id}`, data).then(extract),
   deleteProduct: (id: string) => http.delete(`/suppliers/products/${id}`).then(extract),
+  /** Image choices for a post's gallery editor: its current gallery + the full catalog album. */
+  postGalleryOptions: (postId: string) =>
+    http.get<{ current: string[]; catalog: string[] }>(`/suppliers/post-gallery/${postId}`).then(extract),
   generateDescription: (id: string) =>
     http.post<{ description: string }>(`/suppliers/products/${id}/generate-description`, {}, { timeout: AI_TIMEOUT }).then(extract),
 
