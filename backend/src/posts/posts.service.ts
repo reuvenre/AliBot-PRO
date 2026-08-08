@@ -2798,9 +2798,12 @@ export class PostsService {
       }
     }
     if (failed('Instagram')) {
-      const body = await this.buildPostBody(post, creds, targets[0]);
-      tasks.push(this.sendToInstagram(post, creds, body, userId, targets[0])
-        .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
+      const ig = await this.instagramTargetFor(userId, targets, creds);
+      if (ig) {
+        const body = await this.buildPostBody(post, creds, ig.target);
+        tasks.push(this.sendToInstagram(post, creds, body, userId, ig.target)
+          .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
+      }
     }
     if (!tasks.length) throw new BadRequestException('לא זוהתה פלטפורמה שנכשלה לניסיון חוזר');
 
@@ -2859,6 +2862,11 @@ export class PostsService {
     }
     if (want.has('facebook')) {
       const pages = await this.resolvePages(userId, targetList, creds);
+      // Explicit push with no eligible page: say WHY nothing was sent — a group without
+      // its own page must not fall back onto another brand's default page.
+      if (!pages.size) {
+        errors.push('Facebook: לקבוצות שנבחרו אין עמוד פייסבוק משלהן — הגדר עמוד לקבוצה במסך הקבוצות');
+      }
       tasks.push((async () => {
         for (const [pageId, target] of pages) {
           const body = await this.buildPostBody(post, creds, target);
@@ -2874,10 +2882,15 @@ export class PostsService {
       })());
     }
     if (want.has('instagram')) {
-      const body = await this.buildPostBody(post, creds, targetList[0]);
-      tasks.push(this.sendToInstagram(post, creds, body, userId, targetList[0])
-        .then(() => { anySuccess = true; })
-        .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
+      const ig = await this.instagramTargetFor(userId, targetList, creds);
+      if (ig) {
+        const body = await this.buildPostBody(post, creds, ig.target);
+        tasks.push(this.sendToInstagram(post, creds, body, userId, ig.target)
+          .then(() => { anySuccess = true; })
+          .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
+      } else {
+        errors.push('Instagram: לקבוצות שנבחרו אין חשבון אינסטגרם משלהן — הגדר חשבון לקבוצה במסך הקבוצות');
+      }
     }
     if (want.has('pinterest')) {
       const body = await this.buildPostBody(post, creds, targetList[0]);
@@ -3035,12 +3048,45 @@ export class PostsService {
    * representative target (used to pick that page's footer/body).
    */
   private async resolvePages(userId: string, targets: (string | undefined)[], creds: DecryptedCredentials): Promise<Map<string, string | undefined>> {
+    const defaultGroupId = await this.defaultChannelGroupId(userId, creds);
     const pages = new Map<string, string | undefined>();
     for (const t of targets) {
-      const pid = await this.resolveFacebookPageId(userId, t, creds);
+      const pid = await this.resolveFacebookPageId(userId, t, creds, defaultGroupId);
+      if (!pid) {
+        if (t) this.logger.log(`Facebook skipped for group ${t} — it has no page of its own (the account default page belongs to the default-channel group)`);
+        continue;
+      }
       if (!pages.has(pid)) pages.set(pid, t);
     }
     return pages;
+  }
+
+  /**
+   * The saved group whose chat IS the account's default Telegram channel (or null).
+   * The account-level Facebook page / Instagram account belong to THIS audience —
+   * other groups must not fall back to them (a tactical product must never land on
+   * the מאמא brand page just because the tactical group has no page of its own).
+   */
+  private async defaultChannelGroupId(userId: string, creds: DecryptedCredentials | null): Promise<string | null> {
+    if (!creds?.telegram_channel_id) return null;
+    return this.channels.groupIdForChat(userId, creds.telegram_channel_id).catch(() => null);
+  }
+
+  /**
+   * The target whose Instagram account this post may publish to: the first target with
+   * its OWN IG account; else a default (no-group) post or the default-channel group,
+   * which use the account's global IG. Null → skip Instagram for this post entirely.
+   */
+  private async instagramTargetFor(userId: string, targets: (string | undefined)[], creds: DecryptedCredentials): Promise<{ target: string | undefined } | null> {
+    for (const t of targets) {
+      if (t && await this.channels.getInstagramBusinessId(userId, t).catch(() => null)) return { target: t };
+    }
+    const defaultGroupId = await this.defaultChannelGroupId(userId, creds);
+    for (const t of targets) {
+      if (!t || t === defaultGroupId) return { target: t };
+    }
+    this.logger.log('Instagram skipped — no target group has its own IG account and none is the default-channel group');
+    return null;
   }
 
   /** Short "[group name] " prefix for a target, for multi-group error messages. */
@@ -3202,15 +3248,19 @@ export class PostsService {
       }
     }
 
-    // Instagram: one account per post — the target group's own when it has one, else the
-    // account's global account. (Still no fan-out to several Instagram accounts at once.)
+    // Instagram: one account per post — the target group's own when it has one; the
+    // account's global IG only for default/default-group posts (brand isolation — same
+    // rule as Facebook). No qualifying target → IG is skipped for this post.
     if (wantInstagram) {
-      const body = await this.buildPostBody(post, creds, targets[0]);
-      tasks.push(
-        this.sendToInstagram(post, creds, body, post.user_id, targets[0])
-          .then(() => { anySuccess = true; })
-          .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }),
-      );
+      const ig = await this.instagramTargetFor(post.user_id, targets, creds);
+      if (ig) {
+        const body = await this.buildPostBody(post, creds, ig.target);
+        tasks.push(
+          this.sendToInstagram(post, creds, body, post.user_id, ig.target)
+            .then(() => { anySuccess = true; })
+            .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }),
+        );
+      }
     }
 
     // Pinterest: a single board (no per-group fan-out). The Pin's link is the affiliate URL.
@@ -3652,10 +3702,14 @@ export class PostsService {
    * Lets each Telegram group fan out to its own Facebook page (מאמא מותגים → its page,
    * טקטי בקליק → its page).
    */
-  private async resolveFacebookPageId(userId: string, channelOverride: string | undefined, creds: DecryptedCredentials): Promise<string> {
+  private async resolveFacebookPageId(userId: string, channelOverride: string | undefined, creds: DecryptedCredentials, defaultGroupId?: string | null): Promise<string> {
     if (channelOverride) {
       const pid = await this.channels.getFacebookPageId(userId, channelOverride);
       if (pid) return pid;
+      // No page of its own: the account default page belongs to the default-channel
+      // group's audience — only that group may fall back to it. Any other group returns
+      // '' (= skip Facebook) rather than leaking its post onto another brand's page.
+      if (defaultGroupId !== undefined && channelOverride !== defaultGroupId) return '';
     }
     return creds?.facebook_page_id || '';
   }
