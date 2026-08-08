@@ -1925,6 +1925,23 @@ export class PostsService {
       const groupPosted = await this.postedProductIdsToChannels(campaignChannels, cooldownCutoff);
       for (const id of groupPosted) { postedIds.add(id); crossGroupPosted.add(id); }
     }
+    // USER-WIDE cross-campaign dedup: a product ANY of this user's campaigns posted
+    // (to any group) within the cooldown is skipped here too. Sibling campaigns with
+    // overlapping keywords rank their pools identically (same sort + the shared
+    // price-band steering), so without this they converge on the same head-of-results
+    // items and the SAME product lands in every group. Ranked LAST for the recycle
+    // tiers, like the group-scoped set.
+    const siblingPosted: Array<{ product_id: string }> = await this.postedRepo.query(
+      `SELECT DISTINCT pp.product_id
+       FROM campaign_posted_products pp
+       JOIN campaigns c ON c.id = pp.campaign_id
+       WHERE c.user_id = $1 AND pp.campaign_id <> $2 AND pp.created_at > $3`,
+      [userId, campaign.id, cooldownCutoff],
+    ).catch(() => []);
+    for (const r of siblingPosted) {
+      postedIds.add(String(r.product_id));
+      crossGroupPosted.add(String(r.product_id));
+    }
     // product_id → last-posted ms, so a fallback recycle can pick the product posted
     // LONGEST ago (never the same item two days running).
     const postedAtMs = new Map<string, number>();
@@ -2360,6 +2377,13 @@ export class PostsService {
       status: 'pending',
       pending_at: new Date(),
     });
+
+    // Route to the campaign's target group(s), same as the plain runner — without this an
+    // agent-routed campaign silently ignored its configured groups and posted to the
+    // account's DEFAULT channel.
+    const agentCampaign = await this.campaignRepo.findOne({ where: { id: campaignId } }).catch(() => null);
+    const agentTargets = this.parseTargetChannels(agentCampaign?.target_channels);
+    if (agentTargets.length) this.applyChannels(post, agentTargets);
 
     await this.repo.save(post);
     await this.sendToTelegram(post, creds);
