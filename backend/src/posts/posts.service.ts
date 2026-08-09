@@ -17,6 +17,7 @@ import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { snapToHotHour } from './smart-timing';
 import { ImportRowInput, composeImportText, extractAliProductId, extractAliProductIdFromHtml, validImportRow } from './import-rows';
+import { PRODUCT_FIT_SYSTEM, ProductFitContext, ProductFitItem, ProductFitVerdict, buildProductFitPrompt, parseProductFitVerdicts } from './product-relevance';
 import { hotHours } from '../optimizer/hot-hours';
 import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
@@ -2148,6 +2149,45 @@ export class PostsService {
     // specific groups (like FLYLINK) — its posts go ONLY there, isolated from other groups.
     // Empty = the account's default channel (legacy behaviour, unchanged).
     const targets = this.parseTargetChannels(campaign.target_channels);
+
+    // PRODUCT-RELEVANCE GUARD: keyword search returns loosely-related items (deep pages
+    // especially), so judge the picked products against THIS campaign's audience before
+    // they become posts — a military training belt came back for מאמא under "אביזרי ים
+    // ובריכה" and was published to a real audience. A rejected product is replaced from
+    // the same pool (bounded attempts); no clean replacement → the slot is dropped and
+    // the reason recorded. Fail-open: an unreachable judge changes nothing.
+    if (toPost.length && this.ai.hasAnyKey(creds)) {
+      const groupLabels = (await Promise.all(
+        targets.map((t) => this.channels.getName(userId, t).catch(() => null)),
+      )).filter((n): n is string => !!n);
+      const fitCtx: ProductFitContext = { campaign: campaign.name, channels: groupLabels, keywords: kwEffective };
+      const verdicts = await this.productFitVerdicts(creds, fitCtx, toPost.map((x) => ({
+        keyword: x.kw, title: String(x.product.title || ''), category: x.product.category,
+      })));
+      const kept: Array<{ product: any; kw: string }> = [];
+      for (let i = 0; i < toPost.length; i++) {
+        if (verdicts[i].fits) { kept.push(toPost[i]); continue; }
+        const rejectedTitle = String(toPost[i].product.title || '').slice(0, 50);
+        this.logger.warn(`campaign ${campaign.id}: relevance guard rejected "${rejectedTitle}"`
+          + ` (${verdicts[i].reason || 'no reason'}) for kw "${toPost[i].kw}"`);
+        let replaced = false;
+        for (let attempt = 0; attempt < 3 && !replaced; attempt++) {
+          const next = takeFrom(toPost[i].kw);
+          if (!next) break;
+          const [v] = await this.productFitVerdicts(creds, fitCtx, [{
+            keyword: toPost[i].kw, title: String(next.title || ''), category: next.category,
+          }]);
+          if (v.fits) { kept.push({ product: next, kw: toPost[i].kw }); replaced = true; }
+        }
+        if (!replaced) {
+          result.errors.push(
+            `שומר הרלוונטיות: "${rejectedTitle}" נפסל (${verdicts[i].reason || 'לא מתאים לקהל'}) ולא נמצא תחליף — הפוסט דולג`,
+          );
+        }
+      }
+      toPost.length = 0;
+      toPost.push(...kept);
+    }
 
     // Publish times for THIS run — the campaign's own cron is the cadence, so posts go out
     // now (spaced 15 min for multi-post runs), NOT re-paced by the global queue interval.
@@ -4399,6 +4439,31 @@ export class PostsService {
       return parseJudgeVerdict(res?.text) === 'bad' ? 'ai judge: not clean marketing copy' : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * The product-relevance guard's model call — see product-relevance.ts for the fail-open
+   * contract. Any failure (no key, timeout, malformed reply) returns all-accepted: the
+   * guard exists to catch clear audience misfits, never to block publishing.
+   */
+  private async productFitVerdicts(
+    creds: DecryptedCredentials,
+    ctx: ProductFitContext,
+    items: ProductFitItem[],
+  ): Promise<ProductFitVerdict[]> {
+    const accept = items.map(() => ({ fits: true, reason: '' }));
+    if (!items.length) return accept;
+    try {
+      const res = await this.ai.generate(creds, {
+        system: PRODUCT_FIT_SYSTEM,
+        prompt: buildProductFitPrompt(ctx, items),
+        maxTokens: 60 + items.length * 60,
+        temperature: 0,
+      });
+      return res?.text ? parseProductFitVerdicts(res.text, items.length) : accept;
+    } catch {
+      return accept;
     }
   }
 
