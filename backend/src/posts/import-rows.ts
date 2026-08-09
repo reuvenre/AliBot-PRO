@@ -39,7 +39,11 @@ export function validImportRow(r: any): r is ImportRowInput {
  */
 export function composeImportText(row: ImportRowInput, priceIls?: number | null): string {
   const lines: string[] = [`🔥 ${row.title.trim()}`];
-  const benefits = (row.benefits || []).map((b) => String(b || '').trim()).filter(Boolean);
+  // The file's benefit cells often already carry their own leading ✔️ (the sheet's columns
+  // are titled "✔️יתרון") — strip it, or the template's own ✔️ doubles it ("✔️ ✔️ נוחות").
+  const benefits = (row.benefits || [])
+    .map((b) => String(b || '').trim().replace(/^(?:[✔✓☑]️?\s*)+/u, ''))
+    .filter(Boolean);
   if (benefits.length) {
     lines.push('');
     for (const b of benefits) lines.push(`✔️ ${b}`);

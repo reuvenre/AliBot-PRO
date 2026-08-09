@@ -2793,6 +2793,10 @@ export class PostsService {
 
     const footer = await this.resolveFooterText(post.user_id, creds, channelOverride);
     if (footer && !body.includes(footer)) body = `${body}\n\n${footer}`;
+    // Collapse doubled checkmarks ("✔️ ✔️ נוחות") — imported file rows carried their own
+    // leading ✔️ on top of the template's. Fixed at import too; this display-time collapse
+    // also heals the posts already sitting in the queue with the doubled form.
+    body = body.replace(/(?:[✔✓☑]️?\s*){2,}/gu, '✔️ ');
     // Hebrew bodies: pin every line right (emoji/price/link-opening lines otherwise render
     // LTR — each line's direction follows its first strong character) and collapse the
     // blank-line runs the copy model produces. English bodies pass through untouched.

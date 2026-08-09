@@ -33,6 +33,17 @@ describe('composeImportText', () => {
     const text = composeImportText({ title: 'מוצר', benefits: [], link: 'https://x' }, null);
     expect(text).toBe('🔥 מוצר\nמהרו לפני שנגמר ←');
   });
+
+  it('strips a leading ✔️ the file already put in the benefit cell — no double checkmark', () => {
+    const text = composeImportText(
+      { title: 'אפוד', benefits: ['✔️ איכות הבד ותפרים ברמה גבוהה', '✔️נוחות ללא פשרות'], link: 'https://x' },
+      null,
+    );
+    expect(text).toContain('✔️ איכות הבד ותפרים ברמה גבוהה');
+    expect(text).toContain('✔️ נוחות ללא פשרות');
+    expect(text).not.toContain('✔️ ✔️');
+    expect(text).not.toContain('✔️✔️');
+  });
 });
 
 describe('extractAliProductId', () => {
