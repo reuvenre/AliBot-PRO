@@ -37,7 +37,24 @@ export class InstagramImageController {
   @Get('enhanced/:id')
   async enhanced(@Param('id') id: string, @Query('fit') fit: string, @Res() res: Response) {
     const buf = this.posts.getEnhancedFrame(id);
-    if (!buf) { res.status(404).send('frame expired'); return; }
+    if (!buf) {
+      // The frame lives in memory and dies on deploy/restart — but Instagram/Facebook may
+      // fetch this URL minutes after the send registered it. A 404 here fed Meta a text
+      // page → IG #9004 ("Only photo or video can be accepted"). Degrade to the post's
+      // ORIGINAL image instead: the publish loses the designed frame, not the post.
+      const src = await this.posts.postImageForFrame(id).catch(() => null);
+      if (!src) { res.status(404).send('frame expired'); return; }
+      const target = unwrapOwnProxy(src);
+      let host = '';
+      try { host = new URL(target).hostname; } catch { /* fall through to raw src */ }
+      this.logger.warn(`enhanced-frame ${id} expired — redirecting platform fetcher to the original image`);
+      if (fit === 'ig' && host && isIgFittableHost(host)) {
+        res.redirect(302, `/api/posts/ig-image?src=${encodeURIComponent(target)}`);
+      } else {
+        res.redirect(302, src);
+      }
+      return;
+    }
     let out = buf;
     if (fit === 'ig') {
       try {

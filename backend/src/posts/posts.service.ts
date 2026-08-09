@@ -1200,6 +1200,22 @@ export class PostsService {
     };
   }
 
+  /**
+   * The post's original main image — the enhanced-frame endpoint's fallback when the
+   * in-memory frame died (deploy/restart) before Instagram/Facebook fetched it. Public,
+   * id-keyed on purpose: platform fetchers can't authenticate, and post ids are
+   * unguessable UUIDs (same stance as the frame endpoint itself).
+   */
+  async postImageForFrame(postId: string): Promise<string | null> {
+    const post = await this.repo.findOne({ where: { id: postId } });
+    if (!post) return null;
+    if (post.product_image) return post.product_image;
+    try {
+      const g = post.gallery_json ? JSON.parse(post.gallery_json) : [];
+      return (Array.isArray(g) && g[0]) || null;
+    } catch { return null; }
+  }
+
   /** An owned post or 404 — for cross-module readers (e.g. the suppliers gallery editor). */
   async getOwnedPost(userId: string, postId: string): Promise<Post> {
     const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
