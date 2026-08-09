@@ -105,3 +105,18 @@ describe('self-review checklist (the 07/08 Ali4You post)', () => {
       .toBeNull();
   });
 });
+
+describe('mixed-script word (the 09/08 Ali4You post)', () => {
+  it('rejects the headline that actually got published — Arabic letters inside a Hebrew word', () => {
+    expect(copyDefect('🔥 השעון החכם שמשדרג לכם את השגרה وشנת הלימודים')).toMatch(/mixed-script/);
+  });
+
+  it('does not flag Hebrew+Latin mixes or standalone foreign words', () => {
+    expect(copyDefect('הiPhone15 החדש הגיע — מחיר מטורף והנחה ענקית לזמן מוגבל!')).toBeNull();
+    expect(copyDefect('שעון חכם GPS מדהים לילדים — סוללה שמחזיקה שבוע שלם בקלות!')).toBeNull();
+  });
+
+  it('does not flag a pure Arabic post (the ar language flow)', () => {
+    expect(copyDefect('عرض حصري — ساعة ذكية رائعة للأطفال بسعر مذهل، لا تفوتوا الفرصة الرائعة!')).toBeNull();
+  });
+});

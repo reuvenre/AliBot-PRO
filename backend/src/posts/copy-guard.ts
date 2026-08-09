@@ -86,6 +86,28 @@ function hasWordIndexNumbering(text: string): boolean {
 }
 
 /**
+ * A single word mixing HEBREW letters with a foreign non-Latin script — published to
+ * Ali4You on 09/08 as "וشנת הלימודים": the model slipped an Arabic-script token into the
+ * middle of a Hebrew word (a known cross-script glitch, Gemini especially). The sentence
+ * still reads fine semantically, so the AI judge passed it — only a character-level check
+ * catches it.
+ *
+ * Deliberately narrow: Hebrew+Latin mixes are normal ("iPhone15"), digits/punctuation are
+ * ignored, and a pure Arabic post (the 'ar' language flow) contains no Hebrew letters in
+ * its words at all — only a word carrying BOTH Hebrew AND Arabic/Cyrillic/CJK/Thai is
+ * condemned, which no real copy in any supported language produces.
+ */
+const HEBREW_RE = /[֐-׿]/;
+const FOREIGN_SCRIPT_RE = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿Ѐ-ӿ一-鿿぀-ヿ฀-๿]/;
+function mixedScriptWord(text: string): string | null {
+  for (const raw of text.split(/\s+/)) {
+    const word = raw.replace(/[^\p{L}\p{N}]/gu, '');
+    if (HEBREW_RE.test(word) && FOREIGN_SCRIPT_RE.test(word)) return raw;
+  }
+  return null;
+}
+
+/**
  * Why this generated copy must not be published, or null when it is usable.
  * The reason is a short English tag meant for the log line, not for the owner.
  */
@@ -105,6 +127,8 @@ export function copyDefect(text: string): string | null {
   if (UNFILLED_PLACEHOLDER.test(t)) return 'unfilled placeholder';
   if (hasWordIndexNumbering(t)) return 'word-index numbering';
   if (looksLikeSelfReview(t)) return 'self-review checklist';
+  const mixed = mixedScriptWord(t);
+  if (mixed) return `mixed-script word ("${mixed}")`;
 
   return null;
 }
