@@ -1619,7 +1619,26 @@ export class PostsService {
     // and the group's one-post-per-interval rate is preserved by construction.
     const golden = await this.smartTimingHours(userId, groupId);
     if (!golden) return res;
-    return { slot: snapToHotHour(res.slot, golden), skip: false };
+    const snapped = snapToHotHour(res.slot, golden);
+    if (snapped.getTime() === res.slot.getTime()) return res;
+    // A snapped slot lands HOURS ahead — beyond the pacing horizon that (correctly) lets
+    // near-term bookings ignore far-future posts. So the chain cannot see an EARLIER post
+    // that already snapped into the same golden hour, and two posts stack there and publish
+    // together (observed: two posts at the same hour the day smart timing first woke up).
+    // Before accepting the snap, check the group's calendar around the snapped time — if a
+    // pending post already sits within one interval of it, keep the natural slot instead:
+    // the golden hour is taken, and natural pacing beats a double-post.
+    const snapIntervalMin = (await this.channels.getIntervalMinutes(userId, groupId).catch(() => null)) ?? 60;
+    const snapIntervalMs = snapIntervalMin * 60_000;
+    const clash = await this.repo.createQueryBuilder('p')
+      .where('p.user_id = :userId', { userId })
+      .andWhere("p.status IN ('scheduled','queued','pending')")
+      .andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)', { g: groupId, like: `%"${groupId}"%` })
+      .andWhere('COALESCE(p.scheduled_at, p.pending_at) > :lo', { lo: new Date(snapped.getTime() - snapIntervalMs) })
+      .andWhere('COALESCE(p.scheduled_at, p.pending_at) < :hi', { hi: new Date(snapped.getTime() + snapIntervalMs) })
+      .getCount();
+    if (clash > 0) return res;
+    return { slot: snapped, skip: false };
   }
 
   private async nextGroupSlotRaw(
