@@ -154,8 +154,12 @@ export default function OrdersPage() {
     return `${from || '…'} — ${to || 'היום'}`;
   })();
 
+  // Dates on the ALIEXPRESS clock (GMT+8) — the owner reconciles this table row-by-row
+  // against the AliExpress portal, which logs orders on that clock. Israel-time dates here
+  // made the same order appear a day "early" (a 22:48 IL purchase = next-day 03:48 in the
+  // portal) and read as a wrong date.
   const fmtDate = (d: string) =>
-    new Date(d).toLocaleDateString('he-IL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    new Date(d).toLocaleDateString('he-IL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' });
 
   return (
     <div>
@@ -310,7 +314,7 @@ export default function OrdersPage() {
                   <th className="px-4 py-3 font-medium">סכום</th>
                   <th className="px-4 py-3 font-medium">עמלה</th>
                   <th className="px-4 py-3 font-medium hidden md:table-cell">מזהה הזמנה</th>
-                  <th className="px-4 py-3 font-medium hidden md:table-cell">תאריך</th>
+                  <th className="px-4 py-3 font-medium hidden md:table-cell">תאריך <span className="text-white/25 font-normal">(שעון אלי אקספרס)</span></th>
                 </tr>
               </thead>
               <tbody>
