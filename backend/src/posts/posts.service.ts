@@ -1635,7 +1635,13 @@ export class PostsService {
     // and the group's one-post-per-interval rate is preserved by construction.
     const golden = await this.smartTimingHours(userId, groupId);
     if (!golden) return res;
-    const snapped = snapToHotHour(res.slot, golden);
+    let snapped = snapToHotHour(res.slot, golden);
+    // Never snap past this run's own CYCLE END: a booking beyond it blocks the campaign's
+    // next run(s) (myBookingBlocks sees a pending post it can't stack behind) and starves
+    // the timeline — observed as ~122-minute gaps on an hourly campaign. The run whose
+    // natural slot lands near the golden hour does the snapping instead, so concentration
+    // still happens without any run being jumped over.
+    if (stackUntil && snapped.getTime() > stackUntil.getTime()) snapped = res.slot;
     if (snapped.getTime() === res.slot.getTime()) return res;
     // A snapped slot lands HOURS ahead — beyond the pacing horizon that (correctly) lets
     // near-term bookings ignore far-future posts. So the chain cannot see an EARLIER post

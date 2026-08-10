@@ -555,6 +555,16 @@ export class WatchdogService implements OnModuleInit {
 
       let groups: string[] = [];
       try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
+      // Smart-timing groups RESHAPE gaps by design — posts are nudged into golden hours,
+      // which stretches some gaps and shrinks others, and a median-gap check misreads
+      // that as drift (it alarmed two days running on a healthy campaign). Real silence
+      // is still covered by the silent-campaigns check above (3h+ with no post at all).
+      if (groups.length) {
+        const [ch] = await this.campaigns.query(
+          `SELECT smart_timing FROM channels WHERE id = $1`, [groups[0]],
+        ).catch(() => [null]);
+        if (ch?.smart_timing === true) continue;
+      }
       const siblings = groups.length ? silent.filter((o) => o.id !== c.id).filter((o) => {
         let og: string[] = []; try { og = JSON.parse(o.target_channels || '[]'); } catch { og = []; }
         return og.some((g) => groups.includes(g));
