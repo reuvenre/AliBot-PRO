@@ -91,15 +91,21 @@ export class LinksService {
 
     void (async () => {
       try {
-        await this.clicks.insert({
-          post_id: post.id,
-          user_id: post.user_id,
-          referrer: (referrer || '').slice(0, 500) || null,
-          user_agent: (userAgent || '').slice(0, 300) || null,
-          // Validated platform tag ('tg'/'fb'/…) from the link's ?s= — see click-source.ts.
-          source: normalizeClickSource(source),
-        } as Partial<LinkClick>);
-        await this.posts.increment({ id: post.id }, 'clicks_count', 1);
+        // ONE transaction: the click row and the cached counter must not be able to
+        // disagree. As two separate statements, a hiccup (or a deploy landing between
+        // them) logged the row and lost the increment — the posts screen then showed
+        // "11 קליקים" above a per-platform breakdown summing to 14.
+        await this.clicks.manager.transaction(async (tx) => {
+          await tx.insert(LinkClick, {
+            post_id: post.id,
+            user_id: post.user_id,
+            referrer: (referrer || '').slice(0, 500) || null,
+            user_agent: (userAgent || '').slice(0, 300) || null,
+            // Validated platform tag ('tg'/'fb'/…) from the link's ?s= — see click-source.ts.
+            source: normalizeClickSource(source),
+          } as Partial<LinkClick>);
+          await tx.increment(Post, { id: post.id }, 'clicks_count', 1);
+        });
       } catch (err: any) {
         this.logger.warn(`click log failed for ${clean}: ${err.message}`);
       }

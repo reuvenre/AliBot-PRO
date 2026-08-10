@@ -381,11 +381,25 @@ export class PostsService {
       }
     }
 
-    const data = raw.map((p) => ({
-      ...p,
-      campaign_name: p.campaign?.name ?? null,
-      clicks_by_source: clicksBySource.get(p.id) ?? null,
-    }));
+    // The click LOG is the truth; posts.clicks_count is only a cache of it. The two are
+    // written by separate statements (insert row, then increment counter), so a hiccup or
+    // a deploy landing between them loses the increment — the screen then showed
+    // "11 קליקים · פייסבוק 8 · טלגרם 6". Report the log's own total, and heal the stale
+    // counter in the background so every OTHER reader of clicks_count (digest, optimizer,
+    // watchdog, winner recycling) converges on the same number.
+    const data = raw.map((p) => {
+      const bySource = clicksBySource.get(p.id) ?? null;
+      const logged = bySource ? Object.values(bySource).reduce((s, n) => s + n, 0) : 0;
+      if (bySource && logged !== (p.clicks_count ?? 0)) {
+        void this.repo.update({ id: p.id }, { clicks_count: logged }).catch(() => {});
+      }
+      return {
+        ...p,
+        clicks_count: bySource ? logged : p.clicks_count,
+        campaign_name: p.campaign?.name ?? null,
+        clicks_by_source: bySource,
+      };
+    });
     return { data, total, page, limit };
   }
 
