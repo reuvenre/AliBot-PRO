@@ -651,11 +651,24 @@ export class OptimizerService {
          AND order_date > now() - interval '90 days'
        LIMIT 3000`, [userId]);
     const priceBand = soldPriceBand(bandRows.map((r) => r.amt));
-    const goldenHours: any[] = await q(
+    // Raw top hours are polluted by NIGHT clicks (scrapers with browser-like user agents
+    // that the bot filter can't catch, VPN/abroad readers) — the digest showed 03:00 as a
+    // "golden hour" days running, which no follower of these groups produced. The ACTING
+    // per-group logic already drops hours outside the send window; align the display line
+    // with it: only hours inside the account's window are worth showing the owner.
+    const hourRows: any[] = await q(
       `SELECT extract(hour from (clicked_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')::int AS hour,
               count(*)::int AS n
        FROM link_clicks WHERE user_id = $1 AND clicked_at > now() - ($2 || ' days')::interval
-       GROUP BY 1 ORDER BY n DESC LIMIT 3`, [userId, String(WINDOW_DAYS)]);
+       GROUP BY 1 ORDER BY n DESC`, [userId, String(WINDOW_DAYS)]);
+    const [sched] = await q(
+      `SELECT schedule_start_hour AS s, schedule_end_hour AS e FROM credentials WHERE user_id = $1`, [userId]);
+    const winStart = Number.isInteger(Number(sched?.s)) ? Number(sched.s) : 9;
+    const winEnd0 = Number.isInteger(Number(sched?.e)) ? Number(sched.e) : 22;
+    const winEnd = winEnd0 === 0 ? 24 : winEnd0;
+    const goldenHours = hourRows.filter((h) => (winStart < winEnd
+      ? h.hour >= winStart && h.hour < winEnd
+      : h.hour >= winStart || h.hour < winEnd0)).slice(0, 3);
     return {
       posts_yesterday: Number(posts?.n) || 0,
       clicks_yesterday: Number(clicks?.n) || 0,
