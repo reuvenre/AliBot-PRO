@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationPref } from './notification-pref.entity';
+import { clampInsightsHour, clampSummaryHour, reportDue } from './report-hours';
 import { Post } from '../posts/post.entity';
 import { Earning } from '../earnings/earning.entity';
 import { User } from '../users/user.entity';
@@ -38,11 +40,18 @@ export class NotificationsService {
     return this.repo.create({ user_id: userId, daily_summary: false, campaign_errors: false });
   }
 
-  async upsert(userId: string, dto: { daily_summary?: boolean; campaign_errors?: boolean }) {
+  async upsert(userId: string, dto: {
+    daily_summary?: boolean; campaign_errors?: boolean;
+    daily_summary_hour?: number; insights_hour?: number;
+  }) {
     const row = (await this.repo.findOne({ where: { user_id: userId } }))
       || this.repo.create({ user_id: userId });
     if (dto.daily_summary !== undefined) row.daily_summary = dto.daily_summary;
     if (dto.campaign_errors !== undefined) row.campaign_errors = dto.campaign_errors;
+    // Hours are clamped, never rejected: a chosen hour outside what the data supports is a
+    // UI slip, and failing the whole save over it would lose the user's other edits.
+    if (dto.daily_summary_hour !== undefined) row.daily_summary_hour = clampSummaryHour(dto.daily_summary_hour);
+    if (dto.insights_hour !== undefined) row.insights_hour = clampInsightsHour(dto.insights_hour);
     return this.repo.save(row);
   }
 
@@ -54,18 +63,24 @@ export class NotificationsService {
   // ── Daily summary ─────────────────────────────────────────────────────────
 
   /**
-   * Send the digest to everyone who opted in, once per local day, at/after `sendHour`.
-   * Driven by an hourly cron; `last_daily_sent_on` is the idempotency key.
+   * Send the daily summary to everyone who opted in, once per local day, at each user's
+   * OWN chosen hour. `last_daily_sent_on` is the idempotency key.
+   *
+   * This cron did not exist: the feature shipped with a toggle, a mail template and this
+   * dispatcher, but nothing ever called it — so a user could switch "סיכום ביצועים יומי"
+   * on and never receive a single one. Wiring the schedule is what makes the toggle true.
    */
-  async runDailySummaries(sendHour = 9): Promise<void> {
+  @Cron('0 2 * * * *')
+  async runDailySummaries(): Promise<void> {
     if (!this.mail.isConfigured()) return; // nothing to send with — stay silent, don't spin
     const now = new Date();
-    if (hourIn(now) < sendHour) return;
+    const nowHour = hourIn(now);
     const today = dayKey(now);
 
     const opted = await this.repo.find({ where: { daily_summary: true } });
     for (const pref of opted) {
-      if (pref.last_daily_sent_on === today) continue; // already went out today
+      const hour = clampSummaryHour(pref.daily_summary_hour);
+      if (!reportDue(nowHour, hour, pref.last_daily_sent_on, today)) continue;
       try {
         const sent = await this.sendDailySummary(pref.user_id, now);
         if (sent) {
@@ -76,6 +91,33 @@ export class NotificationsService {
         this.logger.error(`Daily summary failed for ${pref.user_id}: ${err.message}`);
       }
     }
+  }
+
+  /**
+   * The users whose INSIGHTS report is due this tick — the optimizer's dispatcher asks,
+   * because delivery of that report lives there (it builds the digest) while the schedule
+   * belongs to the user's preferences here. A user with no prefs row keeps the default
+   * hour, so enabling the learning engine is enough to receive it.
+   */
+  async insightsDue(userIds: string[], now = new Date()): Promise<string[]> {
+    if (!userIds.length) return [];
+    const nowHour = hourIn(now);
+    const today = dayKey(now);
+    const rows = await this.repo.find({ where: userIds.map((user_id) => ({ user_id })) });
+    const byUser = new Map(rows.map((r) => [r.user_id, r]));
+    return userIds.filter((uid) => {
+      const pref = byUser.get(uid);
+      return reportDue(nowHour, clampInsightsHour(pref?.insights_hour), pref?.last_insights_sent_on, today);
+    });
+  }
+
+  /** Stamp today's insights delivery, creating the prefs row when the user has none. */
+  async markInsightsSent(userId: string, now = new Date()): Promise<void> {
+    const today = dayKey(now);
+    const row = (await this.repo.findOne({ where: { user_id: userId } }))
+      || this.repo.create({ user_id: userId });
+    row.last_insights_sent_on = today;
+    await this.repo.save(row);
   }
 
   /** Build + send one user's digest from real data. Returns false if there's no address. */

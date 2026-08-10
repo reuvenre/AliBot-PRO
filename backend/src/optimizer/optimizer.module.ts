@@ -11,6 +11,7 @@ import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
 import { EarningsModule } from '../earnings/earnings.module';
 import { AiModule } from '../ai/ai.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -26,6 +27,8 @@ import { AiModule } from '../ai/ai.module';
     EarningsModule,
     // Judges a learned category against a specific group's audience.
     AiModule,
+    // Owns WHEN each user's insights report goes out (their chosen hour + the same-day guard).
+    NotificationsModule,
   ],
   controllers: [OptimizerController],
   providers: [OptimizerService],

@@ -15,7 +15,7 @@ const TOGGLES: { id: 'daily_summary' | 'campaign_errors'; label: string; desc: s
   {
     id: 'daily_summary',
     label: 'סיכום ביצועים יומי',
-    desc: 'מייל אחד ביום (09:00) — פוסטים שנשלחו, כשלים, ממתינים בתור, הזמנות, עמלות וקרדיטים שנותרו.',
+    desc: 'מייל אחד ביום — פוסטים שנשלחו, כשלים, ממתינים בתור, הזמנות, עמלות וקרדיטים שנותרו.',
   },
   {
     id: 'campaign_errors',
@@ -23,6 +23,23 @@ const TOGGLES: { id: 'daily_summary' | 'campaign_errors'; label: string; desc: s
     desc: 'מייל כשהטייס האוטומטי נכשל. בלי זה הכשל נרשם רק בלוג של השרת ולא תדע עליו.',
   },
 ];
+
+/** Hour picker — whole hours only, the granularity the dispatch actually has. */
+function HourSelect({ value, min, onChange }: { value: number; min: number; onChange: (h: number) => void }) {
+  const hours = Array.from({ length: 24 - min }, (_, i) => i + min);
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      dir="ltr"
+      className="bg-white/5 border border-edge-hover rounded-lg px-3 py-1.5 text-sm text-white/80 outline-none focus:border-blue-500/50"
+    >
+      {hours.map((h) => (
+        <option key={h} value={h} className="bg-surface-secondary">{String(h).padStart(2, '0')}:00</option>
+      ))}
+    </select>
+  );
+}
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
   return (
@@ -64,6 +81,8 @@ export function NotificationsForm() {
       const updated = await notificationsApi.update({
         daily_summary: prefs.daily_summary,
         campaign_errors: prefs.campaign_errors,
+        daily_summary_hour: prefs.daily_summary_hour,
+        insights_hour: prefs.insights_hour,
       });
       setPrefs((p) => (p ? { ...p, ...updated } : p));
       setSaved(true);
@@ -119,18 +138,58 @@ export function NotificationsForm() {
 
         <div className="space-y-1">
           {TOGGLES.map((t) => (
-            <div key={t.id} className="flex items-start justify-between gap-4 py-3 border-b border-edge last:border-0">
-              <div className="min-w-0">
-                <p className="text-sm text-white/85">{t.label}</p>
-                <p className="text-2xs text-white/35 mt-0.5 leading-relaxed">{t.desc}</p>
+            <div key={t.id} className="border-b border-edge last:border-0">
+              <div className="flex items-start justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-white/85">{t.label}</p>
+                  <p className="text-2xs text-white/35 mt-0.5 leading-relaxed">{t.desc}</p>
+                </div>
+                <Toggle enabled={!!prefs?.[t.id]} onChange={() => toggle(t.id)} />
               </div>
-              <Toggle enabled={!!prefs?.[t.id]} onChange={() => toggle(t.id)} />
+              {t.id === 'daily_summary' && prefs?.daily_summary && (
+                <div className="flex items-center justify-between gap-4 pb-3 pr-1">
+                  <span className="text-2xs text-white/40">שעת שליחה</span>
+                  <HourSelect
+                    value={prefs.daily_summary_hour}
+                    min={0}
+                    onChange={(h) => setPrefs((p) => (p ? { ...p, daily_summary_hour: h } : p))}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
 
         {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
         {testMsg && <p className="text-xs text-emerald-400 mt-3">{testMsg}</p>}
+
+        {/* The learning engine's report is delivered by the optimizer, not by the toggles
+            above — it goes out to anyone with the engine enabled, so only its HOUR is set
+            here. Its floor is a data fact, not a preference: see the note below. */}
+        {prefs && (
+          <div className="mt-5 pt-4 border-t border-edge">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm text-white/85">🧠 דו״ח המנוע הלומד</p>
+                <p className="text-2xs text-white/35 mt-0.5 leading-relaxed">
+                  הדו״ח המקיף — קליקים, הזמנות, שעות זהב, מה המנוע כיוונן ומה סוכן־המנהל שינה.
+                  נשלח למי שהמנוע הלומד מופעל אצלו (הגדרות ← תזמון).
+                  {prefs.last_insights_sent_on ? ` · אחרון: ${prefs.last_insights_sent_on}` : ''}
+                </p>
+              </div>
+              <HourSelect
+                value={prefs.insights_hour}
+                min={prefs.min_insights_hour ?? 10}
+                onChange={(h) => setPrefs((p) => (p ? { ...p, insights_hour: h } : p))}
+              />
+            </div>
+            <p className="text-2xs text-white/25 mt-2 leading-relaxed">
+              לא ניתן לבחור שעה מוקדמת מ-{String(prefs.min_insights_hour ?? 10).padStart(2, '0')}:00 —
+              אלי אקספרס סוגר את יום החשבונאות שלו ב-10:00, ולפני כן נתוני ההזמנות של אתמול עדיין
+              משתנים. דו״ח מוקדם יותר לא רק יציג מספרים לא סופיים, הוא גם ילמד מהם.
+            </p>
+          </div>
+        )}
 
         {/* Action only — persisting is the sticky bar's job, one per tab. */}
         <div className="flex items-center gap-2 mt-5 flex-wrap">

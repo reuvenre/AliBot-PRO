@@ -12,6 +12,7 @@ import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { EarningsService } from '../earnings/earnings.service';
 import { AiService } from '../ai/ai.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
 import { soldPriceBand } from './sold-price-band';
@@ -95,26 +96,42 @@ export class OptimizerService {
     private readonly products: ProductsService,
     // Judges whether an account-wide winning category suits a specific group's audience.
     private readonly ai: AiService,
+    // Owns the delivery SCHEDULE of this report (the user's chosen hour + same-day guard);
+    // building and sending the digest stays here.
+    private readonly notifications: NotificationsService,
     // Optional so the module still boots if earnings are ever unwired — the digest degrades
     // to whatever the standing 3-hourly sync last pulled instead of failing.
     @Optional() private readonly earnings?: EarningsService,
   ) {}
 
   /**
-   * 10:10 Israel time, ten minutes after AliExpress closes its accounting day at 10:00 —
-   * only then does the previous day's order data stop moving, so a digest sent earlier
-   * reported a day that wasn't finished yet.
+   * Hourly tick at :10, dispatching each user's insights report at the hour THEY chose
+   * (notification_prefs.insights_hour, floored at 10 — see report-hours.ts: AliExpress
+   * closes its accounting day at 10:00 Israel, and a digest before that reports and learns
+   * from numbers still in motion).
    *
    * The zone is explicit rather than a UTC hour because Israel observes DST: a hardcoded
-   * 07:10 UTC would be 10:10 in summer and 09:10 in winter, drifting off the boundary this
-   * schedule exists to sit behind.
+   * UTC hour would drift an hour off the boundary this schedule exists to sit behind.
    */
-  @Cron('0 10 10 * * *', { timeZone: 'Asia/Jerusalem' })
+  @Cron('0 10 * * * *', { timeZone: 'Asia/Jerusalem' })
   async runDaily(): Promise<void> {
-    // Pull orders FIRST. The standing sync runs every 3 hours on a UTC grid, so the most
-    // recent one before this fires landed at 09:20 Israel — BEFORE the 10:00 close, which
-    // would have made the whole point of moving this schedule moot. Best-effort: a sync
-    // failure must not cost the owner the digest.
+    let userIds: string[] = [];
+    try {
+      userIds = await this.credentials.listUserIdsWithOptimizer();
+    } catch (err: any) {
+      this.logger.error(`optimizer user scan failed: ${err.message}`);
+      return;
+    }
+    const due = await this.notifications.insightsDue(userIds).catch((err: any) => {
+      this.logger.error(`optimizer due-scan failed: ${err.message}`);
+      return [] as string[];
+    });
+    if (!due.length) return; // nobody this hour — no sync, no work
+
+    // Pull orders FIRST, once per tick that actually has work. The standing sync runs every
+    // 3 hours on a UTC grid and can easily have last landed BEFORE the 10:00 close, which
+    // would defeat the point of the schedule. Best-effort: a sync failure must not cost the
+    // owner the digest.
     if (this.earnings) {
       const r = await this.earnings.syncAllUsers().catch((err: any) => {
         this.logger.warn(`optimizer pre-digest earnings sync failed: ${err.message}`);
@@ -123,16 +140,12 @@ export class OptimizerService {
       if (r) this.logger.log(`optimizer pre-digest sync: ${r.synced} new, ${r.updated} updated across ${r.users} users`);
     }
 
-    let userIds: string[] = [];
-    try {
-      userIds = await this.credentials.listUserIdsWithOptimizer();
-    } catch (err: any) {
-      this.logger.error(`optimizer user scan failed: ${err.message}`);
-      return;
-    }
-    for (const uid of userIds) {
+    for (const uid of due) {
       try {
         await this.runForUser(uid);
+        // Stamped only after a successful run, so a failure retries on the next tick
+        // instead of silently costing the user that day's report.
+        await this.notifications.markInsightsSent(uid);
       } catch (err: any) {
         this.logger.error(`optimizer failed for ${uid}: ${err.message}`);
       }

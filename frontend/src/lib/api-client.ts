@@ -304,8 +304,10 @@ export const adminApi = {
 
 export const notificationsApi = {
   get: () => http.get<NotificationPrefs>('/notifications').then(extract),
-  update: (data: { daily_summary?: boolean; campaign_errors?: boolean }) =>
-    http.patch<NotificationPrefs>('/notifications', data).then(extract),
+  update: (data: {
+    daily_summary?: boolean; campaign_errors?: boolean;
+    daily_summary_hour?: number; insights_hour?: number;
+  }) => http.patch<NotificationPrefs>('/notifications', data).then(extract),
   /** Send today's digest to yourself now — proves delivery instead of waiting a day. */
   testDaily: () =>
     http.post<{ sent: boolean; smtp_ready: boolean }>('/notifications/test-daily', {}, { timeout: 60_000 }).then(extract),

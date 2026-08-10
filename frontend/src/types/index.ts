@@ -745,6 +745,12 @@ export interface NotificationPrefs {
   daily_summary: boolean;
   campaign_errors: boolean;
   last_daily_sent_on: string | null;
+  /** Local hour (0-23) each report is delivered at. */
+  daily_summary_hour: number;
+  insights_hour: number;
+  last_insights_sent_on: string | null;
+  /** Earliest hour the insights report may be sent (the AliExpress accounting close). */
+  min_insights_hour: number;
   /** False when SMTP isn't configured — nothing can actually be delivered. */
   smtp_ready: boolean;
 }

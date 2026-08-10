@@ -2,6 +2,7 @@ import { Body, Controller, Get, Patch, Post, Req, UseGuards, HttpCode } from '@n
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { NotificationsService } from './notifications.service';
+import { MIN_INSIGHTS_HOUR, clampInsightsHour, clampSummaryHour } from './report-hours';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -17,6 +18,12 @@ export class NotificationsController {
       daily_summary: pref.daily_summary,
       campaign_errors: pref.campaign_errors,
       last_daily_sent_on: pref.last_daily_sent_on ?? null,
+      daily_summary_hour: clampSummaryHour(pref.daily_summary_hour),
+      insights_hour: clampInsightsHour(pref.insights_hour),
+      last_insights_sent_on: pref.last_insights_sent_on ?? null,
+      // The floor is a data fact (the AliExpress accounting close), so the UI reads it from
+      // the server instead of hardcoding a number that could drift out of sync.
+      min_insights_hour: MIN_INSIGHTS_HOUR,
       // Without SMTP nothing can actually be delivered — the UI says so rather than
       // letting the user switch on a notification that silently never arrives.
       smtp_ready: this.svc.smtpReady(),
@@ -24,7 +31,10 @@ export class NotificationsController {
   }
 
   @Patch()
-  update(@Req() req: Request, @Body() dto: { daily_summary?: boolean; campaign_errors?: boolean }) {
+  update(@Req() req: Request, @Body() dto: {
+    daily_summary?: boolean; campaign_errors?: boolean;
+    daily_summary_hour?: number; insights_hour?: number;
+  }) {
     return this.svc.upsert(this.uid(req), dto);
   }
 

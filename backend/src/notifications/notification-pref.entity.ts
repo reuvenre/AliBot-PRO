@@ -33,6 +33,22 @@ export class NotificationPref {
   @Column({ type: 'varchar', nullable: true })
   last_daily_sent_on: string | null;
 
+  /** Local hour (0-23) the daily summary is sent at. Any hour — it reports the day so far. */
+  @Column({ type: 'int', default: 9 })
+  daily_summary_hour: number;
+
+  /**
+   * Local hour the learning engine's insights report is sent at. Floored at 10 — AliExpress
+   * closes its accounting day at 10:00 Israel, and a digest before that both reports and
+   * LEARNS FROM numbers that are still moving (see report-hours.ts).
+   */
+  @Column({ type: 'int', default: 10 })
+  insights_hour: number;
+
+  /** Same-day guard for the insights report, mirroring last_daily_sent_on. */
+  @Column({ type: 'varchar', nullable: true })
+  last_insights_sent_on: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 
