@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { assertSafeOutboundUrl } from '../common/ssrf';
+import { dedupeProductImages } from './yupoo-image';
 
 export interface YupooItem {
   code: string;        // raw code from the title, e.g. "LUN1526"
@@ -169,7 +170,10 @@ export class YupooService {
         images.push(src.replace(/\/(small|thumb)\.jpg/i, '/medium.jpg'));
       }
     });
-    const uniqImages = [...new Set(images)];
+    // One entry per real photo: the album renders the same shot at several sizes, and an
+    // exact-URL dedup let all of them in — the catalog then showed duplicates, with the
+    // low-res twin blurry once blown up to post size. See yupoo-image.ts.
+    const uniqImages = dedupeProductImages(images);
 
     if (!code) throw new BadRequestException('לא נמצא קוד מוצר בכותרת האלבום ב-Yupoo');
     return {

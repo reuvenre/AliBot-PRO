@@ -8,6 +8,7 @@ import { YupooService } from './yupoo.service';
 import { normalizeSku } from './sku-match.util';
 import { openPostClash } from './flylink-dedup';
 import { coverFirst } from './gallery-order';
+import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { Campaign } from '../campaigns/campaign.entity';
 import { AiService, GenerateImage } from '../ai/ai.service';
@@ -266,12 +267,12 @@ export class SupplierProductsService {
 
   /** All product photos (colors/variants), proxied → one swipeable Telegram album. */
   private proxiedGallery(p: SupplierProduct): string[] {
-    let gallery: string[] = [];
-    try { gallery = p.gallery_json ? JSON.parse(p.gallery_json) : []; } catch { /* ignore */ }
-    if (p.image_url && !gallery.includes(p.image_url)) gallery.unshift(p.image_url);
-    // Yupoo hotlink-protects images → Telegram can't fetch them directly. Route each
-    // through our public proxy (adds the required Referer) so the photo actually sends.
-    return gallery.map((u) => this.proxyImage(u));
+    // Deduped by PHOTO, not by URL: the album serves one shot at several sizes, so a
+    // by-URL check let the same photo in twice (and the low-res twin looked blurry beside
+    // its sharp one). Applied at read time, not only at scrape, so catalogs imported
+    // before the fix are healed without re-importing. It also subsumes the old cover
+    // check — the cover is usually present in the gallery under a different size.
+    return this.rawGallery(p).map((u) => this.proxyImage(u));
   }
 
   /**
@@ -344,12 +345,15 @@ export class SupplierProductsService {
     return { ...result, gallery, vision_used: visionUsed };
   }
 
-  /** Raw (un-proxied) product image URLs — main image first, then the gallery. */
+  /**
+   * Raw (un-proxied) product image URLs — main image first, then the gallery, one entry
+   * per real photo (see yupoo-image.ts: the same shot arrives at several sizes, and the
+   * duplicates both bloated the album and published blurry low-res twins).
+   */
   private rawGallery(p: SupplierProduct): string[] {
     let g: string[] = [];
     try { g = p.gallery_json ? JSON.parse(p.gallery_json) : []; } catch { /* ignore */ }
-    if (p.image_url && !g.includes(p.image_url)) g.unshift(p.image_url);
-    return g;
+    return dedupeProductImages([p.image_url, ...g]);
   }
 
   /** Fetch up to `max` images → base64 for vision (sequential, tolerant of failures). */
@@ -390,8 +394,14 @@ export class SupplierProductsService {
   private selectGallery(p: SupplierProduct, selected?: string[], max = 10): string[] {
     const full = this.proxiedGallery(p);
     if (selected?.length) {
-      const set = new Set(full);
-      const chosen = selected.filter((u) => set.has(u)).slice(0, max);
+      // Validate BY PHOTO: a selection saved before the size-variant de-dup names a URL the
+      // clean gallery no longer contains verbatim, and an exact-URL filter silently dropped
+      // it — the post then published the whole album instead of the chosen few. Matching on
+      // photo identity also upgrades each pick to the sharp rendition.
+      const byKey = new Map(full.map((u) => [yupooPhotoKey(u), u]));
+      const chosen = dedupeProductImages(
+        selected.map((u) => byKey.get(yupooPhotoKey(u))).filter((u): u is string => !!u),
+      ).slice(0, max);
       if (chosen.length) return chosen;
     }
     // No manual pick → album order, but the CATALOG COVER leads. Yupoo fashion albums
@@ -438,9 +448,15 @@ export class SupplierProductsService {
       product = await this.repo.findOne({ where: { user_id: userId, id: key } });
     }
     const catalog = product ? this.proxiedGallery(product) : [];
+    // Match the post's stored images to the catalog BY PHOTO, not by URL: a post saved
+    // before the de-dup fix carries a different size variant of the same shot, which an
+    // exact-URL union re-added as a separate (blurry) choice and left unhighlighted as
+    // "selected". Mapping onto the catalog URL fixes both at once.
+    const byKey = new Map(catalog.map((u) => [yupooPhotoKey(u), u]));
+    const currentMapped = dedupeProductImages(current.map((u) => byKey.get(yupooPhotoKey(u)) || u));
     // The union keeps any current image the catalog no longer carries selectable.
-    const seen = new Set(catalog);
-    return { current, catalog: [...catalog, ...current.filter((u) => !seen.has(u))] };
+    const extras = currentMapped.filter((u) => !byKey.has(yupooPhotoKey(u)));
+    return { current: currentMapped, catalog: [...catalog, ...extras] };
   }
 
   /**
