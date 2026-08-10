@@ -122,10 +122,20 @@ export class OptimizerService {
       this.logger.error(`optimizer user scan failed: ${err.message}`);
       return;
     }
-    const due = await this.notifications.insightsDue(userIds).catch((err: any) => {
+    const claimed = await this.notifications.insightsDue(userIds).catch((err: any) => {
       this.logger.error(`optimizer due-scan failed: ${err.message}`);
       return [] as string[];
     });
+    // SECOND guard, on the run history rather than the stamp: a user who already got a
+    // report today does not get another one, whatever the stamp says. This is what the
+    // hourly dispatch needed on its first day — every existing user had a NULL stamp
+    // (the column had just been added) and so read as "due", which re-sent the morning
+    // digest hours after it had already gone out. It also covers a lost stamp write.
+    const due: string[] = [];
+    for (const uid of claimed) {
+      if (await this.ranToday(uid)) continue;
+      due.push(uid);
+    }
     if (!due.length) return; // nobody this hour — no sync, no work
 
     // Pull orders FIRST, once per tick that actually has work. The standing sync runs every
@@ -150,6 +160,23 @@ export class OptimizerService {
         this.logger.error(`optimizer failed for ${uid}: ${err.message}`);
       }
     }
+  }
+
+  /**
+   * Did this user's report already run today (local day)? Read from optimizer_runs, which
+   * is written on every completed pass — so it is true whatever wrote it, including a
+   * pass whose stamp write failed afterwards.
+   */
+  private async ranToday(userId: string): Promise<boolean> {
+    const [row] = await this.campaigns.query(
+      `SELECT 1 FROM optimizer_runs
+       WHERE user_id = $1
+         AND (created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem'
+             >= date_trunc('day', (now() AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')
+       LIMIT 1`,
+      [userId],
+    ).catch(() => []);
+    return !!row;
   }
 
   /**

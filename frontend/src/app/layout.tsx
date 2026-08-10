@@ -76,9 +76,26 @@ const ORG_JSONLD = {
   author: { '@type': 'Organization', name: VENDOR.name, url: VENDOR.url },
 };
 
+/**
+ * LIGHT is the first-visit default — a first-time visitor should land on the bright,
+ * conventional look, not a dark one they never chose. A returning user's pick is restored
+ * from localStorage by the inline script below, which runs before first paint so choosing
+ * dark never costs them a white flash on every page load.
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="he" dir="rtl" data-theme="dark" className="dark">
+    <html lang="he" dir="rtl" data-theme="light">
+      <head>
+        {/* Runs BEFORE paint, so a user who chose dark never sees a white flash first.
+            Must stay inline and synchronous — a React effect runs too late for that. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(localStorage.getItem('alibot-theme')==='dark'){`
+              + `document.documentElement.setAttribute('data-theme','dark');`
+              + `document.documentElement.classList.add('dark');}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className={`${inter.className} antialiased`} style={{ backgroundColor: 'var(--bg-primary)' }}>
         <script
           type="application/ld+json"

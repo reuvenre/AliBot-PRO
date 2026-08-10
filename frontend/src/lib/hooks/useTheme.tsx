@@ -10,17 +10,22 @@ interface ThemeContextValue {
   setTheme: (t: Theme) => void;
 }
 
+/** First visit lands on LIGHT — the bright, conventional look. A returning user's choice
+ *  is restored from localStorage (and applied pre-paint by the inline script in layout). */
+const DEFAULT_THEME: Theme = 'light';
+
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'dark',
+  theme: DEFAULT_THEME,
   toggleTheme: () => {},
   setTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME);
 
   useEffect(() => {
-    const saved = (localStorage.getItem('alibot-theme') as Theme) || 'dark';
+    const stored = localStorage.getItem('alibot-theme');
+    const saved: Theme = stored === 'dark' || stored === 'light' ? stored : DEFAULT_THEME;
     setThemeState(saved);
     applyTheme(saved);
   }, []);
