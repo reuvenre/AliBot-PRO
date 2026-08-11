@@ -13,6 +13,7 @@ import { ProductsService } from '../products/products.service';
 import { EarningsService } from '../earnings/earnings.service';
 import { AiService } from '../ai/ai.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PinterestService } from '../pinterest/pinterest.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
 import { soldPriceBand } from './sold-price-band';
@@ -102,6 +103,8 @@ export class OptimizerService {
     // Optional so the module still boots if earnings are ever unwired — the digest degrades
     // to whatever the standing 3-hourly sync last pulled instead of failing.
     @Optional() private readonly earnings?: EarningsService,
+    // Optional for the same reason: without it, Pinterest keywords simply stay unjudged.
+    @Optional() private readonly pinterest?: PinterestService,
   ) {}
 
   /**
@@ -152,6 +155,14 @@ export class OptimizerService {
 
     for (const uid of due) {
       try {
+        // Pinterest clicks live in Pinterest's analytics, not in link_clicks (a Pin carries
+        // the direct affiliate URL). Pull them in BEFORE scoring, or every Pinterest
+        // keyword reads as zero-click and the engine can never judge one.
+        if (this.pinterest) {
+          await this.pinterest.syncPinClicks(uid).catch((err: any) => {
+            this.logger.warn(`pinterest click sync failed for ${uid}: ${err.message}`);
+          });
+        }
         await this.runForUser(uid);
         // Stamped only after a successful run, so a failure retries on the next tick
         // instead of silently costing the user that day's report.
@@ -265,7 +276,7 @@ export class OptimizerService {
     const rows: any[] = await this.campaigns.query(
       `SELECT pp.keyword,
               count(DISTINCT pp.product_id)::int                    AS posts,
-              coalesce(sum(p.clicks_count), 0)::int                 AS clicks,
+              coalesce(sum(p.clicks_count + p.pinterest_clicks), 0)::int AS clicks,
               coalesce((
                 SELECT sum(e.commission_ils)
                 FROM earnings e
@@ -605,7 +616,7 @@ export class OptimizerService {
     //    since — the baseline resets to THEIR value.
     for (const c of campaigns) {
       const [perf] = await q(
-        `SELECT count(*)::int AS posts, coalesce(sum(clicks_count), 0)::int AS clicks
+        `SELECT count(*)::int AS posts, coalesce(sum(clicks_count + pinterest_clicks), 0)::int AS clicks
          FROM posts WHERE campaign_id = $1 AND status = 'sent' AND sent_at > now() - interval '7 days'`,
         [c.id],
       ).catch(() => [null]);
@@ -633,8 +644,8 @@ export class OptimizerService {
     for (const c of campaigns) {
       const pulses: Array<{ keyword: string; before_clicks: number; recent_clicks: number }> = await q(
         `SELECT keyword,
-                sum(CASE WHEN sent_at <= now() - interval '2 days' THEN clicks_count ELSE 0 END)::int AS before_clicks,
-                sum(CASE WHEN sent_at >  now() - interval '2 days' THEN clicks_count ELSE 0 END)::int AS recent_clicks
+                sum(CASE WHEN sent_at <= now() - interval '2 days' THEN clicks_count + pinterest_clicks ELSE 0 END)::int AS before_clicks,
+                sum(CASE WHEN sent_at >  now() - interval '2 days' THEN clicks_count + pinterest_clicks ELSE 0 END)::int AS recent_clicks
          FROM posts
          WHERE campaign_id = $1 AND status = 'sent' AND keyword IS NOT NULL
            AND sent_at > now() - interval '9 days'
@@ -732,7 +743,7 @@ export class OptimizerService {
     const rows: any[] = await this.campaigns.query(
       `SELECT copy_variant                          AS variant,
               count(*)::int                         AS posts,
-              coalesce(sum(clicks_count), 0)::int   AS clicks
+              coalesce(sum(clicks_count + pinterest_clicks), 0)::int AS clicks
        FROM posts
        WHERE user_id = $1 AND status = 'sent' AND copy_variant IS NOT NULL
          AND sent_at > now() - ($2 || ' days')::interval

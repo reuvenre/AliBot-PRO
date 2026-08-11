@@ -12,6 +12,7 @@ import { ProductsModule } from '../products/products.module';
 import { EarningsModule } from '../earnings/earnings.module';
 import { AiModule } from '../ai/ai.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PinterestModule } from '../pinterest/pinterest.module';
 
 @Module({
   imports: [
@@ -29,6 +30,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AiModule,
     // Owns WHEN each user's insights report goes out (their chosen hour + the same-day guard).
     NotificationsModule,
+    // Pin outbound clicks — the only click signal Pinterest campaigns have.
+    PinterestModule,
   ],
   controllers: [OptimizerController],
   providers: [OptimizerService],

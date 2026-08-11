@@ -78,6 +78,20 @@ export class Post {
   @Column({ type: 'int', default: 0 })
   clicks_count: number;
 
+  /**
+   * Outbound clicks this post's Pin drew, pulled from Pinterest's own analytics.
+   *
+   * A Pin carries the DIRECT affiliate URL — our /r/ redirect risks pin rejection — so a
+   * Pinterest click never passes through link_clicks and clicks_count stays 0 forever.
+   * The learning engine reads clicks, so without this column a Pinterest campaign is
+   * invisible to it: no keyword can ever be judged strong or dead. Kept separate from
+   * clicks_count (rather than folded in) because it is SET from analytics on every sync,
+   * while clicks_count is incremented per click — mixing the two would double-count a
+   * post published to both Telegram and Pinterest.
+   */
+  @Column({ type: 'int', default: 0 })
+  pinterest_clicks: number;
+
   /** The campaign search keyword that produced this post — attribution inherits it, so
    *  revenue can be reported per keyword. null for manual/non-campaign posts. */
   @Column({ nullable: true, type: 'varchar' })

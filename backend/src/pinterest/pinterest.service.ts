@@ -43,6 +43,60 @@ export class PinterestService {
   ) {}
 
   /**
+   * Pull each recent Pin's OUTBOUND clicks into posts.pinterest_clicks — the signal that
+   * lets the learning engine judge Pinterest keywords at all.
+   *
+   * Outbound clicks (not impressions, not saves) are the money metric: a shopper who left
+   * Pinterest for the affiliate link. That makes them the direct equivalent of a /r/ click
+   * on the other platforms, so once they are stored, every existing rule — keyword
+   * retirement, the boost, copy-angle scoring, winner recycling — works on Pinterest
+   * unchanged, without a parallel set of Pinterest-specific rules to keep in sync.
+   *
+   * SET, never incremented: analytics returns a running total, so re-syncing is idempotent.
+   * Best-effort throughout — a failed sync leaves yesterday's numbers, never a wrong one.
+   */
+  async syncPinClicks(userId: string, days = 30): Promise<{ updated: number; reason?: string }> {
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const token = creds?.pinterest_access_token;
+    if (!token) return { updated: 0, reason: 'no token' };
+
+    const rows = await this.posts.find({
+      where: { user_id: userId, pinterest_post_id: Not(IsNull()) },
+      order: { sent_at: 'DESC' },
+      take: 100,
+    }).catch(() => [] as Post[]);
+    const cutoff = Date.now() - days * 86_400_000;
+    const recent = rows.filter((p) => !p.sent_at || p.sent_at.getTime() > cutoff);
+    if (!recent.length) return { updated: 0 };
+
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 86_400_000);
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+
+    let updated = 0;
+    // Sequential on purpose: a burst of these trips Pinterest's per-second limit.
+    for (const post of recent) {
+      const res = await axios.get(`${API}/pins/${post.pinterest_post_id}/analytics`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { start_date: day(start), end_date: day(end), metric_types: 'OUTBOUND_CLICK' },
+        timeout: 10_000,
+        validateStatus: () => true,
+      }).catch(() => null);
+      // A dead token or a tier without analytics fails identically for every remaining
+      // pin — stop rather than spend 99 more calls proving it.
+      if (!res || res.status === 401 || res.status === 403) break;
+      if (res.status !== 200) continue;
+      const clicks = Number(res.data?.all?.summary_metrics?.OUTBOUND_CLICK) || 0;
+      if (clicks !== post.pinterest_clicks) {
+        await this.posts.update({ id: post.id }, { pinterest_clicks: clicks }).catch(() => {});
+        updated++;
+      }
+    }
+    if (updated) this.logger.log(`pinterest click sync: ${updated} posts updated for ${userId}`);
+    return { updated };
+  }
+
+  /**
    * The user's Pinterest boards, for picking the publish target in settings.
    *
    * A board's NUMERIC id is what the publish API needs, and it appears nowhere in the
