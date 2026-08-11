@@ -12,6 +12,16 @@ import {
 } from './pinterest-oauth';
 
 const API = 'https://api.pinterest.com/v5';
+/**
+ * Pins measured per daily sync — one API call each.
+ *
+ * Pinterest's TRIAL tier has a far smaller daily request budget than Standard, and that
+ * budget is shared with publishing. Publishing must never lose a slot to measurement, so
+ * the sync is bounded and takes the NEWEST pins: those are the ones whose numbers are
+ * still moving and whose keywords the engine is actively judging. Older pins keep the
+ * totals they were last measured with.
+ */
+const MAX_ANALYTICS_PINS_PER_SYNC = 40;
 /** Pinterest refreshes pin analytics roughly daily — 1h cache spares the rate limit. */
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -176,14 +186,14 @@ export class PinterestService {
    * SET, never incremented: analytics returns a running total, so re-syncing is idempotent.
    * Best-effort throughout — a failed sync leaves yesterday's numbers, never a wrong one.
    */
-  async syncPinClicks(userId: string, days = 30): Promise<{ updated: number; reason?: string }> {
+  async syncPinClicks(userId: string, days = 30, max = MAX_ANALYTICS_PINS_PER_SYNC): Promise<{ updated: number; reason?: string }> {
     const token = await this.liveToken(userId);
     if (!token) return { updated: 0, reason: 'no token' };
 
     const rows = await this.posts.find({
       where: { user_id: userId, pinterest_post_id: Not(IsNull()) },
       order: { sent_at: 'DESC' },
-      take: 100,
+      take: max,
     }).catch(() => [] as Post[]);
     const cutoff = Date.now() - days * 86_400_000;
     const recent = rows.filter((p) => !p.sent_at || p.sent_at.getTime() > cutoff);
