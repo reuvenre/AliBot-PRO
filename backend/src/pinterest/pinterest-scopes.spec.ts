@@ -27,7 +27,19 @@ describe('parseGrantedScopes', () => {
 describe('missingScopes', () => {
   it('names exactly what a read-only grant is missing', () => {
     // THE INCIDENT: boards listed fine, the first pin came back "insufficient permissions".
-    expect(missingScopes(['boards:read', 'pins:read'])).toEqual([PUBLISH_SCOPE]);
+    expect(missingScopes(['boards:read', 'pins:read'])).toEqual(['boards:write', PUBLISH_SCOPE]);
+  });
+
+  it('flags a grant that has pins:write but not boards:write', () => {
+    // The counter-intuitive requirement: creating a pin writes to a board, so Pinterest
+    // checks the board scope too. This exact combination looked complete and was not.
+    expect(missingScopes(['boards:read', 'pins:read', 'pins:write'])).toEqual(['boards:write']);
+  });
+
+  it('still lets that grant publish — the boards:write requirement is inferred, not documented', () => {
+    // Reported by Pinterest developers rather than stated in a scope table. Worth asking
+    // for and worth warning about; not worth refusing somebody's pin over.
+    expect(canPublish(['boards:read', 'pins:read', 'pins:write'])).toBe(true);
   });
 
   it('reports nothing missing for a complete grant', () => {
@@ -58,11 +70,13 @@ describe('describeMissingScopes', () => {
     expect(describeMissingScopes([])).toBe('');
   });
 
-  it('names the missing scopes and points at the Pinterest side', () => {
+  it('names the missing scopes and gives the one action that fixes it', () => {
     const msg = describeMissingScopes([PUBLISH_SCOPE]);
     expect(msg).toContain('pins:write');
-    expect(msg).toContain('developers.pinterest.com');
-    // The step people miss: a scope change does nothing until the grant is re-issued.
-    expect(msg).toContain('חיבור מחדש');
+    expect(msg).toContain('התחבר מחדש');
+    // An earlier version sent people hunting for a scopes screen in Pinterest's portal.
+    // There isn't one — scopes are fixed at authorization time — and the wrong instruction
+    // cost a round trip. Nothing here may point at the portal.
+    expect(msg).not.toContain('developers.pinterest.com');
   });
 });

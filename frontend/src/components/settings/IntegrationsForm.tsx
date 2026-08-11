@@ -465,7 +465,7 @@ export function IntegrationsForm() {
           {pinterestOk === false && <XCircle size={14} className="text-red-400" />}
         </h3>
         <p className="text-xs text-white/35 mb-4">
-          פרסום פינים לחשבון Pinterest — הפין נושא <span className="text-white/60">לינק לחיץ</span> ישירות למוצר (יתרון על אינסטגרם). דרוש Access Token מ-Pinterest Developer עם ההרשאות <span dir="ltr">boards:read, pins:write</span> ומזהה לוח (Board).
+          פרסום פינים לחשבון Pinterest — הפין נושא <span className="text-white/60">לינק לחיץ</span> ישירות למוצר (יתרון על אינסטגרם). מתחברים בכפתור למטה ובוחרים לוח; ההרשאות נקבעות אוטומטית בהתחברות.
         </p>
         <div className="grid grid-cols-1 gap-3">
           <div>
@@ -528,10 +528,9 @@ export function IntegrationsForm() {
         {pinConnected && pinScopes && !pinScopes.split(/[\s,]+/).includes('pins:write') && (
           <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5">
             <p className="text-2xs text-amber-300 leading-relaxed">
-              ⚠️ <b>החיבור קיים אך אינו כולל הרשאת פרסום</b> (<span dir="ltr">pins:write</span>).
-              פינים לא יפורסמו. התיקון הוא בצד של פינטרסט: developers.pinterest.com ← האפליקציה שלך ←
-              ודא שההרשאות המבוקשות כוללות <span dir="ltr">pins:write</span>, ואז לחץ כאן
-              &quot;התחבר מחדש&quot; — הרשאה חדשה נכנסת לתוקף רק בחיבור מחדש.
+              ⚠️ <b>החיבור קיים אך אינו כולל את כל הרשאות הפרסום</b> — פינים יידחו.
+              לחץ <b>&quot;התחבר מחדש&quot;</b> למעלה. ההרשאות נקבעות ברגע ההתחברות, ולכן חיבור
+              קיים לא מקבל אותן בדיעבד. אין מה לשנות בפורטל של פינטרסט.
             </p>
             <p className="text-2xs text-white/30 mt-1.5">
               הרשאות שהוענקו בפועל: <span dir="ltr">{pinScopes}</span>

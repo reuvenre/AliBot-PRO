@@ -13,11 +13,18 @@
  * of being inferred from a read that cannot answer the question.
  */
 
-/** Publishing a pin needs precisely this. Reads are useful; without this nothing ships. */
+/**
+ * The scope whose absence is CERTAIN to stop publishing — the hard gate.
+ *
+ * Creating a pin also needs boards:write (a pin is written to a board), but that is
+ * established from Pinterest's own error reports rather than from a documented list, so it
+ * is requested and reported on without being made a blocking condition. An inference of
+ * mine must not be what refuses to publish somebody's pin.
+ */
 export const PUBLISH_SCOPE = 'pins:write';
 
 /** Everything the app needs to be fully functional: publish, pick a board, read analytics. */
-export const REQUIRED_SCOPES = ['boards:read', 'pins:read', PUBLISH_SCOPE];
+export const REQUIRED_SCOPES = ['boards:read', 'boards:write', 'pins:read', PUBLISH_SCOPE];
 
 /**
  * The `scope` field of a token response → a clean list.
@@ -58,14 +65,10 @@ export function canPublish(granted: string[]): boolean {
  */
 export function describeMissingScopes(missing: string[]): string {
   if (!missing.length) return '';
-  const publishing = missing.includes(PUBLISH_SCOPE);
   return (
-    `פינטרסט לא העניקה את ההרשאות: ${missing.join(', ')}. `
-    + (publishing
-      ? 'בלי pins:write אי אפשר לפרסם פינים — הקריאה עובדת, הכתיבה נדחית. '
-      : '')
-    + 'התיקון הוא בצד של פינטרסט: היכנס ל-developers.pinterest.com ← האפליקציה שלך, '
-    + 'ודא שההרשאות המבוקשות כוללות את כולן, ואז חזור לכאן ולחץ "התחבר לפינטרסט" שוב — '
-    + 'הרשאה חדשה נכנסת לתוקף רק בחיבור מחדש.'
+    `החיבור לפינטרסט לא כולל את ההרשאות: ${missing.join(', ')} — ובלעדיהן פינים נדחים. `
+    + 'התיקון הוא לחיצה אחת: הגדרות ← אינטגרציות ← "התחבר מחדש". '
+    + 'ההרשאות נקבעות ברגע ההתחברות, ולכן חיבור קיים לא מקבל אותן בדיעבד — '
+    + 'צריך לאשר מחדש. אין מה לשנות בפורטל של פינטרסט.'
   );
 }

@@ -18,11 +18,18 @@ export const PINTEREST_TOKEN_URL = 'https://api.pinterest.com/v5/oauth/token';
 /**
  * Exactly what the publisher uses, and nothing more:
  *   boards:read  — list boards for the settings picker
+ *   boards:write — required to CREATE a pin, despite the name
  *   pins:read    — read back a Pin's analytics (the learning engine's click signal)
  *   pins:write   — publish
  * user_accounts:read is deliberately absent: we never read the owner's profile.
+ *
+ * boards:write is the counter-intuitive one, and leaving it out is what got the first pin
+ * rejected. Creating a pin writes to a board, so Pinterest checks the board scope too —
+ * `pins:write` alone yields "your token does not have sufficient permissions", naming
+ * scopes without naming WHICH. We never create or modify boards ourselves; this is asked
+ * for solely because publishing a pin does not work without it.
  */
-export const PINTEREST_SCOPES = ['boards:read', 'pins:read', 'pins:write'];
+export const PINTEREST_SCOPES = ['boards:read', 'boards:write', 'pins:read', 'pins:write'];
 
 /** Refresh this far BEFORE expiry — a token that dies mid-campaign costs a publish. */
 export const REFRESH_MARGIN_MS = 6 * 60 * 60 * 1000;
