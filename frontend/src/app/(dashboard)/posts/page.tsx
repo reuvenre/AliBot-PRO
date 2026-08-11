@@ -629,6 +629,7 @@ function EditPostModal({ post, onClose, onSaved }: {
   const [title, setTitle] = useState(post.product_title || '');
   const [price, setPrice] = useState<string>(post.price_ils != null ? String(post.price_ils) : '');
   const [image, setImage] = useState(post.product_image || '');
+  const [zoom, setZoom] = useState(false);
   const [link, setLink] = useState(post.affiliate_url || '');
   const [scheduledAt, setScheduledAt] = useState(() => toLocalInput(post.scheduled_at));
   const [saving, setSaving] = useState(false);
@@ -717,8 +718,15 @@ function EditPostModal({ post, onClose, onSaved }: {
         </div>
 
         <div className="flex items-center gap-3 mb-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {image ? <img src={image} alt="" className="w-14 h-14 rounded-lg object-cover bg-white/5 shrink-0" /> : <div className="w-14 h-14 rounded-lg bg-white/5 shrink-0" />}
+          {/* Click-to-enlarge: a 56px thumbnail can't answer "is this the right image /
+              is it sharp?", which is exactly what one opens a post to check. */}
+          {image ? (
+            <button type="button" onClick={() => setZoom(true)} title="הגדל תמונה"
+              className="shrink-0 cursor-zoom-in rounded-xl overflow-hidden border border-edge hover:border-blue-500/50 transition-colors">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={image} alt="" className="w-20 h-20 object-cover bg-white/5" />
+            </button>
+          ) : <div className="w-20 h-20 rounded-xl bg-white/5 shrink-0" />}
           <div className="flex-1 min-w-0">
             <label className="block text-xs text-white/50 mb-1">שם המוצר</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} dir="ltr" />
@@ -832,6 +840,15 @@ function EditPostModal({ post, onClose, onSaved }: {
           <button onClick={onClose} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl">ביטול</button>
         </div>
       </div>
+
+      {/* Full-screen image preview. Any click closes it — inspect, done, back to editing. */}
+      {zoom && image && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-6 cursor-zoom-out"
+          onClick={(e) => { e.stopPropagation(); setZoom(false); }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image} alt="" className="max-w-full max-h-full rounded-xl object-contain shadow-2xl" />
+        </div>
+      )}
     </div>
   );
 }
