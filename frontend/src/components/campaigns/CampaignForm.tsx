@@ -32,6 +32,25 @@ const TIMEZONES = [
   { key: 'Europe/London', label: '🇬🇧 לונדון' },
 ] as const;
 
+/**
+ * The window we recommend per audience — Pinterest's hot hours, adjusted so the run count
+ * stays the SAME in summer and winter time.
+ *
+ * Why the adjustment matters: a campaign's frequency ("every 3 hours") is counted on the
+ * server clock (UTC), while this window is read in the zone chosen above. When the two drift
+ * apart by an hour at the DST switch, a run that used to land inside the window falls out of
+ * it — and the campaign quietly publishes a third less, with nothing to show for it. Each
+ * window below was picked so the every-3-hours runs land inside it in BOTH offsets.
+ */
+const RECOMMENDED_WINDOWS: Record<string, { start: number; end: number; why: string }> = {
+  'Asia/Jerusalem':      { start: 15, end: 23, why: 'אחר הצהריים עד הלילה — שעות הגלישה החזקות בישראל' },
+  'America/New_York':    { start: 16, end: 23, why: 'שעות הערב החזקות של פינטרסט בארה״ב (החוף המזרחי)' },
+  'America/Chicago':     { start: 15, end: 23, why: 'ערב במרכז ארה״ב, ותופס גם את ערב החוף המזרחי' },
+  'America/Denver':      { start: 15, end: 23, why: 'אחה״צ־ערב באזור ההרים' },
+  'America/Los_Angeles': { start: 16, end: 23, why: 'ערב בחוף המערבי — שיא הגלישה בפינטרסט' },
+  'Europe/London':       { start: 15, end: 23, why: 'אחה״צ־ערב בבריטניה' },
+};
+
 const CRON_PRESETS = [
   { label: 'כל שעה',         value: '0 * * * *' },
   { label: 'כל 3 שעות',      value: '0 */3 * * *' },
@@ -630,9 +649,47 @@ export function CampaignForm({
                 && form.window_end_hour <= form.window_start_hour && (
                 <p className="text-2xs text-red-400">⚠️ &quot;עד שעה&quot; חייבת להיות אחרי &quot;משעה&quot; — אחרת החלון לא יגביל כלום.</p>
               )}
+              {/* The recommendation for the CHOSEN audience — hot hours, and a window whose
+                  run count doesn't shrink at the DST switch (see RECOMMENDED_WINDOWS). */}
+              {(() => {
+                const tzKey = form.window_tz || 'Asia/Jerusalem';
+                const rec = RECOMMENDED_WINDOWS[tzKey];
+                if (!rec) return null;
+                const applied = form.window_start_hour === rec.start && form.window_end_hour === rec.end;
+                return (
+                  <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-lg px-3 py-2.5">
+                    <span className="text-sm leading-none mt-0.5">💡</span>
+                    <div className="flex-1">
+                      <p className="text-2xs text-white/60">
+                        מומלץ לקהל הזה:{' '}
+                        <b className="text-blue-400" dir="ltr">
+                          {String(rec.start).padStart(2, '0')}:00–{String(rec.end).padStart(2, '0')}:00
+                        </b>{' '}
+                        — {rec.why}.
+                      </p>
+                      <p className="text-2xs text-white/30 mt-1">
+                        החלון הזה נבחר גם כך שמספר ההרצות היומי יישאר זהה בשעון קיץ ובשעון חורף.
+                      </p>
+                    </div>
+                    {applied ? (
+                      <span className="text-2xs text-green-400 whitespace-nowrap mt-0.5">מוגדר ✓</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({
+                          ...f, window_start_hour: rec.start, window_end_hour: rec.end,
+                        }))}
+                        className="text-2xs font-medium text-blue-400 hover:text-blue-300 whitespace-nowrap mt-0.5"
+                      >
+                        החל
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <p className="text-2xs text-white/30">
-                השעות נקראות באזור הזמן שנבחר. לדוגמה: ניו-יורק 17–22 = שעות הערב החזקות של פינטרסט בארה&quot;ב
-                (00:00–05:00 לפנות בוקר בישראל). הרצות של הטייס מחוץ לחלון מדולגות אוטומטית.
+                השעות נקראות באזור הזמן שנבחר — ניו-יורק 16:00–23:00, למשל, הוא 23:00–06:00 בשעון ישראל.
+                הרצות של הטייס מחוץ לחלון מדולגות אוטומטית.
               </p>
             </div>
           )}
