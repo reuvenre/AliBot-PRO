@@ -16,6 +16,7 @@ import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { snapToHotHour } from './smart-timing';
+import { occupiesCurrentInterval } from './group-pacing';
 import { ImportRowInput, composeImportText, extractAliProductId, extractAliProductIdFromHtml, validImportRow } from './import-rows';
 import { PRODUCT_FIT_SYSTEM, ProductFitContext, ProductFitItem, ProductFitVerdict, buildProductFitPrompt, parseProductFitVerdicts } from './product-relevance';
 import { hotHours } from '../optimizer/hot-hours';
@@ -1730,6 +1731,11 @@ export class PostsService {
     // queue behind (see groupBusy below).
     let myPendingMs = 0;
     let mySentMs = 0;
+    // The SLOT of this campaign's last send — what the busy check must measure from. See
+    // group-pacing.ts: measuring from the actual send time let a slow send (AI images,
+    // album upload) eat into the next interval and skip that run.
+    let mySentAnchorMs = 0;
+    let lastSentAnchorMs = 0;
     let manualPendingSoon = false;
     for (const r of rows) {
       const cid = String(r.campaign_id ?? '');
@@ -1747,10 +1753,16 @@ export class PostsService {
       if (sent) {
         lastSentMs = Math.max(lastSentMs, sent);
         // SPACING runs off the slot anchor, so the chain stays on round hours instead of
-        // creeping by each send's processing lag. Busy checks keep the real send time.
+        // creeping by each send's processing lag — and so does the BUSY check below, for
+        // the same reason: the post that occupied 10:00 leaves 11:00 free however long its
+        // upload took.
         const anchor = r.sent_anchor ? new Date(r.sent_anchor).getTime() : sent;
         latestMs = Math.max(latestMs, Math.min(anchor, sent));
-        if (campaignId && cid === campaignId) mySentMs = Math.max(mySentMs, sent);
+        lastSentAnchorMs = Math.max(lastSentAnchorMs, Math.min(anchor, sent));
+        if (campaignId && cid === campaignId) {
+          mySentMs = Math.max(mySentMs, sent);
+          mySentAnchorMs = Math.max(mySentAnchorMs, Math.min(anchor, sent));
+        }
       }
       lastSentByCampaign.set(cid, Math.max(pend, sent));
     }
@@ -1758,13 +1770,9 @@ export class PostsService {
     if (!latestMs) return { slot: notBefore, skip: false };
     const slotMs = Math.max(latestMs + intervalMin * 60_000, notBefore.getTime());
 
-    // The grace is essential: a campaign whose cron matches the group interval (hourly
-    // campaign + 60-min group) sends a few seconds SHY of a full interval before its next
-    // run, so a strict "< interval" check marked the group busy and skipped every OTHER run
-    // → the group posted every 2 hours instead of every hour. The grace (15% of the
-    // interval) absorbs that cron/send jitter.
-    const graceMs = intervalMin * 0.15 * 60_000;
-    const withinInterval = (ms: number) => ms > 0 && now - ms < intervalMin * 60_000 - graceMs;
+    // Anchored on the SLOT, with a grace for cron jitter — see group-pacing.ts for the
+    // failure this shape exists to prevent (a slow send stealing the next interval).
+    const withinInterval = (ms: number) => occupiesCurrentInterval(ms, now, intervalMin);
 
     // Is the group too busy for THIS caller?
     //
@@ -1789,8 +1797,8 @@ export class PostsService {
     const stackable = !!stackUntil && slotMs < stackUntil.getTime();
     const myBookingBlocks = myPendingMs > 0 && !stackable;
     const groupBusy = campaignId
-      ? myBookingBlocks || withinInterval(mySentMs) || manualPendingSoon
-      : pendingSoon || withinInterval(lastSentMs);
+      ? myBookingBlocks || withinInterval(mySentAnchorMs) || manualPendingSoon
+      : pendingSoon || withinInterval(lastSentAnchorMs);
 
     // FAIR-SHARE: when several campaigns publish to one group, the group's single rate is
     // split between them — the MOST-BEHIND campaign (oldest last-post, or never posted) wins
@@ -1830,7 +1838,10 @@ export class PostsService {
       const why = myBookingBlocks ? 'this campaign already has a post booked on the group,'
           + ` and the next slot (${new Date(slotMs).toISOString()}) falls past this run's cycle`
         : manualPendingSoon ? 'a manual post occupies this interval'
-        : groupBusy ? `published ${Math.round((now - (campaignId ? mySentMs : lastSentMs)) / 60_000)}m ago (interval ${intervalMin}m)`
+        // Report the SLOT age (what the gate measures) alongside the real send time, so a
+        // send lagging its slot is visible in the log instead of having to be inferred.
+        : groupBusy ? `slot was ${Math.round((now - (campaignId ? mySentAnchorMs : lastSentAnchorMs)) / 60_000)}m ago`
+            + ` (sent ${Math.round((now - (campaignId ? mySentMs : lastSentMs)) / 60_000)}m ago, interval ${intervalMin}m)`
         : notMyTurn ? 'another campaign on this group is further behind'
         : `slot ${slotHour}:00 is outside the ${startHour}:00-${endHour}:00 window`;
       this.logger.log(`nextGroupSlot skip · group ${groupId}${campaignId ? ` · campaign ${campaignId}` : ''} · ${why}`);
