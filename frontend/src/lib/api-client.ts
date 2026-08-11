@@ -514,6 +514,13 @@ export interface PromoPreview { discount?: number | null; ends_at?: string | nul
 /** Limited-time promo params persisted with a quick/scheduled post. */
 export interface PromoInput { is_promo: boolean; ends_at?: string | null; discount?: number | null }
 
+/**
+ * Platforms a already-created post can be back-filled to. The full set the server's push
+ * endpoint handles — it has accepted pinterest and whatsapp all along, while the dialog
+ * offered only the first three and quietly made them unreachable.
+ */
+export type PushPlatform = 'telegram' | 'facebook' | 'instagram' | 'pinterest' | 'whatsapp';
+
 export const postsApi = {
   preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string, promo?: PromoPreview, hint?: string) =>
     http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template, promo, hint }, { timeout: AI_TIMEOUT }).then(extract),
@@ -550,7 +557,7 @@ export const postsApi = {
     http.post<Post>(`/posts/${id}/requeue`, { scheduled_at: scheduledAt }).then(extract),
 
   /** Push an existing post to chosen platform(s) + group(s) — no re-charge, no duplicates. */
-  push: (id: string, platforms: ('telegram' | 'facebook' | 'instagram')[], channels?: string[]) =>
+  push: (id: string, platforms: PushPlatform[], channels?: string[]) =>
     http.post<Post>(`/posts/${id}/push`, { platforms, channels }, { timeout: AI_TIMEOUT }).then(extract),
 
   /** Pin this post as the template FLYLINK re-posts clone for its product (copy + images). */

@@ -8,7 +8,7 @@ import {
   ExternalLink, Wand2, Copy, Check, Star, Upload,
 } from 'lucide-react';
 import Link from 'next/link';
-import { postsApi, credentialsApi, channelsApi, suppliersApi } from '@/lib/api-client';
+import { postsApi, credentialsApi, channelsApi, suppliersApi, type PushPlatform } from '@/lib/api-client';
 import { GroupMultiSelect } from '@/components/GroupMultiSelect';
 import type { Post, Channel } from '@/types';
 
@@ -897,13 +897,13 @@ function RepublishModal({ post, onClose, onDone }: {
 function PushModal({ post, channels, onClose, onDone }: {
   post: Post; channels: Channel[]; onClose: () => void; onDone: () => void;
 }) {
-  const [platforms, setPlatforms] = useState<('telegram' | 'facebook' | 'instagram')[]>(['facebook']);
+  const [platforms, setPlatforms] = useState<(PushPlatform)[]>(['facebook']);
   const [groupIds, setGroupIds] = useState<string[]>(() => postTargetIds(post));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
 
-  const togglePlatform = (p: 'telegram' | 'facebook' | 'instagram') =>
+  const togglePlatform = (p: PushPlatform) =>
     setPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
 
   const submit = async () => {
@@ -918,10 +918,16 @@ function PushModal({ post, channels, onClose, onDone }: {
     }
   };
 
-  const PLATFORMS: { id: 'telegram' | 'facebook' | 'instagram'; label: string }[] = [
-    { id: 'facebook', label: 'פייסבוק' },
-    { id: 'telegram', label: 'טלגרם' },
-    { id: 'instagram', label: 'אינסטגרם' },
+  // Every platform the server's push endpoint handles. Pinterest and WhatsApp were
+  // supported there long before they appeared here, so back-filling a pin — the natural
+  // way to test a fresh Pinterest connection without waiting for the next campaign run —
+  // simply had no button.
+  const PLATFORMS: { id: PushPlatform; label: string }[] = [
+    { id: 'facebook', label: '📘 פייסבוק' },
+    { id: 'telegram', label: '📨 טלגרם' },
+    { id: 'instagram', label: '📸 אינסטגרם' },
+    { id: 'pinterest', label: '📌 פינטרסט' },
+    { id: 'whatsapp', label: '💬 וואטסאפ' },
   ];
 
   return (
@@ -965,6 +971,9 @@ function PushModal({ post, channels, onClose, onDone }: {
           <p className="text-2xs text-white/30 flex items-start gap-1.5">
             <AlertTriangle size={11} className="shrink-0 mt-0.5 text-white/25" />
             נשלח רק לפלטפורמות ולקבוצות שבחרת — בלי חיוב קרדיט ובלי לשלוח שוב למה שכבר יצא. (טלגרם ישלח לכל הקבוצות שבחרת, כך שלמניעת כפילות בחר רק את הקבוצה החסרה.)
+            {(platforms.includes('pinterest') || platforms.includes('whatsapp')) && (
+              <> פינטרסט ווואטסאפ אינם מושפעים מבחירת הקבוצות — הם מפרסמים ללוח ולקבוצה שהוגדרו בהגדרות.</>
+            )}
           </p>
 
           {done && <p className="text-xs text-emerald-400">{done}</p>}
