@@ -661,11 +661,13 @@ export function CampaignForm({
                     <span className="text-sm leading-none mt-0.5">💡</span>
                     <div className="flex-1">
                       <p className="text-2xs text-white/60">
-                        מומלץ לקהל הזה:{' '}
-                        <b className="text-blue-400" dir="ltr">
-                          {String(rec.start).padStart(2, '0')}:00–{String(rec.end).padStart(2, '0')}:00
-                        </b>{' '}
-                        — {rec.why}.
+                        {/* Spelled out as "from X until Y" rather than a dash range: inside
+                            right-to-left text a range reads backwards to half the people who
+                            see it, and "is it 16 to 23 or 23 to 16?" is not a question a hint
+                            should provoke. */}
+                        מומלץ לקהל הזה: <b className="text-blue-400">משעה {String(rec.start).padStart(2, '0')}:00</b>
+                        {' '}<b className="text-blue-400">עד שעה {String(rec.end).padStart(2, '0')}:00</b>
+                        {' '}— {rec.why}.
                       </p>
                       <p className="text-2xs text-white/30 mt-1">
                         החלון הזה נבחר גם כך שמספר ההרצות היומי יישאר זהה בשעון קיץ ובשעון חורף.
@@ -688,8 +690,8 @@ export function CampaignForm({
                 );
               })()}
               <p className="text-2xs text-white/30">
-                השעות נקראות באזור הזמן שנבחר — ניו-יורק 16:00–23:00, למשל, הוא 23:00–06:00 בשעון ישראל.
-                הרצות של הטייס מחוץ לחלון מדולגות אוטומטית.
+                השעות נקראות באזור הזמן שנבחר. למשל, חלון שמתחיל ב-16:00 ומסתיים ב-23:00 בניו-יורק
+                מתרחש בישראל בין 23:00 ל-06:00 לפנות בוקר. הרצות של הטייס מחוץ לחלון מדולגות אוטומטית.
               </p>
             </div>
           )}
