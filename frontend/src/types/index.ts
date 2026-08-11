@@ -608,7 +608,14 @@ export interface Post {
   affiliate_url: string;
   original_price_usd: number;
   sale_price_usd: number;
+  /**
+   * The price in the post's OWN currency — the campaign's override when it has one, else
+   * the account default. The `_ils` in the name is historical: a USD Pinterest campaign
+   * stores dollars here. Always label it with `currency_symbol`, never a fixed ₪.
+   */
   price_ils: number;
+  /** Symbol for the money `price_ils` is actually in ('₪' | '$' | '€' | '£'). */
+  currency_symbol?: string;
   generated_text: string;
   telegram_message_id?: number;
   status: PostStatus;

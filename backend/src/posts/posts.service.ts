@@ -350,7 +350,12 @@ export class PostsService {
   async list(userId: string, page = 1, limit = 20, status?: string, campaignId?: string, source?: string, platform?: string) {
     const qb = this.repo.createQueryBuilder('p')
       .leftJoin('p.campaign', 'c')
-      .addSelect(['c.name'])
+      // currency_pair comes along so each row can be LABELLED in the money it is actually
+      // priced in. A campaign may override the account's currency (a USD Pinterest campaign
+      // is the reason the field exists), and price_ils then holds that currency's amount —
+      // the column name is historical. The screen used to stamp ₪ on every row regardless,
+      // so a $6.40 pin read as ₪6.40: right number, wrong money.
+      .addSelect(['c.name', 'c.currency_pair'])
       .where('p.user_id = :userId', { userId })
       .orderBy('p.created_at', 'DESC')
       .skip((page - 1) * limit)
@@ -396,6 +401,9 @@ export class PostsService {
     // "11 קליקים · פייסבוק 8 · טלגרם 6". Report the log's own total, and heal the stale
     // counter in the background so every OTHER reader of clicks_count (digest, optimizer,
     // watchdog, winner recycling) converges on the same number.
+    // The account default, for posts with no campaign of their own to speak for them.
+    const accountPair = (await this.credentials.getRaw(userId).catch(() => null))?.currency_pair;
+
     const data = raw.map((p) => {
       const bySource = clicksBySource.get(p.id) ?? null;
       const logged = bySource ? Object.values(bySource).reduce((s, n) => s + n, 0) : 0;
@@ -404,6 +412,7 @@ export class PostsService {
       }
       return {
         ...p,
+        currency_symbol: currencySymbol(p.campaign?.currency_pair || accountPair),
         clicks_count: bySource ? logged : p.clicks_count,
         campaign_name: p.campaign?.name ?? null,
         clicks_by_source: bySource,

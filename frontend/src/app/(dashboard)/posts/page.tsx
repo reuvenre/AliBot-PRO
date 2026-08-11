@@ -179,7 +179,7 @@ function QueueItem({
           {post.generated_text?.replace(/<[^>]+>/g, '').slice(0, 110)}
         </p>
         <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-edge">
-          <span className="text-sm font-bold text-white">₪{post.price_ils?.toFixed(2)}</span>
+          <span className="text-sm font-bold text-white">{post.currency_symbol || '₪'}{post.price_ils?.toFixed(2)}</span>
           {sendAt ? (
             <span className="flex items-center gap-1 text-xs font-semibold text-amber-400" title="מועד פרסום משוער">
               <Clock size={11} /> יישלח {slotLabel(sendAt)}
@@ -523,7 +523,9 @@ function PostRow({ post, channels, onRetry, onRetryFailed, onDelete, onEdit, onR
         )}
       </td>
       <td className="py-3 px-4 text-sm text-white/50">
-        ₪{post.price_ils?.toFixed(2) || '—'}
+        {/* The post's OWN currency — a USD Pinterest campaign is priced in dollars, and
+            stamping ₪ on it turned a correct $6.40 into a wrong ₪6.40. */}
+        {post.price_ils != null ? `${post.currency_symbol || '₪'}${post.price_ils.toFixed(2)}` : '—'}
         {/* Click count from the trackable short link — the fast performance signal. */}
         {(post.clicks_count ?? 0) > 0 && (
           <span className="block text-2xs text-emerald-400 mt-0.5" title="קליקים על הלינק בפוסט">
@@ -724,7 +726,7 @@ function EditPostModal({ post, onClose, onSaved }: {
         </div>
 
         <div className="mb-3">
-          <label className="block text-xs text-white/50 mb-1">מחיר (₪)</label>
+          <label className="block text-xs text-white/50 mb-1">מחיר ({post.currency_symbol || '₪'})</label>
           <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputCls} max-w-[160px]`} dir="ltr" />
         </div>
 
