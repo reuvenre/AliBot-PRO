@@ -92,6 +92,23 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string; Icon: React.El
 
 const LIMITS = [10, 20, 50, 100];
 
+/**
+ * Publishing-platform filter. A post carries no platform column — the backend answers this
+ * from the per-platform message id it stamps on a successful send, PLUS the campaign's
+ * declared platforms for anything not sent yet, so a pin that is still scheduled (or that
+ * failed) shows up here too.
+ */
+const PLATFORM_TABS = [
+  { v: '' as const,          l: 'כל הפלטפורמות' },
+  { v: 'telegram' as const,  l: '📨 טלגרם',     cls: 'bg-sky-500/15 text-sky-300' },
+  { v: 'facebook' as const,  l: '📘 פייסבוק',   cls: 'bg-blue-500/15 text-blue-300' },
+  { v: 'instagram' as const, l: '📸 אינסטגרם',  cls: 'bg-pink-500/15 text-pink-300' },
+  { v: 'pinterest' as const, l: '📌 פינטרסט',   cls: 'bg-red-500/15 text-red-300' },
+  { v: 'whatsapp' as const,  l: '💬 וואטסאפ',   cls: 'bg-emerald-500/15 text-emerald-300' },
+];
+
+type PlatformKey = Exclude<(typeof PLATFORM_TABS)[number]['v'], ''>;
+
 /** Platform labels for the click-source breakdown (the link's ?s= tag). */
 const CLICK_SOURCE_LABELS: Record<string, string> = {
   tg: 'טלגרם', fb: 'פייסבוק', ig: 'אינסטגרם', pin: 'פינטרסט', wa: 'וואטסאפ', other: 'לא מזוהה',
@@ -975,6 +992,7 @@ export default function PostsPage() {
   const [limit, setLimit] = useState(20);
   const [status, setStatus] = useState('');
   const [source, setSource] = useState<'' | 'aliexpress' | 'flylink'>('');
+  const [platform, setPlatform] = useState<'' | PlatformKey>('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -988,14 +1006,19 @@ export default function PostsPage() {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await postsApi.list({ page, limit, status: status || undefined, source: source || undefined });
+      const res = await postsApi.list({
+        page, limit,
+        status: status || undefined,
+        source: source || undefined,
+        platform: platform || undefined,
+      });
       setPosts(res.data);
       setTotal(res.total);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [page, limit, status, source, isQueueTab]);
+  }, [page, limit, status, source, platform, isQueueTab]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1089,6 +1112,22 @@ export default function PostsPage() {
                 onClick={() => { setSource(s.v); setPage(1); }}
                 className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all
                   ${source === s.v ? (s.cls || 'bg-blue-600/20 text-blue-400') : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}
+              >
+                {s.l}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Publishing platform */}
+        {!isQueueTab && (
+          <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit">
+            {PLATFORM_TABS.map((s) => (
+              <button
+                key={s.v}
+                onClick={() => { setPlatform(s.v); setPage(1); }}
+                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all
+                  ${platform === s.v ? (s.cls || 'bg-blue-600/20 text-blue-400') : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}
               >
                 {s.l}
               </button>

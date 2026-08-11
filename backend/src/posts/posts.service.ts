@@ -17,6 +17,7 @@ import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { snapToHotHour } from './smart-timing';
 import { occupiesCurrentInterval } from './group-pacing';
+import { platformFilterSql } from './platform-filter';
 import { ImportRowInput, composeImportText, extractAliProductId, extractAliProductIdFromHtml, validImportRow } from './import-rows';
 import { PRODUCT_FIT_SYSTEM, ProductFitContext, ProductFitItem, ProductFitVerdict, buildProductFitPrompt, parseProductFitVerdicts } from './product-relevance';
 import { hotHours } from '../optimizer/hot-hours';
@@ -343,7 +344,7 @@ export class PostsService {
 
   // ── List ──────────────────────────────────────────────────────────────────
 
-  async list(userId: string, page = 1, limit = 20, status?: string, campaignId?: string, source?: string) {
+  async list(userId: string, page = 1, limit = 20, status?: string, campaignId?: string, source?: string, platform?: string) {
     const qb = this.repo.createQueryBuilder('p')
       .leftJoin('p.campaign', 'c')
       .addSelect(['c.name'])
@@ -358,6 +359,10 @@ export class PostsService {
     // flylinking.com, everything else is AliExpress.
     if (source === 'flylink') qb.andWhere("p.affiliate_url ILIKE '%flylink%'");
     else if (source === 'aliexpress') qb.andWhere("(p.affiliate_url IS NULL OR p.affiliate_url NOT ILIKE '%flylink%')");
+    // Platform: what already went out there (the per-platform message id) OR what is still
+    // headed there (the campaign's declared platforms) — see platform-filter.ts.
+    const pf = platformFilterSql(platform);
+    if (pf) qb.andWhere(pf.sql, pf.params);
 
     const [raw, total] = await qb.getManyAndCount();
 

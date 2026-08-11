@@ -533,7 +533,11 @@ export const postsApi = {
       '/posts/enhance-preview', { image_url: imageUrl }, { timeout: 90_000 },
     ).then(extract),
 
-  list: (params?: { page?: number; limit?: number; status?: string; campaign_id?: string; source?: 'aliexpress' | 'flylink' }) =>
+  list: (params?: {
+    page?: number; limit?: number; status?: string; campaign_id?: string;
+    source?: 'aliexpress' | 'flylink';
+    platform?: 'telegram' | 'facebook' | 'instagram' | 'pinterest' | 'whatsapp';
+  }) =>
     http.get<PaginatedResponse<Post>>('/posts', { params }).then(extract),
 
   retry: (id: string) => http.post<Post>(`/posts/${id}/retry`, {}, { timeout: AI_TIMEOUT }).then(extract),
