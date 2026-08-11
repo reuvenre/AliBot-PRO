@@ -118,10 +118,18 @@ export class PinterestService {
     }).catch((err: any) => ({ status: 0, data: { message: err.message } } as any));
 
     if (res.status === 401 || res.status === 403) {
+      // Describe the STORED token without revealing it. A 401 has three very different
+      // causes — a sandbox token (which can never work: we always call the production
+      // host), a truncated paste, and a wrong string — and prefix+length tells them apart
+      // in one look instead of another round of guessing. `pina_` is Pinterest's public
+      // prefix and the length is not a secret; the token itself is never echoed.
+      const shape = `הטוקן השמור: ${token.length} תווים`
+        + (token.startsWith('pina_') ? ', מתחיל ב-pina_ (תקין)' : `, מתחיל ב-"${token.slice(0, 5)}" — לא נראה כמו טוקן פינטרסט`);
       return {
         boards: [],
-        reason: `פינטרסט דחה את הטוקן (${res.status}) — ודא שהוא נוצר עם הרשאת boards:read `
-          + `ובסביבת "ייצור" ולא "ארגז חול". ${res.data?.message || ''}`.trim(),
+        reason: `פינטרסט דחה את הטוקן (${res.status}). ${shape}. `
+          + `סיבה נפוצה: הטוקן נוצר ב"ארגז חול" — טוקן כזה לעולם לא יעבוד מול הסביבה האמיתית. `
+          + `צור מחדש עם "הייצור מוגבל" ועם ההרשאות boards:read + pins:write. ${res.data?.message || ''}`.trim(),
       };
     }
     if (res.status !== 200) {
