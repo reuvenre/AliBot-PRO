@@ -619,7 +619,10 @@ export class WatchdogService implements OnModuleInit {
         // slowdown (a shared group, a queue drip) self-evident from the alert itself.
         const why = `cron ${expectedCron} דק' · מרווח קבוצה ${groupInterval} דק'`
           + ` · מתחלקים ${competitors} (${siblings} קמפיינים נוספים${manualShare > 0 ? ` + תור ידני: ${manualShare} פוסטים ב-12ש'` : ''})`;
-        driftHits.push(`- "${c.name}" \`${c.id}\` · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'\n   └ ${why}`);
+        // The run's own account of itself — queued/skipped/dropped and why. This is the
+        // line that turns "it publishes too slowly" into an actual lead.
+        const lastRun = c.last_run_note ? `\n   └ ההרצה האחרונה: ${c.last_run_note}` : '';
+        driftHits.push(`- "${c.name}" \`${c.id}\` · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'\n   └ ${why}${lastRun}`);
         driftDetails.push(`"${c.name}" · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'`);
       }
     }

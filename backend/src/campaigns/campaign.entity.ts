@@ -130,6 +130,14 @@ export class Campaign {
   @Column({ nullable: true })
   last_run_at: Date;
 
+  /**
+   * What the last run actually did — posts queued, slots skipped, and why. A slow-cadence
+   * alert says a campaign is under-publishing but not the cause, and the reasons otherwise
+   * live only in expiring server logs; this is what lets the alert carry the answer.
+   */
+  @Column({ nullable: true, type: 'text' })
+  last_run_note: string | null;
+
   @Column({ nullable: true })
   next_run_at: Date;
 

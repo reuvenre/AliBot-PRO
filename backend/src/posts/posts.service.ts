@@ -2236,19 +2236,28 @@ export class PostsService {
         const rejectedTitle = String(toPost[i].product.title || '').slice(0, 50);
         this.logger.warn(`campaign ${campaign.id}: relevance guard rejected "${rejectedTitle}"`
           + ` (${verdicts[i].reason || 'no reason'}) for kw "${toPost[i].kw}"`);
+        // Replacement draws from THIS keyword's pool first, then from any other keyword's —
+        // the same borrowing the dry-slot filler already does. Without the borrow the guard
+        // quietly cost the campaign a post whenever one keyword's remaining stock was all
+        // off-audience, and a 3-hourly campaign stretched toward 8 hours between posts.
         let replaced = false;
-        for (let attempt = 0; attempt < 3 && !replaced; attempt++) {
-          const next = takeFrom(toPost[i].kw);
-          if (!next) break;
-          const [v] = await this.productFitVerdicts(creds, fitCtx, [{
-            keyword: toPost[i].kw, title: String(next.title || ''), category: next.category,
-          }]);
-          if (v.fits) { kept.push({ product: next, kw: toPost[i].kw }); replaced = true; }
+        const donors = [toPost[i].kw, ...Array.from(poolBy.keys()).filter((k) => k !== toPost[i].kw)];
+        for (const donor of donors) {
+          for (let attempt = 0; attempt < 3 && !replaced; attempt++) {
+            const next = takeFrom(donor);
+            if (!next) break;
+            const [v] = await this.productFitVerdicts(creds, fitCtx, [{
+              keyword: donor, title: String(next.title || ''), category: next.category,
+            }]);
+            if (v.fits) { kept.push({ product: next, kw: donor }); replaced = true; }
+          }
+          if (replaced) break;
         }
         if (!replaced) {
           result.errors.push(
             `שומר הרלוונטיות: "${rejectedTitle}" נפסל (${verdicts[i].reason || 'לא מתאים לקהל'}) ולא נמצא תחליף — הפוסט דולג`,
           );
+          this.logger.warn(`campaign ${campaign.id}: relevance guard dropped a slot — no on-audience replacement in ${donors.length} pool(s)`);
         }
       }
       toPost.length = 0;
@@ -2364,6 +2373,17 @@ export class PostsService {
         this.logger.warn(`Campaign ${campaign.id} product ${product.product_id} failed: ${err.message}`);
       }
     }
+
+    // Record what this run DID, so a later "publishing slower than configured" alert can
+    // name the cause instead of sending the next investigation back to the server logs
+    // (which is where the last four went). Best-effort — never fail a run over its note.
+    const note = [
+      `${result.queued} פוסטים`,
+      skipped ? `${skipped} דולגו (הקבוצה תפוסה)` : null,
+      result.failed ? `${result.failed} נכשלו` : null,
+      ...result.errors.slice(0, 3),
+    ].filter(Boolean).join(' · ').slice(0, 400);
+    await this.campaignRepo.update({ id: campaign.id }, { last_run_note: note }).catch(() => {});
 
     // Skipping because the group is already booked this interval is a legitimate no-op, not
     // a failure — only throw when nothing was queued AND nothing was intentionally skipped.
