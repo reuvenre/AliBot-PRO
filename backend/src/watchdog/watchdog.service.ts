@@ -569,12 +569,29 @@ export class WatchdogService implements OnModuleInit {
         let og: string[] = []; try { og = JSON.parse(o.target_channels || '[]'); } catch { og = []; }
         return og.some((g) => groups.includes(g));
       }).length : 0;
+      // The QUEUE competes for the group's rate too. A group publishes at most one post per
+      // its interval FROM ANY SOURCE, so manual/imported queue posts to the same group take
+      // slots the campaign would otherwise have had — halving its cadence by design, not by
+      // fault. Counting only campaign siblings made a 200-post bulk import look like a
+      // scheduler bug: the campaign really was publishing every ~2h, because it was sharing
+      // an hourly group with the drip.
+      const manualShare = groups.length
+        ? await this.posts.createQueryBuilder('p')
+          .where('p.campaign_id IS NULL')
+          .andWhere("p.status = 'sent'")
+          .andWhere('p.sent_at > :since', { since: new Date(now - 12 * 3600_000) })
+          .andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)',
+            { g: groups[0], like: `%"${groups[0]}"%` })
+          .getCount()
+          .catch(() => 0)
+        : 0;
       const groupInterval = groups.length
         ? ((await this.channels.getIntervalMinutes(c.user_id, groups[0]).catch(() => null)) ?? 60)
         : 0;
       // What the campaign SHOULD publish at: its cron, but never faster than the group's
-      // rate, times the fair-share divisor.
-      const expected = Math.max(expectedCron, groupInterval) * (siblings + 1);
+      // rate, times everything sharing that rate (campaign siblings + the queue).
+      const competitors = siblings + (manualShare > 0 ? 1 : 0) + 1;
+      const expected = Math.max(expectedCron, groupInterval) * competitors;
 
       // Recent sends (last 12h) — need a few to judge; gaps beyond 3× expected are night
       // pauses / window closes, not drift, so drop them.
@@ -597,7 +614,12 @@ export class WatchdogService implements OnModuleInit {
       gaps.sort((a, b) => a - b);
       const median = gaps[Math.floor(gaps.length / 2)];
       if (median > expected * 1.7) {
-        driftHits.push(`- "${c.name}" \`${c.id}\` · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'`);
+        // Say what the expectation was BUILT from. A bare "expected 60, actual 122" sent the
+        // investigation hunting a scheduler bug twice; the arithmetic makes a legitimate
+        // slowdown (a shared group, a queue drip) self-evident from the alert itself.
+        const why = `cron ${expectedCron} דק' · מרווח קבוצה ${groupInterval} דק'`
+          + ` · מתחלקים ${competitors} (${siblings} קמפיינים נוספים${manualShare > 0 ? ` + תור ידני: ${manualShare} פוסטים ב-12ש'` : ''})`;
+        driftHits.push(`- "${c.name}" \`${c.id}\` · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'\n   └ ${why}`);
         driftDetails.push(`"${c.name}" · מוגדר ~${expected} דק' בין פוסטים, בפועל ~${Math.round(median)} דק'`);
       }
     }
