@@ -184,6 +184,27 @@ export class CredentialSet {
   @Column({ nullable: true })
   pinterest_board_id: string;
 
+  /**
+   * OAuth app credentials + refresh token.
+   *
+   * The token the developer portal's button hands out is a DEBUG credential: read-only
+   * scopes and a 24-hour life. Publishing needs pins:write, and an unattended publisher
+   * needs a token that renews itself — both only exist through the OAuth flow, which is
+   * why the app id/secret live here rather than the access token alone.
+   */
+  @Column({ nullable: true })
+  pinterest_app_id: string;
+
+  @Column({ nullable: true })
+  pinterest_app_secret_enc: string;
+
+  @Column({ nullable: true })
+  pinterest_refresh_token_enc: string;
+
+  /** When the current access token dies — refreshed ahead of it, never after. */
+  @Column({ nullable: true })
+  pinterest_token_expires_at: Date;
+
   /* ── Auto-boost (Meta Ads, ROAS-driven) ────────────────────────────────── */
 
   @Column({ default: false })

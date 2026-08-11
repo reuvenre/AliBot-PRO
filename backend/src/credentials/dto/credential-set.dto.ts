@@ -129,6 +129,8 @@ export class CredentialSetDto {
   @IsOptional() @IsString() amazon_partner_tag?: string;
   @IsOptional() @IsString() pinterest_access_token?: string;
   @IsOptional() @IsString() pinterest_board_id?: string;
+  @IsOptional() @IsString() pinterest_app_id?: string;
+  @IsOptional() @IsString() pinterest_app_secret?: string;
 
   // ── Auto-boost ──
   @IsOptional()

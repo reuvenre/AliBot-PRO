@@ -74,6 +74,10 @@ export function IntegrationsForm() {
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [testingWa, setTestingWa] = useState(false);
   const [pinBoardId, setPinBoardId] = useState('');
+  const [pinAppId, setPinAppId] = useState('');
+  const [pinAppSecret, setPinAppSecret] = useState('');
+  const [pinConnected, setPinConnected] = useState(false);
+  const [connectingPin, setConnectingPin] = useState(false);
   const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingBoards, setLoadingBoards] = useState(false);
   const [boardsMsg, setBoardsMsg] = useState('');
@@ -113,6 +117,8 @@ export function IntegrationsForm() {
         setWaGroupId(c.whatsapp_group_id || '');
         setPubWhatsapp(c.publish_whatsapp ?? false);
         setPinBoardId(c.pinterest_board_id || '');
+        setPinAppId(c.pinterest_app_id || '');
+        setPinConnected(c.pinterest_connected ?? false);
         setPubPinterest(c.publish_pinterest ?? false);
         setAmzAccess(c.amazon_access_key || '');
         setAmzPartner(c.amazon_partner_tag || '');
@@ -159,13 +165,15 @@ export function IntegrationsForm() {
         whatsapp_group_id: waGroupId,
         publish_whatsapp: pubWhatsapp,
         pinterest_board_id: pinBoardId,
+        pinterest_app_id: pinAppId,
+        pinterest_app_secret: pinAppSecret,
         pinterest_access_token: pinToken,
         publish_pinterest: pubPinterest,
         amazon_access_key: amzAccess,
         amazon_secret_key: amzSecret,
         amazon_partner_tag: amzPartner,
       });
-      setWaToken(''); setPinToken(''); setAmzSecret(''); setGreenToken('');
+      setWaToken(''); setPinToken(''); setAmzSecret(''); setGreenToken(''); setPinAppSecret('');
       setSaved(true);
       setBotToken('');
       setFbToken('');
@@ -235,6 +243,20 @@ export function IntegrationsForm() {
       setBoardsMsg(err?.response?.data?.message || 'שליפת הלוחות נכשלה.');
     } finally {
       setLoadingBoards(false);
+    }
+  };
+
+  /** OAuth step 1 — save the app credentials, then hand the browser to Pinterest. */
+  const handleConnectPinterest = async () => {
+    setConnectingPin(true); setPinterestError(null);
+    try {
+      await handleSave(); // the backend signs the state with the STORED app secret
+      const { url } = await pinterestApi.connect();
+      window.location.href = url;
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setPinterestError(err?.response?.data?.message || 'פתיחת החיבור נכשלה.');
+      setConnectingPin(false);
     }
   };
 
@@ -467,11 +489,29 @@ export function IntegrationsForm() {
             )}
             {boardsMsg && <p className="text-2xs text-amber-400/90 mt-1.5 leading-relaxed">{boardsMsg}</p>}
           </div>
-          <div>
-            <label className="block text-xs font-medium text-white/50 mb-1.5">Access Token</label>
-            <input value={pinToken} onChange={(e) => setPinToken(e.target.value)} type="password" placeholder="pina_..." dir="ltr"
-              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">App ID</label>
+              <input value={pinAppId} onChange={(e) => setPinAppId(e.target.value)} placeholder="1593115" dir="ltr"
+                className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">App Secret</label>
+              <input value={pinAppSecret} onChange={(e) => setPinAppSecret(e.target.value)} type="password" placeholder="••••••••" dir="ltr"
+                className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+            </div>
           </div>
+          <button type="button" onClick={handleConnectPinterest} disabled={connectingPin}
+            className={`flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-xl transition-all ${pinConnected ? 'bg-white/5 hover:bg-white/10 text-white/60' : 'bg-red-600 hover:bg-red-500 text-white'} disabled:opacity-60`}>
+            {connectingPin ? <Loader2 size={14} className="animate-spin" /> : null}
+            {pinConnected ? 'מחובר ✓ — התחבר מחדש' : 'התחבר לפינטרסט'}
+          </button>
+          <p className="text-2xs text-white/30 leading-relaxed">
+            ההתחברות היא הדרך היחידה לקבל הרשאת פרסום: הטוקן מכפתור &quot;יצירת אסימון&quot; בפורטל הוא
+            לקריאה בלבד ופג תוך 24 שעות. אחרי החיבור המערכת מחדשת את ההרשאה לבד.
+            {'\n'}חשוב: ב-Pinterest Developers ← האפליקציה ← &quot;כתובות URI לניתוב מחדש&quot; יש להוסיף בדיוק את
+            הכתובת <span dir="ltr" className="text-white/50">{`${process.env.NEXT_PUBLIC_API_URL || ''}/pinterest/callback`}</span>
+          </p>
         </div>
 
         <label className="flex items-center gap-2.5 mt-4 cursor-pointer select-none">

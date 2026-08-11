@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -7,6 +7,9 @@ import axios from 'axios';
 import { Post } from '../posts/post.entity';
 import { CredentialsService } from '../credentials/credentials.service';
 import { cacheGet, cacheSet } from '../common/safe-cache';
+import {
+  PINTEREST_TOKEN_URL, basicAuth, buildAuthUrl, needsRefresh, signState,
+} from './pinterest-oauth';
 
 const API = 'https://api.pinterest.com/v5';
 /** Pinterest refreshes pin analytics roughly daily — 1h cache spares the rate limit. */
@@ -42,6 +45,124 @@ export class PinterestService {
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
+  /** Where Pinterest sends the owner back after they approve. Must match, character for
+   *  character, a Redirect URI registered on the app. */
+  private redirectUri(): string {
+    const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+    return `${base}/pinterest/callback`;
+  }
+
+  /**
+   * Step 1 — the URL the owner is sent to in order to approve the connection.
+   * The state is signed with the app secret: the callback is a public URL, so an unsigned
+   * state would let anyone bind their own Pinterest account to another user's credentials.
+   */
+  async connectUrl(userId: string): Promise<{ url: string }> {
+    const creds = await this.credentials.getRaw(userId);
+    const appId = creds?.pinterest_app_id?.trim();
+    const appSecret = creds?.pinterest_app_secret?.trim();
+    if (!appId || !appSecret) {
+      throw new BadRequestException(
+        'חסרים מזהה אפליקציה ומפתח סודי של Pinterest — הזן אותם ושמור, ואז התחבר.',
+      );
+    }
+    if (!process.env.BACKEND_URL) {
+      throw new BadRequestException('BACKEND_URL אינו מוגדר בשרת — בלעדיו אין כתובת חזרה לחיבור.');
+    }
+    const state = signState(userId, appSecret, Date.now());
+    return { url: buildAuthUrl(appId, this.redirectUri(), state) };
+  }
+
+  /**
+   * Step 2 — Pinterest calls this back with an authorization code. Exchanges it for an
+   * access token + refresh token and stores both.
+   *
+   * The state must verify against the SAME app secret that issued it, which is why the
+   * user is resolved from the state rather than from a session: this endpoint is public
+   * (Pinterest is the caller and carries no login of ours).
+   */
+  async handleCallback(code: string, state: string): Promise<{ userId: string }> {
+    const decoded = await this.credentials.findBySignedPinterestState(state);
+    if (!decoded) throw new BadRequestException('בקשת החיבור לא אומתה או שפג תוקפה — נסה להתחבר שוב.');
+    const { userId, appId, appSecret } = decoded;
+
+    const res = await axios.post(
+      PINTEREST_TOKEN_URL,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.redirectUri(),
+      }).toString(),
+      {
+        headers: {
+          Authorization: basicAuth(appId, appSecret),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        timeout: 15_000,
+        validateStatus: () => true,
+      },
+    );
+    if (res.status !== 200 || !res.data?.access_token) {
+      const msg = res.data?.message || res.data?.error_description || `סטטוס ${res.status}`;
+      throw new BadRequestException(`Pinterest דחה את בקשת החיבור: ${msg}`);
+    }
+
+    await this.credentials.savePinterestTokens(userId, {
+      accessToken: res.data.access_token,
+      refreshToken: res.data.refresh_token || null,
+      expiresInSec: Number(res.data.expires_in) || 0,
+    });
+    this.logger.log(`pinterest connected for ${userId}`);
+    return { userId };
+  }
+
+  /**
+   * A LIVE access token: the stored one when it still has room, a freshly refreshed one
+   * when it doesn't. Every Pinterest call goes through here — a publisher that runs
+   * unattended cannot depend on a credential the owner has to re-paste.
+   *
+   * Falls back to the manually-pasted token for accounts that never connected via OAuth,
+   * so nothing that works today stops working.
+   */
+  private async liveToken(userId: string): Promise<string | null> {
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    if (!creds) return null;
+    const refresh = creds.pinterest_refresh_token?.trim();
+    if (!refresh) return creds.pinterest_access_token || null; // legacy manual token
+    if (!needsRefresh(creds.pinterest_token_expires_at, Date.now())) {
+      return creds.pinterest_access_token || null;
+    }
+
+    const appId = creds.pinterest_app_id?.trim();
+    const appSecret = creds.pinterest_app_secret?.trim();
+    if (!appId || !appSecret) return creds.pinterest_access_token || null;
+
+    const res = await axios.post(
+      PINTEREST_TOKEN_URL,
+      new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh }).toString(),
+      {
+        headers: { Authorization: basicAuth(appId, appSecret), 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15_000,
+        validateStatus: () => true,
+      },
+    ).catch(() => null);
+
+    if (!res || res.status !== 200 || !res.data?.access_token) {
+      // Keep serving the old token: it may still have hours left, and a failed refresh
+      // must not turn a working publish into a certain failure.
+      this.logger.warn(`pinterest token refresh failed for ${userId} (${res?.status ?? 'network'})`);
+      return creds.pinterest_access_token || null;
+    }
+    await this.credentials.savePinterestTokens(userId, {
+      accessToken: res.data.access_token,
+      // Pinterest may or may not rotate the refresh token; keep the old one when it doesn't.
+      refreshToken: res.data.refresh_token || refresh,
+      expiresInSec: Number(res.data.expires_in) || 0,
+    });
+    this.logger.log(`pinterest token refreshed for ${userId}`);
+    return res.data.access_token;
+  }
+
   /**
    * Pull each recent Pin's OUTBOUND clicks into posts.pinterest_clicks — the signal that
    * lets the learning engine judge Pinterest keywords at all.
@@ -56,8 +177,7 @@ export class PinterestService {
    * Best-effort throughout — a failed sync leaves yesterday's numbers, never a wrong one.
    */
   async syncPinClicks(userId: string, days = 30): Promise<{ updated: number; reason?: string }> {
-    const creds = await this.credentials.getRaw(userId).catch(() => null);
-    const token = creds?.pinterest_access_token;
+    const token = await this.liveToken(userId);
     if (!token) return { updated: 0, reason: 'no token' };
 
     const rows = await this.posts.find({
@@ -106,9 +226,8 @@ export class PinterestService {
    * says so rather than leaving an empty dropdown to interpret.
    */
   async boards(userId: string): Promise<{ boards: Array<{ id: string; name: string }>; reason?: string }> {
-    const creds = await this.credentials.getRaw(userId).catch(() => null);
-    const token = creds?.pinterest_access_token;
-    if (!token) return { boards: [], reason: 'לא הוגדר טוקן פינטרסט — הדבק אותו ושמור, ואז נסה שוב.' };
+    const token = await this.liveToken(userId).catch(() => null);
+    if (!token) return { boards: [], reason: 'פינטרסט אינו מחובר — לחץ "התחבר לפינטרסט" בהגדרות.' };
 
     const res = await axios.get(`${API}/boards`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -152,10 +271,9 @@ export class PinterestService {
    * come back as { available: false, reason } instead of a 500 — the UI explains.
    */
   async analytics(userId: string): Promise<PinterestAnalyticsResult> {
-    const creds = await this.credentials.getRaw(userId).catch(() => null);
-    const token = creds?.pinterest_access_token;
+    const token = await this.liveToken(userId).catch(() => null);
     if (!token) {
-      return { available: false, reason: 'לא הוגדר טוקן פינטרסט בהגדרות ← אינטגרציות.', totals: null, pins: [] };
+      return { available: false, reason: 'פינטרסט אינו מחובר — התחבר בהגדרות ← אינטגרציות.', totals: null, pins: [] };
     }
 
     const cacheKey = `pinterest_analytics_${userId}`;

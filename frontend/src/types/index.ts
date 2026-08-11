@@ -203,6 +203,10 @@ export interface CredentialSet {
   amazon_partner_tag: string;
   pinterest_access_token: string; // masked
   pinterest_board_id: string;
+  pinterest_app_id: string;
+  pinterest_app_secret: string;   // masked
+  /** True once the OAuth connection is live (a refresh token is stored). */
+  pinterest_connected: boolean;
   // Auto-boost
   boost_enabled: boolean;
   boost_roas_threshold: number;
@@ -282,6 +286,10 @@ export interface CredentialSetInput {
   amazon_partner_tag?: string;
   pinterest_access_token?: string;
   pinterest_board_id?: string;
+  pinterest_app_id?: string;
+  pinterest_app_secret?: string;
+  /** True once the OAuth connection is live (a refresh token is stored). */
+  pinterest_connected?: boolean;
   // Auto-boost
   boost_enabled?: boolean;
   boost_roas_threshold?: number;

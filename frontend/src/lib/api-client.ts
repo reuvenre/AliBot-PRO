@@ -607,6 +607,8 @@ export const pinterestApi = {
   boards: () => http.get<{ boards: Array<{ id: string; name: string }>; reason?: string }>(
     '/pinterest/boards', { timeout: 20_000 },
   ).then(extract),
+  /** Where to send the owner to approve the connection (OAuth step 1). */
+  connect: () => http.get<{ url: string }>('/pinterest/connect').then(extract),
 };
 
 // ─── Earnings API ────────────────────────────────────────────────────────────

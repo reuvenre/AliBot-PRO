@@ -6,6 +6,7 @@ import { MailService } from '../mail/mail.service';
 import { CredentialSet } from './credential-set.entity';
 import { CredentialSetDto } from './dto/credential-set.dto';
 import { encrypt, decrypt, mask } from '../common/crypto';
+import { verifyState } from '../pinterest/pinterest-oauth';
 import axios from 'axios';
 
 /** Facebook Graph API version — kept current & in one place (v19 is deprecated). */
@@ -40,6 +41,10 @@ export interface DecryptedCredentials {
   // Pinterest (Pins carry a real clickable destination link)
   pinterest_access_token?: string;
   pinterest_board_id?: string;
+  pinterest_app_id?: string;
+  pinterest_app_secret?: string;
+  pinterest_refresh_token?: string;
+  pinterest_token_expires_at?: Date | null;
   publish_pinterest?: boolean;
   // WhatsApp (official Cloud API or Green API — the latter can post to groups)
   whatsapp_phone_number_id?: string;
@@ -324,6 +329,8 @@ export class CredentialsService {
     if (dto.amazon_partner_tag?.trim())       cred.amazon_partner_tag = dto.amazon_partner_tag.trim();
     if (dto.pinterest_access_token?.trim())   cred.pinterest_access_token_enc = encrypt(dto.pinterest_access_token.trim());
     if (dto.pinterest_board_id?.trim())       cred.pinterest_board_id = dto.pinterest_board_id.trim();
+    if (dto.pinterest_app_id?.trim())         cred.pinterest_app_id = dto.pinterest_app_id.trim();
+    if (dto.pinterest_app_secret?.trim())     cred.pinterest_app_secret_enc = encrypt(dto.pinterest_app_secret.trim());
 
     await this.repo.save(cred);
     return this.toPublic(cred);
@@ -524,6 +531,55 @@ export class CredentialsService {
   }
 
   // Return decrypted credentials for internal use
+  /**
+   * Resolve a signed Pinterest OAuth state to its user, verifying the signature against
+   * that user's OWN app secret.
+   *
+   * The callback is public (Pinterest is the caller and carries no login of ours), so the
+   * state is the only proof of who started the flow. The secret is per-user, and the state
+   * does not say whose it is — so each candidate row is tried, and only a row whose secret
+   * validates the signature wins. Rows without an app secret can't have issued anything.
+   */
+  async findBySignedPinterestState(
+    state: string,
+  ): Promise<{ userId: string; appId: string; appSecret: string } | null> {
+    if (!state) return null;
+    const rows = await this.repo.find({
+      where: { pinterest_app_secret_enc: Not(IsNull()) },
+      select: ['user_id', 'pinterest_app_id', 'pinterest_app_secret_enc'],
+    }).catch(() => [] as CredentialSet[]);
+    const now = Date.now();
+    for (const row of rows) {
+      const secret = decrypt(row.pinterest_app_secret_enc);
+      if (!secret) continue;
+      const userId = verifyState(state, secret, now);
+      if (userId && userId === row.user_id) {
+        return { userId, appId: row.pinterest_app_id || '', appSecret: secret };
+      }
+    }
+    return null;
+  }
+
+  /** Persist a freshly issued or refreshed Pinterest token pair. */
+  async savePinterestTokens(
+    userId: string,
+    t: { accessToken: string; refreshToken: string | null; expiresInSec: number },
+  ): Promise<void> {
+    const cred = await this.repo.findOne({ where: { user_id: userId } });
+    if (!cred) return;
+    cred.pinterest_access_token_enc = encrypt(t.accessToken);
+    if (t.refreshToken) cred.pinterest_refresh_token_enc = encrypt(t.refreshToken);
+    // No expiry from Pinterest → treat it as due now, so the next call refreshes rather
+    // than publishing with a token of unknown age.
+    cred.pinterest_token_expires_at = t.expiresInSec > 0
+      ? new Date(Date.now() + t.expiresInSec * 1000)
+      : null;
+    // Publishing is what the connection is FOR — leaving the switch off after a successful
+    // connect is a dead end the owner has to guess their way out of.
+    cred.publish_pinterest = true;
+    await this.repo.save(cred);
+  }
+
   async getRaw(userId: string): Promise<DecryptedCredentials | null> {
     const cred = await this.repo.findOne({ where: { user_id: userId } });
     if (!cred) return null;
@@ -551,6 +607,10 @@ export class CredentialsService {
       publish_instagram: cred.publish_instagram,
       pinterest_access_token: decrypt(cred.pinterest_access_token_enc),
       pinterest_board_id: cred.pinterest_board_id,
+      pinterest_app_id: cred.pinterest_app_id,
+      pinterest_app_secret: decrypt(cred.pinterest_app_secret_enc),
+      pinterest_refresh_token: decrypt(cred.pinterest_refresh_token_enc),
+      pinterest_token_expires_at: cred.pinterest_token_expires_at,
       publish_pinterest: cred.publish_pinterest,
       whatsapp_phone_number_id: cred.whatsapp_phone_number_id,
       whatsapp_access_token: decrypt(cred.whatsapp_access_token_enc),
@@ -760,6 +820,11 @@ export class CredentialsService {
       amazon_partner_tag: cred.amazon_partner_tag || '',
       pinterest_access_token: cred.pinterest_access_token_enc ? mask(decrypt(cred.pinterest_access_token_enc)) : '',
       pinterest_board_id: cred.pinterest_board_id || '',
+      pinterest_app_id: cred.pinterest_app_id || '',
+      pinterest_app_secret: cred.pinterest_app_secret_enc ? mask(decrypt(cred.pinterest_app_secret_enc)) : '',
+      // Whether the OAuth connection is live — the settings screen shows "connected" from
+      // this instead of implying a connection from a token field that may hold a dead one.
+      pinterest_connected: !!cred.pinterest_refresh_token_enc,
       // Auto-boost
       boost_enabled: cred.boost_enabled ?? false,
       boost_roas_threshold: cred.boost_roas_threshold ?? 2.0,
