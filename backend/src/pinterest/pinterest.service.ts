@@ -202,7 +202,7 @@ export class PinterestService {
     const creds = await this.credentials.getRaw(userId).catch(() => null);
     const granted = parseGrantedScopes(creds?.pinterest_scopes);
     if (!canPublish(granted)) {
-      return { token: null, blockedReason: describeMissingScopes(missingScopes(granted)) };
+      return { token: null, blockedReason: describeMissingScopes(missingScopes(granted), granted) };
     }
     const token = await this.liveToken(userId).catch(() => null);
     return { token };
@@ -313,7 +313,7 @@ export class PinterestService {
     const granted = parseGrantedScopes(creds?.pinterest_scopes);
     const missing = missingScopes(granted);
     if (missing.length) {
-      return { boards, reason: describeMissingScopes(missing) };
+      return { boards, reason: describeMissingScopes(missing, granted) };
     }
     return { boards };
   }

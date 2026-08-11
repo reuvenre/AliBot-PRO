@@ -467,7 +467,7 @@ export class ChannelsService {
     // no request can tell us what this already knows.
     const granted = parseGrantedScopes(creds?.pinterest_scopes);
     if (!canPublish(granted)) {
-      return { ok: false, error: describeMissingScopes(missingScopes(granted)) };
+      return { ok: false, error: describeMissingScopes(missingScopes(granted), granted) };
     }
     try {
       // With write permission established, reading the specific board confirms the rest:

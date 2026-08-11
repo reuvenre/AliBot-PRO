@@ -37,7 +37,7 @@ import { CouponsService, currencySymbol } from '../coupons/coupons.service';
 import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { PinterestService } from '../pinterest/pinterest.service';
-import { describeMissingScopes, PUBLISH_SCOPE } from '../pinterest/pinterest-scopes';
+import { describeMissingScopes, parseGrantedScopes, PUBLISH_SCOPE } from '../pinterest/pinterest-scopes';
 import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
@@ -4205,10 +4205,16 @@ export class PostsService {
       },
     );
     // A permission refusal reaches the owner as a Pinterest sentence about scopes, which
-    // reads like something to fix in our settings — it isn't. Replace it with the actual
-    // remedy, on the Pinterest side. Every other failure keeps its original wording.
+    // reads like something to fix in our settings — it isn't. Replace it with the remedy,
+    // and include what the grant actually holds: a refusal DESPITE a granted pins:write is
+    // the access tier talking (Trial refuses production writes), and the message says so
+    // instead of looping the owner through reconnect. Other failures keep their wording.
     if (res.status === 403 || /sufficient permissions|scopes/i.test(String(res.data?.message || ''))) {
-      throw new Error(describeMissingScopes([PUBLISH_SCOPE]));
+      const granted = parseGrantedScopes(creds?.pinterest_scopes);
+      throw new Error(granted.includes(PUBLISH_SCOPE)
+        ? 'פינטרסט דחתה את הפרסום למרות שהרשאת pins:write קיימת — זו רמת הגישה של האפליקציה: '
+          + 'Trial מיועד לקריאה ולבדיקות, ופרסום פינים אמיתיים דורש אישור Standard access מפינטרסט.'
+        : describeMissingScopes([PUBLISH_SCOPE], granted));
     }
     if (res.status < 200 || res.status >= 300 || res.data?.error || !res.data?.id) {
       throw new Error(res.data?.message || res.data?.error?.message || `Pinterest publish failed (${res.status})`);

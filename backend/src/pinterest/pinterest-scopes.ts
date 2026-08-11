@@ -58,17 +58,24 @@ export function canPublish(granted: string[]): boolean {
 }
 
 /**
- * What the owner has to DO about it, in their own language. The instruction is specific
- * because the generic version ("check your scopes") is what cost a day: the fix is not in
- * our settings screen at all, it is in the Pinterest app configuration, and it does not
- * take effect until the connection is granted again.
+ * What the owner has to DO about it, in their own language.
+ *
+ * Carries what WAS granted when known, because that is the diagnostic that separates the
+ * two causes. A re-connect that comes back with the read scopes and without the write ones
+ * is not a consent that went wrong — it is Pinterest's access tier refusing writes to a
+ * Trial app, and authorizing again will keep producing the same grant. Without naming the
+ * granted list, the message loops the owner through reconnect forever.
  */
-export function describeMissingScopes(missing: string[]): string {
+export function describeMissingScopes(missing: string[], granted: string[] = []): string {
   if (!missing.length) return '';
+  const refusedWrites = granted.length > 0 && !granted.includes(PUBLISH_SCOPE);
   return (
-    `החיבור לפינטרסט לא כולל את ההרשאות: ${missing.join(', ')} — ובלעדיהן פינים נדחים. `
-    + 'התיקון הוא לחיצה אחת: הגדרות ← אינטגרציות ← "התחבר מחדש". '
-    + 'ההרשאות נקבעות ברגע ההתחברות, ולכן חיבור קיים לא מקבל אותן בדיעבד — '
-    + 'צריך לאשר מחדש. אין מה לשנות בפורטל של פינטרסט.'
+    `החיבור לפינטרסט לא כולל את ההרשאות: ${missing.join(', ')} — ובלעדיהן פינים נדחים.`
+    + (granted.length ? ` הרשאות שהוענקו בפועל: ${granted.join(', ')}.` : '')
+    + ' נסה: הגדרות ← אינטגרציות ← "התחבר מחדש" (ההרשאות נקבעות ברגע ההתחברות, ולכן חיבור קיים לא מקבל אותן בדיעבד).'
+    + (refusedWrites
+      ? ' אם גם חיבור מחדש חוזר בלי הרשאת כתיבה — זו רמת הגישה של האפליקציה:'
+      + ' פינטרסט מעניקה ל-Trial קריאה בלבד, ופרסום פינים דורש אישור Standard access.'
+      : '')
   );
 }
