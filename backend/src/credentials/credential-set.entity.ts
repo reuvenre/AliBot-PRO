@@ -205,6 +205,16 @@ export class CredentialSet {
   @Column({ nullable: true })
   pinterest_token_expires_at: Date;
 
+  /**
+   * The scopes Pinterest actually GRANTED, space-separated, as returned by the token
+   * endpoint. Not a secret — and not cosmetic: an app configured without pins:write is
+   * granted the read scopes silently, so the connection looks healthy right up until the
+   * first pin is rejected. Recording the grant is what lets us say so at connect time.
+   * NULL for connections made before this was recorded (treated as "unknown", not "bad").
+   */
+  @Column({ nullable: true })
+  pinterest_scopes: string;
+
   /* ── Auto-boost (Meta Ads, ROAS-driven) ────────────────────────────────── */
 
   @Column({ default: false })

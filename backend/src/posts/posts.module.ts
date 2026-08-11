@@ -16,6 +16,7 @@ import { AiModule } from '../ai/ai.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { CollageModule } from '../collage/collage.module';
+import { PinterestModule } from '../pinterest/pinterest.module';
 
 @Module({
   imports: [
@@ -32,6 +33,10 @@ import { CollageModule } from '../collage/collage.module';
     SubscriptionModule,
     ChannelsModule,
     CollageModule,
+    // Publishing a pin goes through PinterestService for its token (refresh + scope check).
+    // Safe direction: PinterestModule holds only the Post REPOSITORY, never PostsService,
+    // so this does not close a cycle.
+    PinterestModule,
   ],
   providers: [PostsService],
   controllers: [PostsController, InstagramImageController],

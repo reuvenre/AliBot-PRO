@@ -8,6 +8,9 @@ import { encrypt, decrypt, mask, normalizeTelegramChatId } from '../common/crypt
 import { SubscriptionService } from '../subscription/subscription.service';
 import { CredentialsService, GRAPH_VERSION } from '../credentials/credentials.service';
 import { facebookErrorText } from '../common/facebook-errors';
+import {
+  canPublish, describeMissingScopes, missingScopes, parseGrantedScopes,
+} from '../pinterest/pinterest-scopes';
 
 @Injectable()
 export class ChannelsService {
@@ -458,9 +461,17 @@ export class ChannelsService {
     if (!boardId) {
       return { ok: false, error: 'לא הוגדר מזהה לוח (Board ID) לפרסום בפינטרסט.' };
     }
+    // Reading a board proves READ access and nothing else. This test used to stop there and
+    // report "ready to publish", which is how a grant missing pins:write passed as healthy
+    // and the first pin was rejected hours later. Check the grant before touching the API:
+    // no request can tell us what this already knows.
+    const granted = parseGrantedScopes(creds?.pinterest_scopes);
+    if (!canPublish(granted)) {
+      return { ok: false, error: describeMissingScopes(missingScopes(granted)) };
+    }
     try {
-      // Reading the specific board confirms BOTH that the token is valid AND that it can
-      // reach the exact board we'll pin to — the precise precondition for publishing.
+      // With write permission established, reading the specific board confirms the rest:
+      // the token is live AND it can reach the exact board we will pin to.
       const res = await axios.get(
         `https://api.pinterest.com/v5/boards/${boardId}`,
         { headers: { Authorization: `Bearer ${token}` }, timeout: 8000, validateStatus: () => true },

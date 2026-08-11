@@ -83,6 +83,7 @@ export function IntegrationsForm() {
   const [boardsMsg, setBoardsMsg] = useState('');
   const [pinToken, setPinToken] = useState('');
   const [pubPinterest, setPubPinterest] = useState(false);
+  const [pinScopes, setPinScopes] = useState('');
   const [pinterestOk, setPinterestOk] = useState<boolean | null>(null);
   const [pinterestError, setPinterestError] = useState<string | null>(null);
   const [testingPin, setTestingPin] = useState(false);
@@ -119,6 +120,7 @@ export function IntegrationsForm() {
         setPinBoardId(c.pinterest_board_id || '');
         setPinAppId(c.pinterest_app_id || '');
         setPinConnected(c.pinterest_connected ?? false);
+        setPinScopes(c.pinterest_scopes ?? '');
         setPubPinterest(c.publish_pinterest ?? false);
         setAmzAccess(c.amazon_access_key || '');
         setAmzPartner(c.amazon_partner_tag || '');
@@ -519,6 +521,23 @@ export function IntegrationsForm() {
             className="w-4 h-4 rounded accent-blue-500" />
           <span className="text-sm text-white/80">פרסם כל פוסט גם לפינטרסט</span>
         </label>
+
+        {/* Connected ≠ able to publish. A grant without pins:write lists boards happily and
+            rejects every pin, so the missing permission is stated here — before a pin is
+            scheduled — instead of surfacing hours later as a failed post. */}
+        {pinConnected && pinScopes && !pinScopes.split(/[\s,]+/).includes('pins:write') && (
+          <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5">
+            <p className="text-2xs text-amber-300 leading-relaxed">
+              ⚠️ <b>החיבור קיים אך אינו כולל הרשאת פרסום</b> (<span dir="ltr">pins:write</span>).
+              פינים לא יפורסמו. התיקון הוא בצד של פינטרסט: developers.pinterest.com ← האפליקציה שלך ←
+              ודא שההרשאות המבוקשות כוללות <span dir="ltr">pins:write</span>, ואז לחץ כאן
+              &quot;התחבר מחדש&quot; — הרשאה חדשה נכנסת לתוקף רק בחיבור מחדש.
+            </p>
+            <p className="text-2xs text-white/30 mt-1.5">
+              הרשאות שהוענקו בפועל: <span dir="ltr">{pinScopes}</span>
+            </p>
+          </div>
+        )}
 
         {pinterestError && <p className="text-2xs text-red-400 mt-3">⚠️ {pinterestError}</p>}
         {pinterestOk === true && <p className="text-2xs text-emerald-400 mt-3">✅ הלוח נגיש והטוקן תקין — מוכן לפרסום.</p>}

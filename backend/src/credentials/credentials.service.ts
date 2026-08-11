@@ -45,6 +45,8 @@ export interface DecryptedCredentials {
   pinterest_app_secret?: string;
   pinterest_refresh_token?: string;
   pinterest_token_expires_at?: Date | null;
+  /** Space-separated scopes Pinterest granted; empty when the connection predates recording. */
+  pinterest_scopes?: string;
   publish_pinterest?: boolean;
   // WhatsApp (official Cloud API or Green API — the latter can post to groups)
   whatsapp_phone_number_id?: string;
@@ -563,12 +565,15 @@ export class CredentialsService {
   /** Persist a freshly issued or refreshed Pinterest token pair. */
   async savePinterestTokens(
     userId: string,
-    t: { accessToken: string; refreshToken: string | null; expiresInSec: number },
+    t: { accessToken: string; refreshToken: string | null; expiresInSec: number; scopes?: string | null },
   ): Promise<void> {
     const cred = await this.repo.findOne({ where: { user_id: userId } });
     if (!cred) return;
     cred.pinterest_access_token_enc = encrypt(t.accessToken);
     if (t.refreshToken) cred.pinterest_refresh_token_enc = encrypt(t.refreshToken);
+    // What Pinterest actually granted. Only overwritten when the response says something:
+    // a refresh that omits `scope` must not erase what the original grant told us.
+    if (t.scopes?.trim()) cred.pinterest_scopes = t.scopes.trim();
     // No expiry from Pinterest → treat it as due now, so the next call refreshes rather
     // than publishing with a token of unknown age.
     cred.pinterest_token_expires_at = t.expiresInSec > 0
@@ -611,6 +616,7 @@ export class CredentialsService {
       pinterest_app_secret: decrypt(cred.pinterest_app_secret_enc),
       pinterest_refresh_token: decrypt(cred.pinterest_refresh_token_enc),
       pinterest_token_expires_at: cred.pinterest_token_expires_at,
+      pinterest_scopes: cred.pinterest_scopes || '',
       publish_pinterest: cred.publish_pinterest,
       whatsapp_phone_number_id: cred.whatsapp_phone_number_id,
       whatsapp_access_token: decrypt(cred.whatsapp_access_token_enc),
@@ -825,6 +831,10 @@ export class CredentialsService {
       // Whether the OAuth connection is live — the settings screen shows "connected" from
       // this instead of implying a connection from a token field that may hold a dead one.
       pinterest_connected: !!cred.pinterest_refresh_token_enc,
+      // The GRANT, so the screen can warn that publishing will be refused before a pin is
+      // scheduled — rather than after one fails. Empty = an older connection we have no
+      // record for, which the UI must treat as unknown rather than as broken.
+      pinterest_scopes: cred.pinterest_scopes || '',
       // Auto-boost
       boost_enabled: cred.boost_enabled ?? false,
       boost_roas_threshold: cred.boost_roas_threshold ?? 2.0,

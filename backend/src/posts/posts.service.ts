@@ -36,6 +36,8 @@ import { ChannelsService } from '../channels/channels.service';
 import { CouponsService, currencySymbol } from '../coupons/coupons.service';
 import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
+import { PinterestService } from '../pinterest/pinterest.service';
+import { describeMissingScopes, PUBLISH_SCOPE } from '../pinterest/pinterest-scopes';
 import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
@@ -188,6 +190,7 @@ export class PostsService {
     private readonly coupons: CouponsService,
     private readonly links: LinksService,
     private readonly products: ProductsService,
+    private readonly pinterest: PinterestService,
   ) {}
 
   /**
@@ -4134,7 +4137,11 @@ export class PostsService {
    * pins:write) and a target board id, both from Settings ← Integrations. Requires an image.
    */
   private async sendToPinterest(post: Post, creds: DecryptedCredentials, message: string, opts?: { titleFromMessage?: boolean }) {
-    const token = creds?.pinterest_access_token;
+    // Ask PinterestService for the token rather than reading the stored one: it refreshes
+    // when due, and it refuses up front when the grant is known to lack pins:write — the
+    // failure that killed the first pin, reported there as a raw API sentence.
+    const { token, blockedReason } = await this.pinterest.publishToken(post.user_id);
+    if (blockedReason) throw new Error(blockedReason);
     const boardId = creds?.pinterest_board_id;
     if (!token || !boardId) throw new Error('Missing Pinterest credentials');
 
@@ -4182,10 +4189,20 @@ export class PostsService {
         link: post.affiliate_url || undefined,
         media_source: { source_type: 'image_url', url: image },
       },
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 20000 },
+      {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        timeout: 20000,
+        validateStatus: () => true,
+      },
     );
-    if (res.data?.error || !res.data?.id) {
-      throw new Error(res.data?.message || res.data?.error?.message || 'Pinterest publish failed');
+    // A permission refusal reaches the owner as a Pinterest sentence about scopes, which
+    // reads like something to fix in our settings — it isn't. Replace it with the actual
+    // remedy, on the Pinterest side. Every other failure keeps its original wording.
+    if (res.status === 403 || /sufficient permissions|scopes/i.test(String(res.data?.message || ''))) {
+      throw new Error(describeMissingScopes([PUBLISH_SCOPE]));
+    }
+    if (res.status < 200 || res.status >= 300 || res.data?.error || !res.data?.id) {
+      throw new Error(res.data?.message || res.data?.error?.message || `Pinterest publish failed (${res.status})`);
     }
     post.pinterest_post_id = res.data.id;
   }

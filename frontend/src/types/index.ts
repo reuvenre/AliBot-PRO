@@ -207,6 +207,12 @@ export interface CredentialSet {
   pinterest_app_secret: string;   // masked
   /** True once the OAuth connection is live (a refresh token is stored). */
   pinterest_connected: boolean;
+  /**
+   * The scopes Pinterest actually granted, space-separated. Connected is not the same as
+   * able to publish: a grant without pins:write reads boards happily and rejects every pin.
+   * Empty = a connection made before this was recorded — unknown, not broken.
+   */
+  pinterest_scopes: string;
   // Auto-boost
   boost_enabled: boolean;
   boost_roas_threshold: number;
@@ -290,6 +296,7 @@ export interface CredentialSetInput {
   pinterest_app_secret?: string;
   /** True once the OAuth connection is live (a refresh token is stored). */
   pinterest_connected?: boolean;
+  pinterest_scopes?: string;
   // Auto-boost
   boost_enabled?: boolean;
   boost_roas_threshold?: number;

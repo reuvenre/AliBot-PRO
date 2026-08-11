@@ -10,6 +10,9 @@ import { cacheGet, cacheSet } from '../common/safe-cache';
 import {
   PINTEREST_TOKEN_URL, basicAuth, buildAuthUrl, needsRefresh, signState,
 } from './pinterest-oauth';
+import {
+  canPublish, describeMissingScopes, missingScopes, parseGrantedScopes,
+} from './pinterest-scopes';
 
 const API = 'https://api.pinterest.com/v5';
 /**
@@ -117,12 +120,22 @@ export class PinterestService {
       throw new BadRequestException(`Pinterest דחה את בקשת החיבור: ${msg}`);
     }
 
+    // Record what was GRANTED, not what we asked for. Pinterest drops scopes the app is
+    // not configured for without failing the handshake, so this is the only moment the
+    // difference is visible — and the difference is the whole ballgame for publishing.
     await this.credentials.savePinterestTokens(userId, {
       accessToken: res.data.access_token,
       refreshToken: res.data.refresh_token || null,
       expiresInSec: Number(res.data.expires_in) || 0,
+      scopes: res.data.scope || null,
     });
-    this.logger.log(`pinterest connected for ${userId}`);
+    const granted = parseGrantedScopes(res.data.scope);
+    const missing = missingScopes(granted);
+    if (missing.length) {
+      this.logger.warn(`pinterest connected for ${userId} but WITHOUT ${missing.join(', ')}`);
+    } else {
+      this.logger.log(`pinterest connected for ${userId}`);
+    }
     return { userId };
   }
 
@@ -168,9 +181,31 @@ export class PinterestService {
       // Pinterest may or may not rotate the refresh token; keep the old one when it doesn't.
       refreshToken: res.data.refresh_token || refresh,
       expiresInSec: Number(res.data.expires_in) || 0,
+      scopes: res.data.scope || null,
     });
     this.logger.log(`pinterest token refreshed for ${userId}`);
     return res.data.access_token;
+  }
+
+  /**
+   * The token to publish a pin with — refreshed if due — or a reason it cannot be done.
+   *
+   * The publisher used to read the stored token straight off the credentials row. That
+   * worked only because the daily analytics sync happened to refresh it as a side effect:
+   * the publish credential was being kept alive by an unrelated cron. Going through the
+   * same path as every other Pinterest call removes that hidden dependency.
+   *
+   * A grant known to lack pins:write is refused HERE rather than at Pinterest, so the post
+   * carries an instruction the owner can act on instead of an API sentence.
+   */
+  async publishToken(userId: string): Promise<{ token: string | null; blockedReason?: string }> {
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const granted = parseGrantedScopes(creds?.pinterest_scopes);
+    if (!canPublish(granted)) {
+      return { token: null, blockedReason: describeMissingScopes(missingScopes(granted)) };
+    }
+    const token = await this.liveToken(userId).catch(() => null);
+    return { token };
   }
 
   /**
@@ -270,6 +305,15 @@ export class PinterestService {
       .filter((b: { id: string }) => b.id);
     if (!boards.length) {
       return { boards: [], reason: 'לא נמצאו לוחות בחשבון — צור לוח אחד בפינטרסט ואז לחץ לרענון.' };
+    }
+    // Boards listed — but that only proves READ access, and the screen used to report
+    // "ready to publish" on the strength of it. It wasn't: the grant was missing
+    // pins:write, and the first pin was rejected hours later. Say what is actually true.
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const granted = parseGrantedScopes(creds?.pinterest_scopes);
+    const missing = missingScopes(granted);
+    if (missing.length) {
+      return { boards, reason: describeMissingScopes(missing) };
     }
     return { boards };
   }
