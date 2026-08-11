@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2 } from 'lucide-react';
-import { credentialsApi, channelsApi, amazonApi, postsApi } from '@/lib/api-client';
+import { credentialsApi, channelsApi, amazonApi, postsApi, pinterestApi } from '@/lib/api-client';
 import { SettingsSaveBar } from './SettingsSaveBar';
 import type { Channel } from '@/types';
 
@@ -74,6 +74,9 @@ export function IntegrationsForm() {
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [testingWa, setTestingWa] = useState(false);
   const [pinBoardId, setPinBoardId] = useState('');
+  const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingBoards, setLoadingBoards] = useState(false);
+  const [boardsMsg, setBoardsMsg] = useState('');
   const [pinToken, setPinToken] = useState('');
   const [pubPinterest, setPubPinterest] = useState(false);
   const [pinterestOk, setPinterestOk] = useState<boolean | null>(null);
@@ -212,6 +215,26 @@ export function IntegrationsForm() {
       setInstagramError(err?.response?.data?.message || 'הבדיקה נכשלה.');
     } finally {
       setTestingIg(false);
+    }
+  };
+
+  /**
+   * Fetch the account's boards so the owner can pick one. A freshly typed token is saved
+   * first — the lookup runs server-side with the STORED token, so an unsaved one would
+   * make this fail for a reason that has nothing to do with Pinterest.
+   */
+  const loadBoards = async () => {
+    setLoadingBoards(true); setBoardsMsg('');
+    try {
+      if (pinToken.trim()) await handleSave();
+      const res = await pinterestApi.boards();
+      setBoards(res.boards || []);
+      setBoardsMsg(res.reason || '');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setBoardsMsg(err?.response?.data?.message || 'שליפת הלוחות נכשלה.');
+    } finally {
+      setLoadingBoards(false);
     }
   };
 
@@ -423,8 +446,26 @@ export function IntegrationsForm() {
         <div className="grid grid-cols-1 gap-3">
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">Board ID</label>
-            <input value={pinBoardId} onChange={(e) => setPinBoardId(e.target.value)} placeholder="1234567890" dir="ltr"
-              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+            <div className="flex gap-2">
+              <input value={pinBoardId} onChange={(e) => setPinBoardId(e.target.value)} placeholder="1234567890" dir="ltr"
+                className="flex-1 bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50" />
+              {/* Pinterest shows a board's SLUG in its URL, never the numeric id the publish
+                  API needs — so it has to be fetched. */}
+              <button type="button" onClick={loadBoards} disabled={loadingBoards}
+                className="px-3 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-xs rounded-lg whitespace-nowrap">
+                {loadingBoards ? 'טוען…' : 'שלוף לוחות'}
+              </button>
+            </div>
+            {boards.length > 0 && (
+              <select value={pinBoardId} onChange={(e) => setPinBoardId(e.target.value)} dir="ltr"
+                className="w-full mt-2 bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50">
+                <option value="">בחר לוח…</option>
+                {boards.map((b) => (
+                  <option key={b.id} value={b.id} className="bg-surface-secondary">{b.name} — {b.id}</option>
+                ))}
+              </select>
+            )}
+            {boardsMsg && <p className="text-2xs text-amber-400/90 mt-1.5 leading-relaxed">{boardsMsg}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">Access Token</label>

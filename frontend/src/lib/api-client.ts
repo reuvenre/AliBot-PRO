@@ -603,6 +603,10 @@ export interface PinterestAnalytics {
 export const pinterestApi = {
   /** Per-pin performance (30 days) + totals for the reports screen. */
   analytics: () => http.get<PinterestAnalytics>('/pinterest/analytics').then(extract),
+  /** The account's boards — the numeric board id is invisible in Pinterest's own UI. */
+  boards: () => http.get<{ boards: Array<{ id: string; name: string }>; reason?: string }>(
+    '/pinterest/boards', { timeout: 20_000 },
+  ).then(extract),
 };
 
 // ─── Earnings API ────────────────────────────────────────────────────────────

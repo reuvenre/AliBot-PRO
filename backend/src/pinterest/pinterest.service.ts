@@ -43,6 +43,47 @@ export class PinterestService {
   ) {}
 
   /**
+   * The user's Pinterest boards, for picking the publish target in settings.
+   *
+   * A board's NUMERIC id is what the publish API needs, and it appears nowhere in the
+   * Pinterest UI — the board URL carries a slug, not the id — so without this the owner
+   * had no way to obtain it short of calling the API by hand. An empty list is a real,
+   * common answer on a fresh account: Pinterest creates no board for you, and the reason
+   * says so rather than leaving an empty dropdown to interpret.
+   */
+  async boards(userId: string): Promise<{ boards: Array<{ id: string; name: string }>; reason?: string }> {
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const token = creds?.pinterest_access_token;
+    if (!token) return { boards: [], reason: 'לא הוגדר טוקן פינטרסט — הדבק אותו ושמור, ואז נסה שוב.' };
+
+    const res = await axios.get(`${API}/boards`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { page_size: 50 },
+      timeout: 10_000,
+      validateStatus: () => true,
+    }).catch((err: any) => ({ status: 0, data: { message: err.message } } as any));
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        boards: [],
+        reason: `פינטרסט דחה את הטוקן (${res.status}) — ודא שהוא נוצר עם הרשאת boards:read `
+          + `ובסביבת "ייצור" ולא "ארגז חול". ${res.data?.message || ''}`.trim(),
+      };
+    }
+    if (res.status !== 200) {
+      return { boards: [], reason: `שליפת הלוחות נכשלה (${res.status}) ${res.data?.message || ''}`.trim() };
+    }
+
+    const boards = (res.data?.items || [])
+      .map((b: any) => ({ id: String(b.id), name: String(b.name || b.id) }))
+      .filter((b: { id: string }) => b.id);
+    if (!boards.length) {
+      return { boards: [], reason: 'לא נמצאו לוחות בחשבון — צור לוח אחד בפינטרסט ואז לחץ לרענון.' };
+    }
+    return { boards };
+  }
+
+  /**
    * Per-pin performance (last 30 days) for the user's published Pins, aggregated from
    * Pinterest's pin-analytics API. Reads the SAME pins the publisher created
    * (posts.pinterest_post_id). Degrades gracefully: no token / Trial-tier rejections
