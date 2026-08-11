@@ -734,7 +734,10 @@ function EditPostModal({ post, onClose, onSaved }: {
         </div>
 
         <div className="mb-3">
-          <label className="block text-xs text-white/50 mb-1">מחיר ({post.currency_symbol || '₪'})</label>
+          {/* The parenthesized symbol is isolated as its own LTR run. Without it, the bidi
+              algorithm scrambles the parens the moment the Hebrew word next to them becomes
+              English (Chrome's page translation): "מחיר ($)" turned into ")$ Price (". */}
+          <label className="block text-xs text-white/50 mb-1">מחיר <span dir="ltr">({post.currency_symbol || '₪'})</span></label>
           <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputCls} max-w-[160px]`} dir="ltr" />
         </div>
 
