@@ -73,6 +73,16 @@ h1 { letter-spacing: -0.03em; }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.11); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.20); }
 
+/* ── Native select popups ──────────────────────────────────────────────────────
+   The open dropdown of a <select> is painted by the OS, not by our classes — the only
+   way to theme it is color-scheme. Hard-coding a dark background on each <option>
+   instead (the previous approach) survived only as long as the app was dark-only: in
+   the light theme the text turns near-black over that black, and the list reads as an
+   empty rectangle with one visible highlighted row. Handing the browser the theme keeps
+   both sides in step, and every future <select> inherits it for free. */
+select { color-scheme: dark; }
+[data-theme="light"] select { color-scheme: light; }
+
 /* ── Focus ─────────────────────────────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid rgba(59,130,246,0.55);

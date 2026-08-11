@@ -411,7 +411,7 @@ export function SchedulingForm() {
               dir="ltr"
             >
               {[5, 10, 15, 20, 30, 50].map((n) => (
-                <option key={n} value={n} className="bg-neutral-900">{n} קליקים</option>
+                <option key={n} value={n}>{n} קליקים</option>
               ))}
             </select>
             <p className="text-2xs text-white/30 mt-1.5">פוסט עם עמלה משויכת נחשב מנצח גם בלי לעמוד בסף.</p>

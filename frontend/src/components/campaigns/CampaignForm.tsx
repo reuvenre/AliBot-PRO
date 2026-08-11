@@ -624,9 +624,9 @@ export function CampaignForm({
                   >
                     {/* Inherit is the DEFAULT. Preselecting 09:00 here is how a campaign
                         with only a timezone silently gained a 9–22 window on save. */}
-                    <option value="" className="bg-neutral-900">ירושה (קבוצה/כללי)</option>
+                    <option value="">ירושה (קבוצה/כללי)</option>
                     {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h} className="bg-neutral-900">{String(h).padStart(2, '0')}:00</option>
+                      <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
                     ))}
                   </select>
                 </div>
@@ -638,9 +638,9 @@ export function CampaignForm({
                     className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/60 transition-colors appearance-none cursor-pointer"
                     dir="ltr"
                   >
-                    <option value="" className="bg-neutral-900">ירושה (קבוצה/כללי)</option>
+                    <option value="">ירושה (קבוצה/כללי)</option>
                     {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => (
-                      <option key={h} value={h} className="bg-neutral-900">{h === 24 ? '24:00 (חצות)' : `${String(h).padStart(2, '0')}:00`}</option>
+                      <option key={h} value={h}>{h === 24 ? '24:00 (חצות)' : `${String(h).padStart(2, '0')}:00`}</option>
                     ))}
                   </select>
                 </div>
