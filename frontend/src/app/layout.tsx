@@ -95,6 +95,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               + `document.documentElement.classList.add('dark');}}catch(e){}})();`,
           }}
         />
+        {/* Google Translate rewrites the DOM under React's feet — it wraps text nodes in
+            its own <font> tags — and React's next update then removes/inserts against
+            nodes that are no longer where it left them, crashing the page the moment a
+            translated user clicks anything that re-renders (save, connect). The standard
+            guard (facebook/react#11538): make those two DOM calls tolerate a foreign
+            parent instead of throwing. Must run before hydration, hence inline here. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(typeof Node!=='function'||!Node.prototype)return;`
+              + `var rc=Node.prototype.removeChild;`
+              + `Node.prototype.removeChild=function(c){if(c&&c.parentNode!==this)return c;return rc.apply(this,arguments);};`
+              + `var ib=Node.prototype.insertBefore;`
+              + `Node.prototype.insertBefore=function(n,r){if(r&&r.parentNode!==this)return n;return ib.apply(this,arguments);};})();`,
+          }}
+        />
       </head>
       <body className={`${inter.className} antialiased`} style={{ backgroundColor: 'var(--bg-primary)' }}>
         <script
