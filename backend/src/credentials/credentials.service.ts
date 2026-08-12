@@ -571,6 +571,9 @@ export class CredentialsService {
   ): Promise<void> {
     const cred = await this.repo.findOne({ where: { user_id: userId } });
     if (!cred) return;
+    // Read BEFORE the refresh token is overwritten: this is what distinguishes the
+    // first-ever connect from a reconnect.
+    const firstConnect = !cred.pinterest_refresh_token_enc;
     cred.pinterest_access_token_enc = encrypt(t.accessToken);
     if (t.refreshToken) cred.pinterest_refresh_token_enc = encrypt(t.refreshToken);
     // What Pinterest actually granted. Only overwritten when the response says something:
@@ -581,9 +584,13 @@ export class CredentialsService {
     cred.pinterest_token_expires_at = t.expiresInSec > 0
       ? new Date(Date.now() + t.expiresInSec * 1000)
       : null;
-    // Publishing is what the connection is FOR — leaving the switch off after a successful
-    // connect is a dead end the owner has to guess their way out of.
-    cred.publish_pinterest = true;
+    // Publishing is what the connection is FOR — leaving the switch off after the FIRST
+    // connect is a dead end the owner has to guess their way out of. But only the first:
+    // a reconnect is a token refresh, and it must not overwrite a toggle the owner set on
+    // purpose — turning the global fan-out back on for an account that deliberately keeps
+    // Pinterest to its dedicated campaign is exactly how Hebrew posts end up pinned to an
+    // English board.
+    if (firstConnect) cred.publish_pinterest = true;
     // A fresh grant deserves a fresh try — the recorded tier block belongs to the old one.
     cred.pinterest_tier_blocked_at = null as any;
     await this.repo.save(cred);
