@@ -14,6 +14,26 @@
  */
 
 /**
+ * The refusal that is NOT about scopes: pins:write granted, Pinterest still says no.
+ * That is the access tier talking — Trial refuses production pin writes — and it is
+ * matched by substring wherever the failure needs recognizing (auto-pause, watchdog),
+ * so the wording and the detection can never drift apart.
+ */
+export const TIER_BLOCK_MESSAGE =
+  'פינטרסט דחתה את הפרסום למרות שהרשאת pins:write קיימת — זו רמת הגישה של האפליקציה: '
+  + 'Trial מיועד לקריאה ולבדיקות, ופרסום פינים אמיתיים דורש אישור Standard access מפינטרסט.';
+
+/**
+ * The stable marker inside TIER_BLOCK_MESSAGE — survives prefixes like "Pinterest: ".
+ * Deliberately the "despite pins:write granted" clause and not the tier phrase: the
+ * missing-scope message MENTIONS the tier as a maybe ("if reconnecting doesn't help…"),
+ * and matching on that would let an advisory hint trigger the definite-block handling.
+ */
+export function isTierBlockError(message: string | null | undefined): boolean {
+  return String(message || '').includes('למרות שהרשאת pins:write קיימת');
+}
+
+/**
  * The scope whose absence is CERTAIN to stop publishing — the hard gate.
  *
  * Creating a pin also needs boards:write (a pin is written to a board), but that is

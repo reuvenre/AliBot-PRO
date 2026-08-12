@@ -1,6 +1,6 @@
 import {
   parseGrantedScopes, missingScopes, canPublish, describeMissingScopes,
-  REQUIRED_SCOPES, PUBLISH_SCOPE,
+  isTierBlockError, REQUIRED_SCOPES, PUBLISH_SCOPE, TIER_BLOCK_MESSAGE,
 } from './pinterest-scopes';
 
 describe('parseGrantedScopes', () => {
@@ -62,6 +62,23 @@ describe('canPublish', () => {
   it('is false only when the publish scope is known to be absent', () => {
     expect(canPublish(['boards:read', 'pins:read'])).toBe(false);
     expect(canPublish(['pins:write'])).toBe(true);
+  });
+});
+
+describe('isTierBlockError', () => {
+  it('recognizes the tier refusal, including with a platform prefix', () => {
+    // The fan-out records errors as "Pinterest: <message>" — the marker must survive that.
+    expect(isTierBlockError(TIER_BLOCK_MESSAGE)).toBe(true);
+    expect(isTierBlockError(`Pinterest: ${TIER_BLOCK_MESSAGE}`)).toBe(true);
+  });
+
+  it('does not fire on scope errors or ordinary failures', () => {
+    // Auto-pausing a campaign is a big hammer — a missing scope (fixable by reconnect)
+    // or a transient API error must never swing it.
+    expect(isTierBlockError(describeMissingScopes([PUBLISH_SCOPE], ['pins:read']))).toBe(false);
+    expect(isTierBlockError('Pinterest publish failed (500)')).toBe(false);
+    expect(isTierBlockError('')).toBe(false);
+    expect(isTierBlockError(null)).toBe(false);
   });
 });
 

@@ -37,7 +37,9 @@ import { CouponsService, currencySymbol } from '../coupons/coupons.service';
 import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { PinterestService } from '../pinterest/pinterest.service';
-import { describeMissingScopes, parseGrantedScopes, PUBLISH_SCOPE } from '../pinterest/pinterest-scopes';
+import {
+  describeMissingScopes, isTierBlockError, parseGrantedScopes, PUBLISH_SCOPE, TIER_BLOCK_MESSAGE,
+} from '../pinterest/pinterest-scopes';
 import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
@@ -3451,8 +3453,32 @@ export class PostsService {
       if (post.user_id) {
         await this.subscription.refund(post.user_id, this.subscription.costs.publish, 'publish-failed');
       }
+      // The Trial-tier refusal is not a transient failure: every future run of a
+      // Pinterest-ONLY campaign will fail identically until Pinterest grants Standard
+      // access — burning an AI-copy credit per post and re-raising the same watchdog
+      // alert nightly. Pause the campaign once, with the reason on it, and let the owner
+      // resume after approval. Mixed-platform campaigns keep running: their other
+      // channels still publish, and their pins resume on their own once access lands.
+      if (post.campaign_id && errors.some((e) => isTierBlockError(e))) {
+        await this.pausePinterestOnlyCampaign(post.campaign_id).catch((err: any) =>
+          this.logger.warn(`tier-block auto-pause failed for campaign ${post.campaign_id}: ${err?.message}`));
+      }
     }
     await this.repo.save(post);
+  }
+
+  /** Pause a Pinterest-only campaign that hit the Trial-tier write block (see caller). */
+  private async pausePinterestOnlyCampaign(campaignId: string): Promise<void> {
+    const campaign = await this.campaignRepo.findOne({ where: { id: campaignId } });
+    if (!campaign || campaign.status !== 'active') return; // already paused / gone
+    const platforms = this.parseTargetPlatforms(campaign.target_platforms);
+    if (!platforms || platforms.size !== 1 || !platforms.has('pinterest')) return;
+    campaign.status = 'paused';
+    campaign.last_run_note =
+      'הושהה אוטומטית: פינטרסט (Trial) חוסמת פרסום פינים עד אישור Standard access. '
+      + 'כשהאישור מגיע — הפעל את הקמפיין מחדש מכאן.';
+    await this.campaignRepo.save(campaign);
+    this.logger.warn(`campaign ${campaignId} auto-paused: Pinterest Trial tier blocks pin writes`);
   }
 
   /**
@@ -4189,8 +4215,13 @@ export class PostsService {
       }
     }
 
+    // PINTEREST_API_BASE exists for ONE purpose: Pinterest's Standard-access review
+    // requires the demo video to show a pin actually created, and a Trial app can only
+    // do that against the sandbox host. Point it at https://api-sandbox.pinterest.com
+    // for the recording, then remove it. Unset = production, always.
+    const apiBase = (process.env.PINTEREST_API_BASE || 'https://api.pinterest.com').replace(/\/$/, '');
     const res = await axios.post(
-      'https://api.pinterest.com/v5/pins',
+      `${apiBase}/v5/pins`,
       {
         board_id: boardId,
         title,
@@ -4212,8 +4243,7 @@ export class PostsService {
     if (res.status === 403 || /sufficient permissions|scopes/i.test(String(res.data?.message || ''))) {
       const granted = parseGrantedScopes(creds?.pinterest_scopes);
       throw new Error(granted.includes(PUBLISH_SCOPE)
-        ? 'פינטרסט דחתה את הפרסום למרות שהרשאת pins:write קיימת — זו רמת הגישה של האפליקציה: '
-          + 'Trial מיועד לקריאה ולבדיקות, ופרסום פינים אמיתיים דורש אישור Standard access מפינטרסט.'
+        ? TIER_BLOCK_MESSAGE
         : describeMissingScopes([PUBLISH_SCOPE], granted));
     }
     if (res.status < 200 || res.status >= 300 || res.data?.error || !res.data?.id) {
