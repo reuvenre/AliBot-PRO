@@ -19,6 +19,7 @@ import {
 } from './regression';
 import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
 import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
+import { isTierBlockError } from '../pinterest/pinterest-scopes';
 
 /** The window a campaign is judged on, and the stretch of its own past it is judged against.
  *  Three weeks of baseline absorbs a single odd week; one week of "recent" still reacts fast. */
@@ -751,7 +752,7 @@ export class WatchdogService implements OnModuleInit {
     //    could quietly degrade for days (the #36003 aspect-ratio run did exactly that:
     //    the owner found it by eye the next morning, which is the watchdog's one job).
     //    Two in six hours = a pattern worth a diagnosis, not channel noise.
-    const partials: any[] = await this.posts.createQueryBuilder('p')
+    const partialsRaw: any[] = await this.posts.createQueryBuilder('p')
       .select(['p.id AS id', 'p.user_id AS user_id', 'p.error_message AS error_message', 'p.sent_at AS sent_at'])
       .where("p.status = 'sent'")
       .andWhere('p.error_message IS NOT NULL')
@@ -760,6 +761,21 @@ export class WatchdogService implements OnModuleInit {
       .take(20)
       .getRawMany()
       .catch(() => []);
+    // The Pinterest Trial-tier refusal is a KNOWN, already-handled condition: the system
+    // auto-pauses the dedicated campaign and stands the global fan-out down, and there is
+    // nothing the owner can do beyond the Standard-access application already in review.
+    // Alerting on it nightly is pure noise — the owner asked why the watchdog kept
+    // shouting about a campaign he had already disabled. A post is only reported for its
+    // OTHER failures; a post whose only failure is the tier block is dropped entirely.
+    const partials = partialsRaw
+      .map((p) => ({
+        ...p,
+        error_message: String(p.error_message).split('|')
+          .map((s) => s.trim())
+          .filter((line) => line && !isTierBlockError(line))
+          .join(' | '),
+      }))
+      .filter((p) => p.error_message);
     // EVERY partial publish alerts — the owner asked for exactly this after finding a
     // "פורסם חלקית" by eye that the old ≥2 threshold had classified as channel noise. A
     // single miss IS actionable now that transient Meta failures get an automatic retry:
