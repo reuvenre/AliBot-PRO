@@ -38,7 +38,8 @@ import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { PinterestService } from '../pinterest/pinterest.service';
 import {
-  describeMissingScopes, isTierBlockError, parseGrantedScopes, PUBLISH_SCOPE, TIER_BLOCK_MESSAGE,
+  describeMissingScopes, isTierBlockError, parseGrantedScopes, PUBLISH_SCOPE,
+  TIER_BLOCK_MESSAGE, tierBlockActive,
 } from '../pinterest/pinterest-scopes';
 import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
@@ -3291,7 +3292,16 @@ export class PostsService {
       && gate.has('facebook');
     const wantFacebook = gated(only ? only.has('facebook') : creds?.publish_facebook === true, 'facebook', 'פייסבוק');
     const wantInstagram = gated(only ? only.has('instagram') : creds?.publish_instagram === true, 'instagram', 'אינסטגרם');
-    const wantPinterest = gated(only ? only.has('pinterest') : creds?.publish_pinterest === true, 'pinterest', 'פינטרסט');
+    // The GLOBAL "every post to Pinterest too" fan-out stands down while the Trial-tier
+    // write block is fresh: each attempt is a guaranteed failure that stamps an
+    // otherwise-successful post "published partially" and re-raises the watchdog nightly.
+    // One probe a day (TIER_BLOCK_RETRY_MS) keeps it self-healing — when Standard access
+    // lands, the next probe succeeds and clears the block with no manual step. Dedicated
+    // pinterest-only posts are NOT suppressed: their campaign auto-pauses on the same
+    // failure, and an explicit push must always be allowed to try.
+    const globalPinterest = creds?.publish_pinterest === true
+      && !tierBlockActive(creds?.pinterest_tier_blocked_at, Date.now());
+    const wantPinterest = gated(only ? only.has('pinterest') : globalPinterest, 'pinterest', 'פינטרסט');
     const wantWhatsapp = gated(only ? only.has('whatsapp') : creds?.publish_whatsapp === true, 'whatsapp', 'וואטסאפ');
 
     // No channel enabled → fail WITHOUT charging credits (the check used to run
@@ -3424,8 +3434,20 @@ export class PostsService {
         : await this.buildPostBody(post, creds, targets[0]);
       tasks.push(
         this.sendToPinterest(post, creds, body, { titleFromMessage: dedicated })
-          .then(() => { anySuccess = true; })
-          .catch((err: any) => { errors.push(`Pinterest: ${err?.response?.data?.message || err?.response?.data?.error?.message || err.message}`); }),
+          .then(() => {
+            anySuccess = true;
+            // A pin landed — whatever tier block was recorded is over (approval arrived).
+            if (creds?.pinterest_tier_blocked_at) {
+              void this.credentials.clearPinterestTierBlock(post.user_id).catch(() => {});
+            }
+          })
+          .catch((err: any) => {
+            errors.push(`Pinterest: ${err?.response?.data?.message || err?.response?.data?.error?.message || err.message}`);
+            // Remember the definite tier refusal so the global fan-out stands down (above).
+            if (isTierBlockError(err?.message)) {
+              void this.credentials.markPinterestTierBlocked(post.user_id).catch(() => {});
+            }
+          }),
       );
     }
 

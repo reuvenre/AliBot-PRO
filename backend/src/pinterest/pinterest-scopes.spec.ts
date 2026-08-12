@@ -1,6 +1,6 @@
 import {
   parseGrantedScopes, missingScopes, canPublish, describeMissingScopes,
-  isTierBlockError, REQUIRED_SCOPES, PUBLISH_SCOPE, TIER_BLOCK_MESSAGE,
+  isTierBlockError, tierBlockActive, REQUIRED_SCOPES, PUBLISH_SCOPE, TIER_BLOCK_MESSAGE,
 } from './pinterest-scopes';
 
 describe('parseGrantedScopes', () => {
@@ -79,6 +79,27 @@ describe('isTierBlockError', () => {
     expect(isTierBlockError('Pinterest publish failed (500)')).toBe(false);
     expect(isTierBlockError('')).toBe(false);
     expect(isTierBlockError(null)).toBe(false);
+  });
+});
+
+describe('tierBlockActive', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = 1_800_000_000_000;
+
+  it('stands the fan-out down while the refusal is fresh', () => {
+    expect(tierBlockActive(new Date(now - DAY / 2), now)).toBe(true);
+  });
+
+  it('allows one probe a day — a permanent stand-down could never discover approval', () => {
+    // When Standard access lands, SOMETHING has to attempt a pin to find out. The block
+    // expiring daily is that something; suppressing forever would deadlock the recovery.
+    expect(tierBlockActive(new Date(now - DAY - 1), now)).toBe(false);
+  });
+
+  it('is inert with no recorded block, or garbage in the column', () => {
+    expect(tierBlockActive(null, now)).toBe(false);
+    expect(tierBlockActive(undefined, now)).toBe(false);
+    expect(tierBlockActive('not a date', now)).toBe(false);
   });
 });
 

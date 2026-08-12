@@ -47,6 +47,8 @@ export interface DecryptedCredentials {
   pinterest_token_expires_at?: Date | null;
   /** Space-separated scopes Pinterest granted; empty when the connection predates recording. */
   pinterest_scopes?: string;
+  /** Last Trial-tier pin refusal — while fresh, the global Pinterest fan-out stands down. */
+  pinterest_tier_blocked_at?: Date | null;
   publish_pinterest?: boolean;
   // WhatsApp (official Cloud API or Green API — the latter can post to groups)
   whatsapp_phone_number_id?: string;
@@ -582,7 +584,19 @@ export class CredentialsService {
     // Publishing is what the connection is FOR — leaving the switch off after a successful
     // connect is a dead end the owner has to guess their way out of.
     cred.publish_pinterest = true;
+    // A fresh grant deserves a fresh try — the recorded tier block belongs to the old one.
+    cred.pinterest_tier_blocked_at = null as any;
     await this.repo.save(cred);
+  }
+
+  /** Record a Trial-tier pin refusal — the global Pinterest fan-out stands down while fresh. */
+  async markPinterestTierBlocked(userId: string): Promise<void> {
+    await this.repo.update({ user_id: userId }, { pinterest_tier_blocked_at: new Date() });
+  }
+
+  /** A pin went through — whatever block was recorded is over. */
+  async clearPinterestTierBlock(userId: string): Promise<void> {
+    await this.repo.update({ user_id: userId }, { pinterest_tier_blocked_at: null as any });
   }
 
   async getRaw(userId: string): Promise<DecryptedCredentials | null> {
@@ -617,6 +631,7 @@ export class CredentialsService {
       pinterest_refresh_token: decrypt(cred.pinterest_refresh_token_enc),
       pinterest_token_expires_at: cred.pinterest_token_expires_at,
       pinterest_scopes: cred.pinterest_scopes || '',
+      pinterest_tier_blocked_at: cred.pinterest_tier_blocked_at || null,
       publish_pinterest: cred.publish_pinterest,
       whatsapp_phone_number_id: cred.whatsapp_phone_number_id,
       whatsapp_access_token: decrypt(cred.whatsapp_access_token_enc),

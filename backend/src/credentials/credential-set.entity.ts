@@ -206,6 +206,15 @@ export class CredentialSet {
   pinterest_token_expires_at: Date;
 
   /**
+   * When Pinterest last refused a pin DESPITE a granted pins:write — the Trial-tier
+   * write block. While fresh (see TIER_BLOCK_RETRY_MS) the account-global "every post
+   * to Pinterest too" fan-out stands down instead of stamping every successful post
+   * "published partially". Cleared by a successful pin or a reconnect.
+   */
+  @Column({ nullable: true })
+  pinterest_tier_blocked_at: Date;
+
+  /**
    * The scopes Pinterest actually GRANTED, space-separated, as returned by the token
    * endpoint. Not a secret — and not cosmetic: an app configured without pins:write is
    * granted the read scopes silently, so the connection looks healthy right up until the

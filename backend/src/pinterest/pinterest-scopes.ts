@@ -34,6 +34,26 @@ export function isTierBlockError(message: string | null | undefined): boolean {
 }
 
 /**
+ * How long the account-global Pinterest fan-out stands down after a Trial-tier refusal.
+ *
+ * While the block is fresh, every "also pin this" attempt is a guaranteed failure that
+ * stamps an otherwise-successful post "published partially" and re-raises the watchdog.
+ * But suppressing forever would deadlock: nothing would ever attempt a pin again, so
+ * nothing could discover that Standard access has landed. One probe a day is the balance —
+ * at most one partial post per day while waiting, and self-healing within a day of
+ * approval with no reconnect or manual step.
+ */
+export const TIER_BLOCK_RETRY_MS = 24 * 60 * 60 * 1000;
+
+/** Is the recorded Trial-tier block still fresh enough to stand down the global fan-out? */
+export function tierBlockActive(blockedAt: Date | string | null | undefined, nowMs: number): boolean {
+  if (!blockedAt) return false;
+  const t = new Date(blockedAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return nowMs - t < TIER_BLOCK_RETRY_MS;
+}
+
+/**
  * The scope whose absence is CERTAIN to stop publishing — the hard gate.
  *
  * Creating a pin also needs boards:write (a pin is written to a board), but that is
