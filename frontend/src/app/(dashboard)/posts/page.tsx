@@ -919,7 +919,12 @@ function RepublishModal({ post, onClose, onDone }: {
 function PushModal({ post, channels, onClose, onDone }: {
   post: Post; channels: Channel[]; onClose: () => void; onDone: () => void;
 }) {
-  const [platforms, setPlatforms] = useState<(PushPlatform)[]>(['facebook']);
+  // No platform pre-checked. The dialog began life as a Facebook back-fill tool and
+  // pre-checked Facebook; once it offered five platforms that leftover became a trap —
+  // a quick "דחוף עכשיו" published to Facebook whether or not that was the intent.
+  // The submit button stays disabled until something is chosen, so an explicit pick
+  // is the only way anything gets sent.
+  const [platforms, setPlatforms] = useState<(PushPlatform)[]>([]);
   const [groupIds, setGroupIds] = useState<string[]>(() => postTargetIds(post));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
