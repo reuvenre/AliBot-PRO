@@ -553,6 +553,13 @@ export const postsApi = {
   retryFailed: (id: string) => http.post<Post>(`/posts/${id}/retry-failed`, {}, { timeout: AI_TIMEOUT }).then(extract),
 
   /** Re-publish a post via the queue (no time) or schedule it (with scheduled_at). */
+  /** Smart link intake — resolve, judge, file the keyword, schedule. AI-scale latency. */
+  smartIntake: (url: string) =>
+    http.post<{
+      post_id: string; keyword: string; campaign_name: string | null;
+      keyword_added: boolean; scheduled_at: string | null; note: string;
+    }>('/posts/smart-intake', { url }, { timeout: AI_TIMEOUT }).then(extract),
+
   requeue: (id: string, scheduledAt?: string, channels?: string[], platforms?: PushPlatform[]) =>
     http.post<Post>(`/posts/${id}/requeue`, {
       scheduled_at: scheduledAt, channels, platforms,

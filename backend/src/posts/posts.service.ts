@@ -25,6 +25,10 @@ import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
 import { pinImageUrl } from './pin-frame';
+import {
+  buildSmartIntakePrompt, fallbackKeyword, parseIntakeVerdict,
+  IntakeCampaignProfile, IntakeVerdict, SMART_INTAKE_SYSTEM,
+} from './smart-intake';
 import { tidyRtlBody } from './rtl';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -1130,6 +1134,150 @@ export class PostsService {
    * (no AI credits), and queue it — the drip paces it like any other queued post.
    * Batched by the caller (the resolution round-trips are slow); capped per call.
    */
+  /**
+   * Smart link intake: an AliExpress product URL → the product, a search keyword, the
+   * best-fitting campaign — and a post scheduled through that campaign's own routing.
+   *
+   * One model call answers both questions (which campaign by AUDIENCE, what keyword);
+   * the keyword joins the campaign's rotation so future runs find more like this product.
+   * No fitting campaign — or no AI key, or an unreadable verdict — degrades to a plain
+   * queued post on the default channel: a wrong audience assignment posts to a real group
+   * of real people, so the judge fails closed (see smart-intake.ts).
+   */
+  async smartIntake(userId: string, url: string): Promise<{
+    post_id: string; keyword: string; campaign_name: string | null;
+    keyword_added: boolean; scheduled_at: Date | null; note: string;
+  }> {
+    const creds = await this.credentials.getRaw(userId);
+    if (!creds) throw new BadRequestException('חסרים פרטי חיבור — הגדר אותם במסך ההגדרות');
+    const link = String(url || '').trim();
+    if (!link) throw new BadRequestException('הדבק קישור למוצר');
+
+    // Product id: straight off a full URL, else through the short-link resolver the
+    // importer uses (redirect chasing + HTML scan).
+    const direct = link.match(/\/item\/(\d{6,})/);
+    const productId = direct?.[1] || await this.resolveAliShortLink(link);
+    if (!productId) throw new BadRequestException('לא זוהה מוצר בקישור — ודא שזה קישור מוצר של AliExpress');
+    let product = await this.productDetailById(productId, creds).catch(() => null);
+    if (!product) {
+      const found = await this.searchProducts({ keyword: productId, limit: 5 }, creds).catch(() => []);
+      product = found.find((p: any) => String(p.product_id) === productId) || null;
+    }
+    if (!product) {
+      throw new BadRequestException(`מוצר ${productId} לא הוחזר מה-API — ייתכן שאינו זמין בתוכנית השותפים`);
+    }
+
+    // The judge sees every AliExpress campaign, paused included — a paused campaign's
+    // audience is still ITS audience, and the post publishes via the scheduled-send cron
+    // regardless of the campaign's own cron being paused.
+    const campaigns = (await this.campaignRepo.find({ where: { user_id: userId } }))
+      .filter((c) => (c.source || 'aliexpress') === 'aliexpress' && ['active', 'paused'].includes(c.status));
+    let verdict: IntakeVerdict | null = null;
+    if (campaigns.length && this.ai.hasAnyKey(creds)) {
+      const profiles: IntakeCampaignProfile[] = await Promise.all(campaigns.map(async (c) => ({
+        name: c.name,
+        keywords: (c.keywords || []).slice(0, 12),
+        channels: (await Promise.all(this.parseTargetChannels(c.target_channels)
+          .map((t) => this.channels.getName(userId, t).catch(() => null))))
+          .filter((n): n is string => !!n),
+      })));
+      try {
+        const res = await this.ai.generate(creds, {
+          system: SMART_INTAKE_SYSTEM,
+          prompt: buildSmartIntakePrompt(
+            { title: String(product.title || ''), category: product.category },
+            profiles,
+          ),
+          maxTokens: 160,
+          temperature: 0,
+        });
+        verdict = res?.text ? parseIntakeVerdict(res.text, campaigns.length) : null;
+      } catch { verdict = null; }
+    }
+
+    const keyword = verdict?.keyword || fallbackKeyword(String(product.title || '')) || 'product';
+    const campaign = verdict && verdict.campaign >= 0 ? campaigns[verdict.campaign] : null;
+
+    const currencyPair = campaign?.currency_pair?.trim() || creds.currency_pair || 'USD_ILS';
+    const rate = await this.rates.getRate(currencyPair);
+    const parts = this.priceParts(product, rate);
+    const affiliateUrl = await this.getAffiliateLink(product.product_id, creds);
+
+    const platforms = this.parseTargetPlatforms(campaign?.target_platforms);
+    const pinterestOnly = !!platforms && platforms.size === 1 && platforms.has('pinterest');
+    const template = campaign?.post_template?.trim()
+      || (pinterestOnly ? '' : await this.getBodyText(userId, creds));
+    const text = await this.generateText(
+      product, campaign?.language || 'he', rate, creds, template || undefined, parts.localOverride,
+      undefined, undefined, false,
+      { currencyPair, style: pinterestOnly ? 'pinterest' : undefined },
+    );
+
+    const targets = campaign ? this.parseTargetChannels(campaign.target_channels) : [];
+    // Slot the post into the target group's pacing (manual intake takes the next free
+    // slot — never dropped); no campaign → the standard queue drip on the default channel.
+    let scheduledAt: Date | null = null;
+    if (campaign && targets.length && (!platforms || platforms.has('telegram'))) {
+      const { slot } = await this.nextGroupSlot(userId, targets[0], new Date(), campaign.id, null);
+      scheduledAt = slot;
+    } else if (campaign) {
+      scheduledAt = new Date();
+    }
+
+    const post = this.repo.create({
+      user_id: userId,
+      campaign_id: campaign?.id || null,
+      product_id: product.product_id,
+      product_title: product.title,
+      product_image: product.image_url,
+      affiliate_url: affiliateUrl,
+      original_price_usd: parts.origUsd,
+      sale_price_usd: parts.saleUsd,
+      price_ils: parts.priceIls,
+      generated_text: text,
+      keyword,
+      status: scheduledAt ? 'scheduled' : 'queued',
+      scheduled_at: scheduledAt,
+    } as Partial<Post>);
+    if (targets.length) this.applyChannels(post as Post, targets);
+    if (!scheduledAt) {
+      const maxOrder = await this.repo.createQueryBuilder('p')
+        .select('MAX(p.queue_order)', 'maxOrder')
+        .where('p.user_id = :userId AND p.status = :status', { userId, status: 'queued' })
+        .getRawOne();
+      (post as Post).queue_order = (maxOrder?.maxOrder ?? -1) + 1;
+    }
+    const saved = await this.repo.save(post);
+
+    // File the keyword into the campaign's rotation — manual intent also un-retires it.
+    let keywordAdded = false;
+    if (campaign && !(campaign.keywords || []).includes(keyword)) {
+      campaign.keywords = [...(campaign.keywords || []), keyword];
+      campaign.retired_keywords = (campaign.retired_keywords || []).filter((k) => k !== keyword);
+      await this.campaignRepo.save(campaign).catch(() => {});
+      keywordAdded = true;
+    }
+    if (campaign) {
+      await this.postedRepo.query(
+        `INSERT INTO campaign_posted_products (campaign_id, product_id, keyword, created_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (campaign_id, product_id) DO UPDATE SET created_at = now(), keyword = EXCLUDED.keyword`,
+        [campaign.id, String(product.product_id), keyword],
+      ).catch(() => {});
+    }
+
+    return {
+      post_id: (saved as Post).id,
+      keyword,
+      campaign_name: campaign?.name || null,
+      keyword_added: keywordAdded,
+      scheduled_at: scheduledAt,
+      note: campaign
+        ? (verdict?.reason || 'שויך לפי התאמת קהל')
+        : 'לא נמצא טייס מתאים — הפוסט נכנס לתור של ערוץ ברירת המחדל',
+    };
+  }
+
   async importCustomPosts(
     userId: string,
     rows: ImportRowInput[],

@@ -971,6 +971,80 @@ function RepublishModal({ post, channels, onClose, onDone }: {
   );
 }
 
+// ─── Smart link intake: paste a product URL → keyword + campaign + scheduled post ─
+function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<Awaited<ReturnType<typeof postsApi.smartIntake>> | null>(null);
+
+  const submit = async () => {
+    setBusy(true); setError('');
+    try {
+      setResult(await postsApi.smartIntake(url));
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'הקליטה נכשלה');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative bg-surface-secondary border border-edge rounded-2xl w-full max-w-md p-6" dir="rtl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-semibold text-white flex items-center gap-2"><Wand2 size={15} className="text-teal-400" /> קליטה חכמה מקישור</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/60"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-white/40 mb-4">
+          הדבק קישור מוצר מ-AliExpress — המערכת תזהה את המוצר, תיצור מילת מפתח, תשייך לטייס
+          המתאים לפי הקהל, ותתזמן פוסט דרך ההגדרות שלו. המילה מצטרפת לרוטציה של הטייס.
+        </p>
+
+        {!result && (
+          <>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} dir="ltr"
+              placeholder="https://he.aliexpress.com/item/... או s.click.aliexpress.com/..."
+              className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-teal-500/50 mb-3" />
+            {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+            <button onClick={submit} disabled={busy || !url.trim()}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+              {busy ? 'מזהה, שופט ומתזמן…' : 'נתח ותזמן'}
+            </button>
+          </>
+        )}
+
+        {result && (
+          <div className="space-y-2.5">
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 space-y-1.5">
+              <p className="text-sm text-emerald-300 font-medium">✓ הפוסט נוצר</p>
+              <p className="text-xs text-white/70">
+                טייס: <b>{result.campaign_name || 'ערוץ ברירת המחדל'}</b>
+                {result.note ? <span className="text-white/40"> — {result.note}</span> : null}
+              </p>
+              <p className="text-xs text-white/70">
+                מילת מפתח: <b dir="ltr">{result.keyword}</b>
+                {result.keyword_added && <span className="text-teal-300"> (נוספה לרוטציה של הטייס)</span>}
+              </p>
+              {result.scheduled_at && (
+                <p className="text-xs text-white/70">
+                  מתוזמן ל: <b>{new Date(result.scheduled_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}</b>
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setResult(null); setUrl(''); }}
+                className="flex-1 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm">קישור נוסף</button>
+              <button onClick={onDone}
+                className="flex-1 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium">סגור</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Push-to-platform modal (back-fill: send to a platform/group, no re-charge) ─
 function PushModal({ post, channels, onClose, onDone }: {
   post: Post; channels: Channel[]; onClose: () => void; onDone: () => void;
@@ -1123,6 +1197,7 @@ export default function PostsPage() {
   const [republishingPost, setRepublishingPost] = useState<Post | null>(null);
   const [pushingPost, setPushingPost] = useState<Post | null>(null);
   const [importing, setImporting] = useState(false);
+  const [intaking, setIntaking] = useState(false);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -1137,6 +1212,11 @@ export default function PostsPage() {
           <h1 className="text-2xl font-bold text-white">ניהול פוסטים</h1>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setIntaking(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-teal-600/15 hover:bg-teal-600/25 border border-teal-500/30 text-teal-300 text-sm rounded-xl transition-all">
+            <Wand2 size={13} />
+            קליטה מקישור
+          </button>
           <button onClick={() => setImporting(true)}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-sm rounded-xl transition-all">
             <Upload size={13} />
@@ -1303,6 +1383,13 @@ export default function PostsPage() {
           channels={channels}
           onClose={() => setRepublishingPost(null)}
           onDone={() => { setRepublishingPost(null); load({ silent: true }); }}
+        />
+      )}
+
+      {intaking && (
+        <SmartIntakeModal
+          onClose={() => setIntaking(false)}
+          onDone={() => { setIntaking(false); load({ silent: true }); }}
         />
       )}
 

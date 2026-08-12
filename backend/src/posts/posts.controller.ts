@@ -107,6 +107,17 @@ export class PostsController {
   }
 
   /** Re-publish a post through the queue (no time) or schedule it (with time). */
+  /**
+   * Smart link intake: paste a product URL → keyword + best-fitting campaign + a post
+   * scheduled through that campaign's routing. AI_TIMEOUT-scale work (link resolution,
+   * product fetch, judge, copywriting) — the client sets its timeout accordingly.
+   */
+  @Post('smart-intake')
+  @HttpCode(200)
+  smartIntake(@Req() req: Request, @Body('url') url: string) {
+    return this.svc.smartIntake(this.uid(req), url);
+  }
+
   @Post(':id/requeue')
   @HttpCode(200)
   requeue(
