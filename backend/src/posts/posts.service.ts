@@ -24,6 +24,7 @@ import { hotHours } from '../optimizer/hot-hours';
 import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
 import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { pinImageUrl } from './pin-frame';
 import { tidyRtlBody } from './rtl';
 import { Template } from '../templates/template.entity';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -4266,6 +4267,20 @@ export class PostsService {
       }
     }
 
+    // The DESIGNED pin: letterbox the product photo onto a 2:3 canvas with a title band
+    // and price tag (pin-frame.ts explains why this matters in Pinterest's feed). Only
+    // when the image host is allowlisted and a public BACKEND_URL exists — otherwise the
+    // raw photo publishes as before, and a broken frame endpoint degrades to the original
+    // by itself, so this can never cost a pin.
+    try {
+      const frameBase = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+      const frameTarget = unwrapOwnProxy(image);
+      if (frameBase && isIgFittableHost(new URL(frameTarget).hostname)) {
+        const priceLabel = await this.pinPriceLabel(post, creds);
+        image = pinImageUrl(frameBase, frameTarget, title, priceLabel);
+      }
+    } catch { /* unparsable image URL → publish it raw, exactly as before */ }
+
     const res = await axios.post(
       `${apiBase}/v5/pins`,
       {
@@ -4296,6 +4311,22 @@ export class PostsService {
       throw new Error(res.data?.message || res.data?.error?.message || `Pinterest publish failed (${res.status})`);
     }
     post.pinterest_post_id = res.data.id;
+  }
+
+  /**
+   * The price sticker for a pin frame, in the post's OWN currency — the campaign's
+   * override when it has one (a USD Pinterest campaign shows "$6.40"), else the account
+   * default. Empty when the post has no usable price: a "$0.00" sticker reads as broken.
+   */
+  private async pinPriceLabel(post: Post, creds: DecryptedCredentials): Promise<string> {
+    const amount = Number(post.price_ils);
+    if (!(amount > 0)) return '';
+    let pair = creds?.currency_pair || 'USD_ILS';
+    if (post.campaign_id) {
+      const campaign = await this.campaignRepo.findOne({ where: { id: post.campaign_id } }).catch(() => null);
+      if (campaign?.currency_pair?.trim()) pair = campaign.currency_pair.trim();
+    }
+    return `${currencySymbol(pair)}${amount.toFixed(2)}`;
   }
 
   /**

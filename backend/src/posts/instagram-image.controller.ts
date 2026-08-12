@@ -2,6 +2,7 @@ import { BadRequestException, Controller, Get, Logger, Param, Query, Res } from 
 import { Response } from 'express';
 import axios from 'axios';
 import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { buildPinOverlaySvg, PIN_H, PIN_IMAGE_H, PIN_W } from './pin-frame';
 // sharp's runtime is CommonJS (module.exports = sharp) but its types use `export default`,
 // and this tsconfig has NO esModuleInterop — so `import sharp from 'sharp'` compiles to
 // `sharp_1.default`, which is UNDEFINED at runtime. Every sharp() call here then threw
@@ -75,6 +76,57 @@ export class InstagramImageController {
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(out);
+  }
+
+  /**
+   * The DESIGNED Pinterest pin: the product photo letterboxed onto a 2:3 canvas with a
+   * title band and price tag (see pin-frame.ts for why). Pinterest ingests pins by URL,
+   * so the composed frame has to be publicly fetchable — this is that URL. PUBLIC and
+   * SSRF-contained exactly like ig-image below: strict host allowlist, no redirects,
+   * size cap.
+   */
+  @Get('pin-image')
+  async pinImage(
+    @Query('src') src: string,
+    @Query('title') title: string,
+    @Query('price') price: string,
+    @Res() res: Response,
+  ) {
+    const target = unwrapOwnProxy(String(src || ''));
+    let host = '';
+    try { host = new URL(target).hostname; } catch { throw new BadRequestException('bad url'); }
+    if (!isIgFittableHost(host)) throw new BadRequestException('forbidden host');
+
+    const upstream = await axios.get(target, {
+      responseType: 'arraybuffer',
+      maxRedirects: 0,
+      headers: igFetchHeaders(host),
+      timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
+    });
+    if (upstream.status !== 200) { res.status(502).send('image unavailable'); return; }
+
+    const buf = Buffer.from(upstream.data);
+    try {
+      const photo = await sharp(buf)
+        .resize(PIN_W, PIN_IMAGE_H, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+        .toBuffer();
+      const overlay = Buffer.from(buildPinOverlaySvg(String(title || ''), String(price || '')));
+      const framed = await sharp({
+        create: { width: PIN_W, height: PIN_H, channels: 3, background: { r: 255, g: 255, b: 255 } },
+      })
+        .composite([{ input: photo, top: 0, left: 0 }, { input: overlay, top: 0, left: 0 }])
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+      res.send(framed);
+    } catch (e: any) {
+      // A broken compose must not cost the pin — serve the original photo and let the
+      // publish proceed unframed. But LOG (the swallowed-sharp lesson, twice over).
+      this.logger.error(`pin-image compose failed (serving original): ${e?.message}`);
+      res.setHeader('Content-Type', String(upstream.headers['content-type'] || 'image/jpeg'));
+      res.send(buf);
+    }
   }
 
   @Get('ig-image')
