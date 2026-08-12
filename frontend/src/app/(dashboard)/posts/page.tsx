@@ -1240,14 +1240,16 @@ export default function PostsPage() {
         </div>
       </div>
 
-      {/* Filters: status + product source */}
+      {/* Filters: status + product source. Each pill row is wider than a phone screen, so
+          every row scrolls horizontally on its own (max-w-full + overflow-x-auto) — without
+          it the trailing pills were simply cut off on mobile with no way to reach them. */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit">
+        <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit max-w-full overflow-x-auto">
           {STATUS_TABS.map((t) => (
             <button
               key={t.value}
               onClick={() => { setStatus(t.value); setPage(1); }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0 whitespace-nowrap
                 ${status === t.value
                   ? t.value === 'queued'
                     ? 'bg-amber-500/15 text-amber-400'
@@ -1263,7 +1265,7 @@ export default function PostsPage() {
 
         {/* Product source */}
         {!isQueueTab && (
-          <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit">
+          <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit max-w-full overflow-x-auto">
             {([
               { v: '' as const, l: 'כל המקורות' },
               { v: 'aliexpress' as const, l: 'AliExpress', cls: 'bg-orange-500/15 text-orange-300' },
@@ -1272,7 +1274,7 @@ export default function PostsPage() {
               <button
                 key={s.v}
                 onClick={() => { setSource(s.v); setPage(1); }}
-                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all
+                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all shrink-0 whitespace-nowrap
                   ${source === s.v ? (s.cls || 'bg-blue-600/20 text-blue-400') : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}
               >
                 {s.l}
@@ -1283,12 +1285,12 @@ export default function PostsPage() {
 
         {/* Publishing platform */}
         {!isQueueTab && (
-          <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit">
+          <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 w-fit max-w-full overflow-x-auto">
             {PLATFORM_TABS.map((s) => (
               <button
                 key={s.v}
                 onClick={() => { setPlatform(s.v); setPage(1); }}
-                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all
+                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all shrink-0 whitespace-nowrap
                   ${platform === s.v ? (s.cls || 'bg-blue-600/20 text-blue-400') : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}
               >
                 {s.l}
