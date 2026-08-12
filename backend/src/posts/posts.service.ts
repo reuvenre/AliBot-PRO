@@ -4210,14 +4210,25 @@ export class PostsService {
     // run skips both: its portal token carries every open scope, and the tier gate is
     // exactly what the sandbox exists to sidestep.
     let token: string | null;
-    if (sandbox && process.env.PINTEREST_SANDBOX_TOKEN?.trim()) {
-      token = process.env.PINTEREST_SANDBOX_TOKEN.trim();
+    let boardId = creds?.pinterest_board_id;
+    if (sandbox) {
+      token = process.env.PINTEREST_SANDBOX_TOKEN?.trim() || null;
+      if (!token) {
+        throw new Error(
+          'מצב סנדבוקס פעיל (PINTEREST_API_BASE) אבל PINTEREST_SANDBOX_TOKEN חסר — '
+          + 'צור טוקן בפורטל (Configure ← Generate Access Token ← Sandbox) והוסף אותו ב-Render.',
+        );
+      }
+      // The sandbox is a SEPARATE universe: the production board id does not exist there,
+      // so pinning to it would 404 even with a valid sandbox token. Use the sandbox's own
+      // first board, creating one when the environment is empty — this makes the demo
+      // recording a pure two-env-vars affair with nothing else to prepare.
+      boardId = await this.sandboxBoardId(apiBase, token);
     } else {
       const live = await this.pinterest.publishToken(post.user_id);
       if (live.blockedReason) throw new Error(live.blockedReason);
       token = live.token;
     }
-    const boardId = creds?.pinterest_board_id;
     if (!token || !boardId) throw new Error('Missing Pinterest credentials');
 
     // First gallery image, else the main product image.
@@ -4285,6 +4296,33 @@ export class PostsService {
       throw new Error(res.data?.message || res.data?.error?.message || `Pinterest publish failed (${res.status})`);
     }
     post.pinterest_post_id = res.data.id;
+  }
+
+  /**
+   * The sandbox environment's own board to pin to — its first existing board, or a fresh
+   * "Nexlify Demo" one when the environment is empty. Sandbox-only (see sendToPinterest);
+   * a 401 here names the actual problem instead of the generic "Authentication failed".
+   */
+  private async sandboxBoardId(apiBase: string, token: string): Promise<string> {
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const list = await axios.get(`${apiBase}/v5/boards`, {
+      headers, params: { page_size: 1 }, timeout: 10_000, validateStatus: () => true,
+    });
+    if (list.status === 401 || list.status === 403) {
+      throw new Error(
+        `הסנדבוקס דחה את הטוקן (${list.status}) — ודא ש-PINTEREST_SANDBOX_TOKEN נוצר `
+        + 'בפורטל עם סביבת "Sandbox" (לא Production) ושהוא הודבק במלואו.',
+      );
+    }
+    const existing = list.data?.items?.[0]?.id;
+    if (existing) return String(existing);
+    const created = await axios.post(`${apiBase}/v5/boards`,
+      { name: 'Nexlify Demo' },
+      { headers, timeout: 10_000, validateStatus: () => true });
+    if (!created.data?.id) {
+      throw new Error(`יצירת לוח סנדבוקס נכשלה (${created.status}): ${created.data?.message || ''}`);
+    }
+    return String(created.data.id);
   }
 
   /** Normalize a WhatsApp target into a chatId. A value already carrying '@' is used as-is;
