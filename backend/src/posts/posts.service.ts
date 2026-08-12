@@ -4445,6 +4445,7 @@ export class PostsService {
     // when the image host is allowlisted and a public BACKEND_URL exists — otherwise the
     // raw photo publishes as before, and a broken frame endpoint degrades to the original
     // by itself, so this can never cost a pin.
+    const rawImage = image;
     try {
       const frameBase = (process.env.BACKEND_URL || '').replace(/\/$/, '');
       const frameTarget = unwrapOwnProxy(image);
@@ -4454,14 +4455,14 @@ export class PostsService {
       }
     } catch { /* unparsable image URL → publish it raw, exactly as before */ }
 
-    const res = await axios.post(
+    const createPin = (img: string) => axios.post(
       `${apiBase}/v5/pins`,
       {
         board_id: boardId,
         title,
         description,
         link: post.affiliate_url || undefined,
-        media_source: { source_type: 'image_url', url: image },
+        media_source: { source_type: 'image_url', url: img },
       },
       {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -4469,6 +4470,27 @@ export class PostsService {
         validateStatus: () => true,
       },
     );
+    // "Sorry! Something went wrong on our end." is Pinterest's own 5xx — seen in the wild
+    // right after an access-tier upgrade, before the new tier propagates everywhere. Retry
+    // once; if it STILL fails and the pin was framed, try once more with the raw product
+    // image — that isolates our frame endpoint as a cause (Pinterest fetches the image
+    // from us, and a fetch it dislikes reports as this same vague sentence). A pin that
+    // succeeds raw loses the frame, not the post — and tells the logs exactly which half
+    // was at fault.
+    const theirEnd = (r: any) => r.status >= 500
+      || /something went wrong/i.test(String(r.data?.message || ''));
+    let res = await createPin(image);
+    if (theirEnd(res)) {
+      await new Promise((r) => setTimeout(r, 2500));
+      res = await createPin(image);
+    }
+    if (theirEnd(res) && image !== rawImage) {
+      this.logger.warn(`pinterest 5xx with framed image — retrying pin ${post.id} with the raw product image`);
+      res = await createPin(rawImage);
+      if (!theirEnd(res) && res.data?.id) {
+        this.logger.warn(`pin ${post.id} succeeded RAW after failing framed — inspect /posts/pin-image`);
+      }
+    }
     // A permission refusal reaches the owner as a Pinterest sentence about scopes, which
     // reads like something to fix in our settings — it isn't. Replace it with the remedy,
     // and include what the grant actually holds: a refusal DESPITE a granted pins:write is
