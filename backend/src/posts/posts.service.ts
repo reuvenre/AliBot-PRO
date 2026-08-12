@@ -23,8 +23,8 @@ import { PRODUCT_FIT_SYSTEM, ProductFitContext, ProductFitItem, ProductFitVerdic
 import { hotHours } from '../optimizer/hot-hours';
 import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
-import { isIgFittableHost, unwrapOwnProxy } from './instagram-image';
-import { pinImageUrl } from './pin-frame';
+import { igFetchHeaders, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { composePinFrame } from './pin-frame-compose';
 import {
   buildSmartIntakePrompt, fallbackKeyword, parseIntakeVerdict,
   IntakeCampaignProfile, IntakeVerdict, SMART_INTAKE_SYSTEM,
@@ -2952,6 +2952,31 @@ export class PostsService {
     this.enhancedFrames.set(postId, { buf: media.buffers[0], at: now });
   }
 
+  // Pinterest pin frames get their own store: Pinterest validates the image URL AT pin
+  // creation with an impatient fetcher, so the frame is composed BEFORE the create call
+  // and served from memory — a millisecond read instead of an on-the-fly compose that
+  // timed their fetcher out (which failed the whole create with Pinterest's vague
+  // "Sorry! Something went wrong on our end.").
+  private readonly pinFrames = new Map<string, { buf: Buffer; at: number }>();
+
+  registerPinFrame(postId: string, buf: Buffer): void {
+    const now = Date.now();
+    for (const [k, v] of this.pinFrames) {
+      if (now - v.at > PostsService.ENHANCED_FRAME_TTL_MS) this.pinFrames.delete(k);
+    }
+    this.pinFrames.set(postId, { buf, at: now });
+  }
+
+  getPinFrame(postId: string): Buffer | null {
+    const entry = this.pinFrames.get(String(postId || ''));
+    if (!entry) return null;
+    if (Date.now() - entry.at > PostsService.ENHANCED_FRAME_TTL_MS) {
+      this.pinFrames.delete(String(postId));
+      return null;
+    }
+    return entry.buf;
+  }
+
   /** The frame bytes for the public /posts/enhanced/:id endpoint; null once expired. */
   getEnhancedFrame(postId: string): Buffer | null {
     const key = String(postId || '');
@@ -4441,19 +4466,33 @@ export class PostsService {
     }
 
     // The DESIGNED pin: letterbox the product photo onto a 2:3 canvas with a title band
-    // and price tag (pin-frame.ts explains why this matters in Pinterest's feed). Only
-    // when the image host is allowlisted and a public BACKEND_URL exists — otherwise the
-    // raw photo publishes as before, and a broken frame endpoint degrades to the original
-    // by itself, so this can never cost a pin.
+    // and price tag (pin-frame.ts explains why this matters in Pinterest's feed).
+    // PRE-COMPOSED and served from memory: Pinterest validates the image URL at create
+    // time with an impatient fetcher, and pointing it at the on-the-fly compose endpoint
+    // timed out and failed the create with "Sorry! Something went wrong on our end." —
+    // the raw-image fallback below saved those pins, unframed. Any failure here keeps the
+    // raw photo, so the frame can never cost a pin.
     const rawImage = image;
     try {
       const frameBase = (process.env.BACKEND_URL || '').replace(/\/$/, '');
       const frameTarget = unwrapOwnProxy(image);
-      if (frameBase && isIgFittableHost(new URL(frameTarget).hostname)) {
-        const priceLabel = await this.pinPriceLabel(post, creds);
-        image = pinImageUrl(frameBase, frameTarget, title, priceLabel);
+      const frameHost = new URL(frameTarget).hostname;
+      if (frameBase && isIgFittableHost(frameHost)) {
+        const upstream = await axios.get(frameTarget, {
+          responseType: 'arraybuffer', maxRedirects: 0, headers: igFetchHeaders(frameHost),
+          timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
+        });
+        if (upstream.status === 200) {
+          const priceLabel = await this.pinPriceLabel(post, creds);
+          const framed = await composePinFrame(Buffer.from(upstream.data), title, priceLabel);
+          this.registerPinFrame(post.id, framed);
+          image = `${frameBase}/posts/pin-frame/${post.id}`;
+        }
       }
-    } catch { /* unparsable image URL → publish it raw, exactly as before */ }
+    } catch (e: any) {
+      this.logger.warn(`pin frame pre-compose failed for ${post.id} (publishing raw): ${e?.message}`);
+      image = rawImage;
+    }
 
     const createPin = (img: string) => axios.post(
       `${apiBase}/v5/pins`,

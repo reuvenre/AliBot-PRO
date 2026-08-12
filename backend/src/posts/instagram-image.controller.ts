@@ -79,11 +79,32 @@ export class InstagramImageController {
   }
 
   /**
+   * A post's PRE-COMPOSED pin frame, from memory (see registerPinFrame in the service —
+   * Pinterest's create-time fetcher is too impatient for an on-the-fly compose). Expired
+   * or lost to a restart → redirect to the post's original image: the pin loses its
+   * frame, never its publish.
+   */
+  @Get('pin-frame/:id')
+  async pinFrame(@Param('id') id: string, @Res() res: Response) {
+    const buf = this.posts.getPinFrame(id);
+    if (!buf) {
+      const src = await this.posts.postImageForFrame(id).catch(() => null);
+      if (src) { res.redirect(302, src); return; }
+      res.status(404).send('frame expired');
+      return;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    res.send(buf);
+  }
+
+  /**
    * The DESIGNED Pinterest pin: the product photo letterboxed onto a 2:3 canvas with a
    * title band and price tag (see pin-frame.ts for why). Pinterest ingests pins by URL,
    * so the composed frame has to be publicly fetchable — this is that URL. PUBLIC and
    * SSRF-contained exactly like ig-image below: strict host allowlist, no redirects,
-   * size cap.
+   * size cap. (The publisher itself now pre-composes instead — this stays for direct
+   * inspection and as a manual preview.)
    */
   @Get('pin-image')
   async pinImage(
