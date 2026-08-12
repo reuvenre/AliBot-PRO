@@ -235,13 +235,22 @@ export class EarningsService {
       .filter((e) => e.status === 'cancelled')
       .reduce((s, e) => s + e.commission_ils, 0);
 
-    // By campaign
+    // By campaign. The name is RESOLVED, not defaulted to the id — this map used to stamp
+    // campaign_name with the raw UUID and never look the name up, so the reports screen
+    // showed "a932-dffadd51186b…" where the owner expected "קמפיין Pinterest".
     const campaignMap = new Map<string, { campaign_id: string; campaign_name: string; total: number }>();
     for (const e of earnings) {
       if (!e.campaign_id) continue;
-      const existing = campaignMap.get(e.campaign_id) || { campaign_id: e.campaign_id, campaign_name: e.campaign_id, total: 0 };
+      const existing = campaignMap.get(e.campaign_id) || { campaign_id: e.campaign_id, campaign_name: '', total: 0 };
       existing.total += e.commission_ils;
       campaignMap.set(e.campaign_id, existing);
+    }
+    const byCampaign = Array.from(campaignMap.values()).sort((a, b) => b.total - a.total);
+    if (byCampaign.length) {
+      const named = await this.campaignsRepo.findByIds(byCampaign.map((c) => c.campaign_id))
+        .catch(() => [] as Campaign[]);
+      const nameOf = new Map<string, string>(named.map((c) => [c.id, c.name]));
+      for (const c of byCampaign) c.campaign_name = nameOf.get(c.campaign_id) || 'קמפיין שנמחק';
     }
 
     // By month
@@ -260,7 +269,7 @@ export class EarningsService {
       total_cancelled,
       period_start: from?.toISOString() || '2020-01-01T00:00:00.000Z',
       period_end: new Date().toISOString(),
-      by_campaign: Array.from(campaignMap.values()),
+      by_campaign: byCampaign,
       by_month: Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month)),
     };
   }
