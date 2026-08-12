@@ -4316,8 +4316,12 @@ export class PostsService {
     }
     const existing = list.data?.items?.[0]?.id;
     if (existing) return String(existing);
+    // The sandbox supports only a subset of endpoints, and listing boards is not reliably
+    // one of them — a board created a minute ago can be invisible to GET while POST still
+    // knows its name is taken ("Try a different name!"). So every creation uses a unique
+    // name; sandbox boards are throwaway and nobody ever sees them.
     const created = await axios.post(`${apiBase}/v5/boards`,
-      { name: 'Nexlify Demo' },
+      { name: `Nexlify Demo ${Date.now().toString().slice(-6)}` },
       { headers, timeout: 10_000, validateStatus: () => true });
     if (!created.data?.id) {
       throw new Error(`יצירת לוח סנדבוקס נכשלה (${created.status}): ${created.data?.message || ''}`);
