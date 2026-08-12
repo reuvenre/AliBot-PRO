@@ -553,8 +553,10 @@ export const postsApi = {
   retryFailed: (id: string) => http.post<Post>(`/posts/${id}/retry-failed`, {}, { timeout: AI_TIMEOUT }).then(extract),
 
   /** Re-publish a post via the queue (no time) or schedule it (with scheduled_at). */
-  requeue: (id: string, scheduledAt?: string) =>
-    http.post<Post>(`/posts/${id}/requeue`, { scheduled_at: scheduledAt }).then(extract),
+  requeue: (id: string, scheduledAt?: string, channels?: string[], platforms?: PushPlatform[]) =>
+    http.post<Post>(`/posts/${id}/requeue`, {
+      scheduled_at: scheduledAt, channels, platforms,
+    }).then(extract),
 
   /** Push an existing post to chosen platform(s) + group(s) — no re-charge, no duplicates. */
   push: (id: string, platforms: PushPlatform[], channels?: string[]) =>

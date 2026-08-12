@@ -1320,6 +1320,10 @@ export class PostsService {
     // filtered to Instagram/Pinterest carries channel_override only for targeting —
     // it must NOT compete for the group's one-per-interval Telegram slot.
     const publishesTelegram = async (p: Post): Promise<boolean> => {
+      // A post-level override outranks the campaign — and must dodge the campaign cache,
+      // or one overridden post would stamp its answer onto every sibling.
+      const own = this.parseTargetPlatforms(p.target_platforms);
+      if (own) return own.has('telegram');
       if (!p.campaign_id) return true;
       if (!tgCache.has(p.campaign_id)) {
         const only = await this.postPlatformFilter(p).catch(() => null);
@@ -3091,9 +3095,27 @@ export class PostsService {
    * with `scheduled_at` → scheduled for that time. Resets the publish state so it
    * sends fresh. Works identically for AliExpress and FLYLINK posts.
    */
-  async requeue(userId: string, postId: string, scheduledAt?: string): Promise<Post> {
+  async requeue(
+    userId: string, postId: string, scheduledAt?: string,
+    channels?: string[], platforms?: string[],
+  ): Promise<Post> {
     const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
     if (!post) throw new NotFoundException('פוסט לא נמצא');
+
+    // Retargeting, when the dialog sent a choice. `undefined` = the field wasn't offered
+    // (old clients) → inherit as always. An explicit EMPTY list means "back to default":
+    // no groups = the default channel, no platforms = campaign/account rules.
+    if (channels !== undefined) {
+      const uniq = Array.from(new Set((channels || [])
+        .map((c) => (typeof c === 'string' ? c.trim() : '')).filter(Boolean)));
+      post.channel_override = uniq[0] || null;
+      post.channel_overrides = uniq.length > 1 ? JSON.stringify(uniq) : null;
+    }
+    if (platforms !== undefined) {
+      const uniq = Array.from(new Set((platforms || [])
+        .map((p) => String(p).toLowerCase().trim()).filter(Boolean)));
+      post.target_platforms = uniq.length ? JSON.stringify(uniq) : null;
+    }
 
     post.error_message = null;
     post.sent_at = null;
@@ -3168,9 +3190,12 @@ export class PostsService {
     }
   }
 
-  /** The platform filter for a post: its campaign's target_platforms, or null for
-   *  non-campaign posts / campaigns without an explicit platform choice. */
+  /** The platform filter for a post: its OWN override first (set by the republish
+   *  dialog), then its campaign's target_platforms, or null for everything else
+   *  (= the account-global publish toggles). */
   private async postPlatformFilter(post: Post): Promise<Set<string> | null> {
+    const own = this.parseTargetPlatforms(post.target_platforms);
+    if (own) return own;
     if (!post.campaign_id) return null;
     const campaign = await this.campaignRepo
       .findOne({ where: { id: post.campaign_id } })

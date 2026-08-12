@@ -628,6 +628,8 @@ export interface Post {
   channel_override?: string | null;
   /** JSON array of channel_ids when the post fans out to several groups at once. */
   channel_overrides?: string | null;
+  /** Per-post platform override (JSON array) — set by the republish dialog; null = inherit. */
+  target_platforms?: string | null;
   /** Pinned as the template FLYLINK re-posts clone for this product. */
   is_repost_source?: boolean;
   /** Trackable short-link code (/r/<code>) + cached click total. */

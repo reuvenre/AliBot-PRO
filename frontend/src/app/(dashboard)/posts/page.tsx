@@ -109,6 +109,15 @@ const PLATFORM_TABS = [
 
 type PlatformKey = Exclude<(typeof PLATFORM_TABS)[number]['v'], ''>;
 
+/** One platform list for every dialog that targets platforms (push, republish). */
+const REPUBLISH_PLATFORMS: { id: PushPlatform; label: string }[] = [
+  { id: 'telegram', label: '📨 טלגרם' },
+  { id: 'facebook', label: '📘 פייסבוק' },
+  { id: 'instagram', label: '📸 אינסטגרם' },
+  { id: 'pinterest', label: '📌 פינטרסט' },
+  { id: 'whatsapp', label: '💬 וואטסאפ' },
+];
+
 /** Platform labels for the click-source breakdown (the link's ?s= tag). */
 const CLICK_SOURCE_LABELS: Record<string, string> = {
   tg: 'טלגרם', fb: 'פייסבוק', ig: 'אינסטגרם', pin: 'פינטרסט', wa: 'וואטסאפ', other: 'לא מזוהה',
@@ -857,19 +866,37 @@ function EditPostModal({ post, onClose, onSaved }: {
 }
 
 // ─── Republish modal (re-queue or schedule; never immediate) ───────────────────
-function RepublishModal({ post, onClose, onDone }: {
-  post: Post; onClose: () => void; onDone: () => void;
+function RepublishModal({ post, channels, onClose, onDone }: {
+  post: Post; channels: Channel[]; onClose: () => void; onDone: () => void;
 }) {
   const [mode, setMode] = useState<'queue' | 'schedule'>('queue');
   const [scheduledAt, setScheduledAt] = useState(() => toLocalInput());
+  // Pre-filled with where the post went LAST time — republishing unchanged stays one
+  // click, and retargeting (the winner deserves the other group too / send this one to
+  // Pinterest) is a checkbox away instead of impossible.
+  const [groupIds, setGroupIds] = useState<string[]>(() => postTargetIds(post));
+  const [platforms, setPlatforms] = useState<PushPlatform[]>(() => {
+    try {
+      const arr = post.target_platforms ? JSON.parse(post.target_platforms) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<string | null>(null);
 
+  const togglePlatform = (p: PushPlatform) =>
+    setPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+
   const submit = async () => {
     setBusy(true); setError('');
     try {
-      await postsApi.requeue(post.id, mode === 'schedule' && scheduledAt ? new Date(scheduledAt).toISOString() : undefined);
+      await postsApi.requeue(
+        post.id,
+        mode === 'schedule' && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        groupIds,
+        platforms,
+      );
       setDone(mode === 'queue' ? 'נוסף לתור — יישלח בתור הבא' : 'תוזמן בהצלחה');
       setTimeout(onDone, 1100);
     } catch (e: any) { setError(e?.response?.data?.message || 'הפעולה נכשלה'); setBusy(false); }
@@ -902,6 +929,35 @@ function RepublishModal({ post, onClose, onDone }: {
           <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)}
             className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-violet-500/50 mb-4" dir="ltr" />
         )}
+
+        <div className="mb-3">
+          <label className="block text-xs text-white/50 mb-1.5">קבוצות יעד</label>
+          <GroupMultiSelect channels={channels} value={groupIds} onChange={setGroupIds} disabled={busy} />
+          <p className="text-2xs text-white/30 mt-1">ללא בחירה = ערוץ ברירת המחדל.</p>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs text-white/50 mb-1.5">פלטפורמות</label>
+          <div className="flex flex-wrap gap-2">
+            {REPUBLISH_PLATFORMS.map((p) => {
+              const on = platforms.includes(p.id);
+              return (
+                <button key={p.id} type="button" onClick={() => togglePlatform(p.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                    on ? 'bg-violet-600/20 border-violet-500/50 text-violet-200' : 'bg-white/5 border-edge-hover text-white/50 hover:text-white/80'
+                  }`}>
+                  <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${on ? 'bg-violet-500 border-violet-500' : 'border-white/30'}`}>
+                    {on && <Check size={10} className="text-on-accent" strokeWidth={3} />}
+                  </span>
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-2xs text-white/30 mt-1">
+            ללא בחירה = לפי הגדרות החשבון/הקמפיין (כמו בפרסום המקורי). בחירה מפרסמת <b>רק</b> למה שסימנת.
+          </p>
+        </div>
 
         {done && <p className="text-xs text-emerald-400 mb-3">✓ {done}</p>}
         {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
@@ -945,17 +1001,7 @@ function PushModal({ post, channels, onClose, onDone }: {
     }
   };
 
-  // Every platform the server's push endpoint handles. Pinterest and WhatsApp were
-  // supported there long before they appeared here, so back-filling a pin — the natural
-  // way to test a fresh Pinterest connection without waiting for the next campaign run —
-  // simply had no button.
-  const PLATFORMS: { id: PushPlatform; label: string }[] = [
-    { id: 'facebook', label: '📘 פייסבוק' },
-    { id: 'telegram', label: '📨 טלגרם' },
-    { id: 'instagram', label: '📸 אינסטגרם' },
-    { id: 'pinterest', label: '📌 פינטרסט' },
-    { id: 'whatsapp', label: '💬 וואטסאפ' },
-  ];
+  const PLATFORMS = REPUBLISH_PLATFORMS;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
@@ -1254,6 +1300,7 @@ export default function PostsPage() {
       {republishingPost && (
         <RepublishModal
           post={republishingPost}
+          channels={channels}
           onClose={() => setRepublishingPost(null)}
           onDone={() => { setRepublishingPost(null); load({ silent: true }); }}
         />

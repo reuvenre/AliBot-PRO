@@ -36,6 +36,14 @@ describe('platformFilterSql', () => {
     }
   });
 
+  it("honors a post's own platform override above its campaign's", () => {
+    // The republish dialog can retarget a single post; the screen filter must see that
+    // post where it is actually headed, not where its campaign would have sent it.
+    for (const key of PLATFORM_KEYS) {
+      expect(platformFilterSql(key)!.sql).toContain('p.target_platforms ILIKE :pfLike');
+    }
+  });
+
   it('is case- and whitespace-forgiving about the query string', () => {
     expect(platformFilterSql('  PINTEREST ')!.params.pfLike).toBe('%pinterest%');
   });

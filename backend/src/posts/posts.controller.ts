@@ -109,8 +109,14 @@ export class PostsController {
   /** Re-publish a post through the queue (no time) or schedule it (with time). */
   @Post(':id/requeue')
   @HttpCode(200)
-  requeue(@Req() req: Request, @Param('id') id: string, @Body('scheduled_at') scheduledAt?: string) {
-    return this.svc.requeue(this.uid(req), id, scheduledAt);
+  requeue(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body('scheduled_at') scheduledAt?: string,
+    @Body('channels') channels?: string[],
+    @Body('platforms') platforms?: string[],
+  ) {
+    return this.svc.requeue(this.uid(req), id, scheduledAt, channels, platforms);
   }
 
   /**

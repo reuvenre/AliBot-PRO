@@ -69,6 +69,14 @@ export class Post {
   @Column({ nullable: true })
   whatsapp_message_id: string;
 
+  /**
+   * Per-POST platform override (JSON array, e.g. '["pinterest"]') — set when the owner
+   * chose platforms in the republish dialog. NULL = inherit from the campaign's
+   * target_platforms / the account toggles, exactly as before this column existed.
+   */
+  @Column({ nullable: true })
+  target_platforms: string;
+
   /** Code for the trackable /r/<code> short link — minted at first publish. Clicks on it
    *  land in link_clicks and roll up into clicks_count. */
   @Column({ nullable: true, unique: true })

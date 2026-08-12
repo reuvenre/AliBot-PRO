@@ -42,9 +42,12 @@ export function platformFilterSql(platform: string | undefined): PlatformFilterS
   const marker = SENT_MARKER[key];
   if (!marker) return null;
 
+  // A post's OWN target_platforms (set by the republish dialog) outranks its campaign's;
+  // NULL falls through to the campaign / implicit-default logic unchanged.
   const headedThere = key === 'telegram'
-    ? "(p.campaign_id IS NULL OR c.target_platforms IS NULL OR c.target_platforms ILIKE :pfLike)"
-    : 'c.target_platforms ILIKE :pfLike';
+    ? '(p.target_platforms ILIKE :pfLike OR (p.target_platforms IS NULL'
+      + ' AND (p.campaign_id IS NULL OR c.target_platforms IS NULL OR c.target_platforms ILIKE :pfLike)))'
+    : '(p.target_platforms ILIKE :pfLike OR (p.target_platforms IS NULL AND c.target_platforms ILIKE :pfLike))';
 
   return {
     sql: `(p.${marker} IS NOT NULL OR (p.status IN (:...pfPending) AND ${headedThere}))`,
