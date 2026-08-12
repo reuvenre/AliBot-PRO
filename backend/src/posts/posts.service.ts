@@ -4194,11 +4194,29 @@ export class PostsService {
    * pins:write) and a target board id, both from Settings ← Integrations. Requires an image.
    */
   private async sendToPinterest(post: Post, creds: DecryptedCredentials, message: string, opts?: { titleFromMessage?: boolean }) {
+    // PINTEREST_API_BASE exists for ONE purpose: Pinterest's Standard-access review
+    // requires the demo video to show a pin actually created, and a Trial app can only
+    // do that against the sandbox host. The sandbox does NOT accept the production OAuth
+    // token — it 401s ("Authentication failed") — so sandbox runs use their own token,
+    // generated in the developer portal (Configure → Generate Access Token → Sandbox)
+    // and passed as PINTEREST_SANDBOX_TOKEN. Both vars are set for the recording and
+    // removed after; unset = production with the OAuth token, always.
+    const apiBase = (process.env.PINTEREST_API_BASE || 'https://api.pinterest.com').replace(/\/$/, '');
+    const sandbox = /sandbox/i.test(apiBase);
+
     // Ask PinterestService for the token rather than reading the stored one: it refreshes
     // when due, and it refuses up front when the grant is known to lack pins:write — the
-    // failure that killed the first pin, reported there as a raw API sentence.
-    const { token, blockedReason } = await this.pinterest.publishToken(post.user_id);
-    if (blockedReason) throw new Error(blockedReason);
+    // failure that killed the first pin, reported there as a raw API sentence. A sandbox
+    // run skips both: its portal token carries every open scope, and the tier gate is
+    // exactly what the sandbox exists to sidestep.
+    let token: string | null;
+    if (sandbox && process.env.PINTEREST_SANDBOX_TOKEN?.trim()) {
+      token = process.env.PINTEREST_SANDBOX_TOKEN.trim();
+    } else {
+      const live = await this.pinterest.publishToken(post.user_id);
+      if (live.blockedReason) throw new Error(live.blockedReason);
+      token = live.token;
+    }
     const boardId = creds?.pinterest_board_id;
     if (!token || !boardId) throw new Error('Missing Pinterest credentials');
 
@@ -4237,11 +4255,6 @@ export class PostsService {
       }
     }
 
-    // PINTEREST_API_BASE exists for ONE purpose: Pinterest's Standard-access review
-    // requires the demo video to show a pin actually created, and a Trial app can only
-    // do that against the sandbox host. Point it at https://api-sandbox.pinterest.com
-    // for the recording, then remove it. Unset = production, always.
-    const apiBase = (process.env.PINTEREST_API_BASE || 'https://api.pinterest.com').replace(/\/$/, '');
     const res = await axios.post(
       `${apiBase}/v5/pins`,
       {
