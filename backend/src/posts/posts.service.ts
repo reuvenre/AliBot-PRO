@@ -3606,10 +3606,26 @@ export class PostsService {
       }
     }
 
+    // Image-only platforms are SKIPPED for imageless posts instead of attempted: a
+    // text-only post (an import row whose enrichment never found the product) publishes
+    // fine to Telegram, but Instagram and Pinterest have nothing to show — the attempt
+    // was guaranteed to fail, and its error stamped an otherwise-good post "published
+    // partially", waking the watchdog nightly over something no fix can change.
+    let hasImage = !!post.product_image;
+    if (!hasImage) {
+      try {
+        const g = post.gallery_json ? JSON.parse(post.gallery_json) : [];
+        hasImage = Array.isArray(g) && !!g[0];
+      } catch { /* no gallery */ }
+    }
+    if (!hasImage && (wantInstagram || wantPinterest)) {
+      this.logger.log(`post ${post.id} has no image — Instagram/Pinterest skipped (image platforms)`);
+    }
+
     // Instagram: one account per post — the target group's own when it has one; the
     // account's global IG only for default/default-group posts (brand isolation — same
     // rule as Facebook). No qualifying target → IG is skipped for this post.
-    if (wantInstagram) {
+    if (wantInstagram && hasImage) {
       const ig = await this.instagramTargetFor(post.user_id, targets, creds);
       if (ig) {
         const body = await this.buildPostBody(post, creds, ig.target);
@@ -3622,7 +3638,7 @@ export class PostsService {
     }
 
     // Pinterest: a single board (no per-group fan-out). The Pin's link is the affiliate URL.
-    if (wantPinterest) {
+    if (wantPinterest && hasImage) {
       // A DEDICATED Pinterest campaign pins the generated text alone — the account
       // footer/coupon lines are group-channel copy (usually Hebrew CTAs) that would
       // pollute a keyword-optimized pin description. Mixed-platform posts keep the
