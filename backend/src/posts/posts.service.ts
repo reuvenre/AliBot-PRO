@@ -1184,6 +1184,27 @@ export class PostsService {
     return this.repo.save(post);
   }
 
+  /** The latest future-booked time on a group across ALL campaigns and manual posts —
+   *  what a deliberate queue addition (smart intake) must chain behind. */
+  private async furthestGroupBooking(userId: string, groupId: string): Promise<Date | null> {
+    const row = await this.repo.createQueryBuilder('p')
+      .select('MAX(COALESCE(p.scheduled_at, p.pending_at))', 'max')
+      .where('p.user_id = :userId', { userId })
+      .andWhere("p.status IN ('scheduled','queued','pending')")
+      .andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)', { g: groupId, like: `%"${groupId}"%` })
+      .getRawOne()
+      .catch(() => null);
+    return row?.max ? new Date(row.max) : null;
+  }
+
+  /** Where an intake post starts looking for a slot: one interval after the group's
+   *  furthest FUTURE booking, or now when the calendar ahead is clear. Pure for tests. */
+  static intakeNotBefore(furthest: Date | null, intervalMin: number, nowMs: number): Date {
+    return furthest && furthest.getTime() > nowMs
+      ? new Date(furthest.getTime() + intervalMin * 60_000)
+      : new Date(nowMs);
+  }
+
   /**
    * Follow an AliExpress short link (s.click.aliexpress.com/e/…) server-side until a
    * product id appears in the URL. Redirects are followed manually, at most 6 hops, and
@@ -1315,7 +1336,16 @@ export class PostsService {
     // slot — never dropped); no campaign → the standard queue drip on the default channel.
     let scheduledAt: Date | null = null;
     if (campaign && targets.length && (!platforms || platforms.has('telegram'))) {
-      const { slot } = await this.nextGroupSlot(userId, targets[0], new Date(), campaign.id, null);
+      // Chain behind the group's FURTHEST existing booking. The pacing horizon (rightly)
+      // ignores bookings beyond one interval — but the slot query also sees only the MAX
+      // pending per campaign, so once intake #2 booked an hour out, intake #1's nearer slot
+      // was shadowed, the group looked free, and every further pasted product stacked onto
+      // the same minute (observed: eight links, one 15:04). Intake posts are deliberate
+      // queue additions — each starts looking one interval after the last one booked.
+      const intervalMin = (await this.channels.getIntervalMinutes(userId, targets[0]).catch(() => null)) ?? 60;
+      const furthest = await this.furthestGroupBooking(userId, targets[0]);
+      const notBefore = PostsService.intakeNotBefore(furthest, intervalMin, Date.now());
+      const { slot } = await this.nextGroupSlot(userId, targets[0], notBefore, campaign.id, null);
       scheduledAt = slot;
     } else if (campaign) {
       scheduledAt = new Date();
