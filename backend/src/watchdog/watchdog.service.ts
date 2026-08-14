@@ -521,6 +521,24 @@ export class WatchdogService implements OnModuleInit {
         reasons.push(`פילטרים מחמירים (דירוג≥${c.min_rating ?? 0}, הנחה≥${c.min_discount ?? 0}%)`);
       }
 
+      // (e) The runner's OWN record of what its last run did — "0 פוסטים · <errors>" is
+      //     written on every run precisely for this alert, but the check never read it.
+      //     Product-selection coming up empty and per-product generation failures leave
+      //     NO failed post rows (they are run errors, not post rows), so without this
+      //     line the alert shipped with no reason at all (issue #47).
+      if (c.last_run_note) {
+        reasons.push(`ההרצה האחרונה: ${String(c.last_run_note).slice(0, 220)}`);
+      }
+
+      // (f) "Runs but produces nothing" and "the cron never fires it" are different
+      //     faults with different fixes — say which one this is.
+      const lastRunMs = c.last_run_at ? new Date(c.last_run_at).getTime() : 0;
+      if (!lastRunMs) {
+        reasons.push('אין תיעוד הרצה — הקרון לא מפעיל את הקמפיין בכלל');
+      } else if (now - lastRunMs > 2 * 3600_000) {
+        reasons.push(`ההרצה האחרונה לפני ${Math.round((now - lastRunMs) / 3600_000)} שעות — הקרון לא מריץ את הקמפיין בקצב שהוגדר`);
+      }
+
       silentHits.push(`- "${c.name}" \`${c.id}\` · ${hrs} שעות פעילות (בתוך חלון השליחה) ללא פרסום${reasons.length ? `\n   └ ${reasons.join('\n   └ ')}` : ''}`);
       silentDetails.push(`"${c.name}" · ${hrs} שעות ללא פרסום${reasons.length ? ` — ${reasons[0]}` : ''}`);
     }
