@@ -1063,7 +1063,25 @@ export class PostsService {
     if (!post) throw new NotFoundException('פוסט לא נמצא');
     if (typeof dto.text === 'string') post.generated_text = dto.text;
     if (typeof dto.product_title === 'string') post.product_title = dto.product_title;
-    if (typeof dto.product_image === 'string' && dto.product_image.trim()) post.product_image = dto.product_image.trim();
+    if (typeof dto.product_image === 'string' && dto.product_image.trim()) {
+      const nextImage = dto.product_image.trim();
+      // A post with an album publishes the ALBUM — product_image is only the fallback
+      // (see prepareTelegramMedia). Changing the main image without touching the album
+      // therefore changed nothing visible ("העליתי תמונה ולא רואה שהתחלפה"): the new
+      // image must LEAD the album too. The old main is dropped from it — this is a
+      // replacement, not an addition. Skipped when the editor sent an explicit gallery
+      // selection (the FLYLINK editor) — there the selection is the whole truth.
+      if (nextImage !== post.product_image && !Array.isArray(dto.gallery) && post.gallery_json) {
+        try {
+          const g: unknown = JSON.parse(post.gallery_json);
+          if (Array.isArray(g)) {
+            const rest = g.filter((u) => typeof u === 'string' && u !== nextImage && u !== post.product_image);
+            post.gallery_json = JSON.stringify([nextImage, ...rest].slice(0, 30));
+          }
+        } catch { /* unreadable album — the main image alone still applies */ }
+      }
+      post.product_image = nextImage;
+    }
     if (typeof dto.affiliate_url === 'string') post.affiliate_url = dto.affiliate_url.trim();
     // Full gallery re-selection (the posts-screen editor): the ORDERED list the owner
     // picked becomes the album, and its first image becomes the main one — same "first
