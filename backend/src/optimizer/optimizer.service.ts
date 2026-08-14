@@ -717,9 +717,14 @@ export class OptimizerService {
     const winStart = Number.isInteger(Number(sched?.s)) ? Number(sched.s) : 9;
     const winEnd0 = Number.isInteger(Number(sched?.e)) ? Number(sched.e) : 22;
     const winEnd = winEnd0 === 0 ? 24 : winEnd0;
+    // Top-3 by clicks, then CHRONOLOGICAL for display — the digest listed them in rank
+    // order ("13:00, 16:00, 09:00"), which read as a broken sort, and without the counts
+    // the owner had no way to see these are measured hours rather than a frozen default.
     const goldenHours = hourRows.filter((h) => (winStart < winEnd
       ? h.hour >= winStart && h.hour < winEnd
-      : h.hour >= winStart || h.hour < winEnd0)).slice(0, 3);
+      : h.hour >= winStart || h.hour < winEnd0))
+      .slice(0, 3)
+      .sort((a, b) => a.hour - b.hour);
     return {
       posts_yesterday: Number(posts?.n) || 0,
       clicks_yesterday: Number(clicks?.n) || 0,
@@ -727,7 +732,10 @@ export class OptimizerService {
       revenue_yesterday_ils: +(Number(rev?.ils) || 0).toFixed(2),
       top_product: topProduct?.product_title ? String(topProduct.product_title).slice(0, 60) : null,
       top_product_clicks: Number(topProduct?.clicks_count) || 0,
-      golden_hours: goldenHours.map((h) => `${String(h.hour).padStart(2, '0')}:00`),
+      golden_hours: goldenHours.map((h) => ({
+        hour: `${String(h.hour).padStart(2, '0')}:00`,
+        clicks: Number(h.n) || 0,
+      })),
       price_band: priceBand,
     };
   }
@@ -787,7 +795,8 @@ export class OptimizerService {
         lines.push(`  • ${g.name}: עוד אין מספיק קליקים למסקנה`);
       }
     } else if (stats.golden_hours.length) {
-      lines.push(`⏰ שעות הזהב שלך: ${stats.golden_hours.join(', ')}`);
+      const parts = stats.golden_hours.map((g) => `${g.hour} (${g.clicks} קליקים)`);
+      lines.push(`⏰ שעות הזהב שלך: ${parts.join(', ')} — לפי ${WINDOW_DAYS} הימים האחרונים`);
     }
     if (stats.price_band) {
       lines.push(`💵 פרופיל הקנייה שלך: רוב ההזמנות בין $${stats.price_band.low} ל-$${stats.price_band.high} `
