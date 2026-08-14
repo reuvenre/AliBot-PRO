@@ -20,6 +20,7 @@ import {
 import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
 import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
 import { isTierBlockError } from '../pinterest/pinterest-scopes';
+import { feasibleCadenceMin } from './cadence-feasible';
 
 /** The window a campaign is judged on, and the stretch of its own past it is judged against.
  *  Three weeks of baseline absorbs a single odd week; one week of "recent" still reacts fast. */
@@ -589,10 +590,12 @@ export class WatchdogService implements OnModuleInit {
       const groupInterval = groups.length
         ? ((await this.channels.getIntervalMinutes(c.user_id, groups[0]).catch(() => null)) ?? 60)
         : 0;
-      // What the campaign SHOULD publish at: its cron, but never faster than the group's
-      // rate, times everything sharing that rate (campaign siblings + the queue).
+      // What the campaign CAN publish at: its cron, floored by the group's rate, times
+      // everything sharing that rate — PLUS phase slip (see cadence-feasible.ts: a skipped
+      // turn waits for the next cron tick too; each competitor adds up to one slot of it).
+      // The naive share-only expectation alarmed twice on a healthy-but-crowded group.
       const competitors = siblings + (manualShare > 0 ? 1 : 0) + 1;
-      const expected = Math.max(expectedCron, groupInterval) * competitors;
+      const expected = feasibleCadenceMin(expectedCron, groupInterval, competitors);
 
       // Recent sends (last 12h) — need a few to judge; gaps beyond 3× expected are night
       // pauses / window closes, not drift, so drop them.
