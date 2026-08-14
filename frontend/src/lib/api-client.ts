@@ -553,11 +553,18 @@ export const postsApi = {
   retryFailed: (id: string) => http.post<Post>(`/posts/${id}/retry-failed`, {}, { timeout: AI_TIMEOUT }).then(extract),
 
   /** Re-publish a post via the queue (no time) or schedule it (with scheduled_at). */
-  /** Device image upload → public URL. Axios detects FormData and sets the boundary. */
+  /** Device image upload → public URL. The explicit multipart content type is REQUIRED:
+   *  this instance defaults to application/json, and axios v1's transformRequest turns a
+   *  FormData under a JSON content type into JSON.stringify(formDataToJSON(fd)) — the File
+   *  serializes to {} and the server sees no file at all ("לא התקבל קובץ תמונה"). With
+   *  multipart declared, the FormData passes through and the browser sets the boundary. */
   uploadImage: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return http.post<{ url: string }>('/posts/upload-image', fd, { timeout: 60_000 }).then(extract);
+    return http.post<{ url: string }>('/posts/upload-image', fd, {
+      timeout: 60_000,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(extract);
   },
 
   /** Smart link intake — resolve, judge, file the keyword, schedule. AI-scale latency. */
