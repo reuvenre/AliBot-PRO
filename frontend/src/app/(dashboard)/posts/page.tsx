@@ -689,21 +689,17 @@ function EditPostModal({ post, onClose, onSaved }: {
     } catch (e: any) { setError(e?.response?.data?.message || 'שמירה נכשלה'); setSaving(false); }
   };
 
-  /** Rewrite the post text with AI from the CURRENT (edited) title/price — the same
-   *  generation the composer runs, so editing here is as capable as a new post. */
+  /** Rewrite the post text with AI from the CURRENT (edited) fields. Server-side the
+   *  post's actual photo(s) — the edited main image first — go to the model as vision,
+   *  and the edited title is the authoritative identity, so a swapped image/title
+   *  produces copy about the NEW product, not a rewrite of the old one. */
   const regenerate = async () => {
     setRegenerating(true); setError('');
     try {
-      const r = await postsApi.preview(post.product_id, 'he', {
-        product_id: post.product_id,
+      const r = await postsApi.regeneratePost(post.id, {
         title,
         image_url: image,
-        product_url: directUrl,
-        // Price is already in ₪ — flag the currency so the composer doesn't re-multiply it.
-        sale_price: price.trim() !== '' ? Number(price) : 0,
-        original_price: price.trim() !== '' ? Number(price) : 0,
-        currency: 'ILS',
-        discount_percent: 0, orders_count: 0, rating: 0, category: '',
+        price_ils: price.trim() !== '' ? Number(price) : undefined,
       });
       if (r.generated_text) setText(r.generated_text);
     } catch (e: any) {

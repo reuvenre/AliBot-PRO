@@ -491,6 +491,82 @@ export class PostsService {
     };
   }
 
+  /**
+   * "צור מחדש עם AI" from the post editor: regenerate the copy from the CURRENT edited
+   * fields. The plain preview path wrote from the title alone — so with an unchanged (or
+   * thin) title the model happily rewrote the OLD product, and a freshly uploaded photo
+   * changed nothing. Here the post's actual photo(s) go to the model as vision — the
+   * edited main image FIRST — and the edited title rides as the authoritative hint.
+   */
+  async regenerateForPost(userId: string, postId: string, dto: {
+    title?: string; price_ils?: number; image_url?: string; language?: string;
+  }) {
+    const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
+    if (!post) throw new NotFoundException('פוסט לא נמצא');
+
+    const title = String(dto.title || '').trim() || post.product_title || '';
+    const mainImage = String(dto.image_url || '').trim() || post.product_image || '';
+    const price = Number.isFinite(Number(dto.price_ils)) && Number(dto.price_ils) >= 0
+      ? Number(dto.price_ils)
+      : Number(post.price_ils) || 0;
+
+    let gallery: string[] = [];
+    try { gallery = post.gallery_json ? JSON.parse(post.gallery_json) : []; } catch { /* ignore */ }
+    const urls = [mainImage, ...gallery.filter((u) => typeof u === 'string' && u && u !== mainImage)];
+    const images = await this.fetchVisionImages(urls, 3);
+
+    const product = {
+      product_id: post.product_id,
+      title,
+      image_url: mainImage,
+      product_url: post.affiliate_url || '',
+      affiliate_url: post.affiliate_url || '',
+      // Price is already in the account's local currency — flag it so preview doesn't
+      // re-multiply by the exchange rate (same contract the old editor call used).
+      sale_price: price, original_price: price, currency: 'ILS', price_ils: price,
+      discount_percent: 0, orders_count: 0, rating: 0, category: '',
+    };
+    return this.preview(
+      userId, post.product_id, dto.language || 'he', product,
+      undefined, images, title || undefined, images.length > 0,
+    );
+  }
+
+  /**
+   * Fetch post photos → base64 for vision. SSRF-contained exactly like the public fit
+   * endpoints: our own uploaded images are read straight from the DB, everything else
+   * must pass the product-CDN allowlist. Failures are tolerated per-photo — vision
+   * degrades, generation continues.
+   */
+  private async fetchVisionImages(urls: string[], max = 3): Promise<GenerateImage[]> {
+    const out: GenerateImage[] = [];
+    for (const raw of urls) {
+      if (out.length >= max) break;
+      const url = String(raw || '').trim();
+      if (!url) continue;
+      if (isOwnUploadedUrl(url)) {
+        const img = await this.getUploadedImage(url.split('/').pop() || '').catch(() => null);
+        if (img) out.push({ mime: img.mime || 'image/jpeg', data: img.data.toString('base64') });
+        continue;
+      }
+      const target = unwrapOwnProxy(url);
+      let host = '';
+      try { host = new URL(target).hostname; } catch { continue; }
+      if (!isIgFittableHost(host)) continue;
+      try {
+        const res = await axios.get(target, {
+          responseType: 'arraybuffer', maxRedirects: 0,
+          headers: igFetchHeaders(host),
+          timeout: 12000, maxContentLength: 6 * 1024 * 1024, validateStatus: () => true,
+        });
+        if (res.status !== 200) continue;
+        const mime = String(res.headers['content-type'] || 'image/jpeg').split(';')[0];
+        out.push({ mime, data: Buffer.from(res.data).toString('base64') });
+      } catch { /* one bad photo must not kill the regenerate */ }
+    }
+    return out;
+  }
+
   // ── Limited-time promotions ───────────────────────────────────────────────
 
   /** Human, timezone-aware deadline label for promo copy — e.g. "26/07 בשעה 23:59". */

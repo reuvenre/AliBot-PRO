@@ -525,6 +525,11 @@ export const postsApi = {
   preview: (product_id: string, language?: string, custom_product?: Partial<AliProduct>, template?: string, promo?: PromoPreview, hint?: string) =>
     http.post<PostPreview>('/posts/preview', { product_id, language, custom_product, template, promo, hint }, { timeout: AI_TIMEOUT }).then(extract),
 
+  /** Regenerate a post's copy from the editor's current fields — the server feeds the
+   *  post's actual photo(s) to the AI (vision) with the edited title as ground truth. */
+  regeneratePost: (id: string, data: { title?: string; price_ils?: number; image_url?: string }) =>
+    http.post<PostPreview>(`/posts/${id}/regenerate`, data, { timeout: AI_TIMEOUT }).then(extract),
+
   quickPost: (data: { product_id: string; text?: string; channel_override?: string; channels?: string[]; product_image?: string; affiliate_url?: string; product?: QuickPostProduct; promo?: PromoInput }) =>
     http.post<Post>('/posts/quick', data, { timeout: AI_TIMEOUT }).then(extract),
 

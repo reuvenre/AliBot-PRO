@@ -102,6 +102,18 @@ export class PostsController {
     return this.svc.retry(this.uid(req), id);
   }
 
+  /** Regenerate the copy from the editor's CURRENT fields — vision-grounded in the
+   *  post's actual photo(s), with the edited title as the authoritative identity. */
+  @Post(':id/regenerate')
+  @HttpCode(200)
+  regenerate(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { title?: string; price_ils?: number; image_url?: string; language?: string },
+  ) {
+    return this.svc.regenerateForPost(this.uid(req), id, body || {});
+  }
+
   /** Re-send only the platform(s) that failed on a partially-published post. */
   @Post(':id/retry-failed')
   @HttpCode(200)
