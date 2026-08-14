@@ -1,9 +1,12 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, HttpCode,
+  BadRequestException, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req,
+  UseGuards, HttpCode, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PostsService } from './posts.service';
+import { normalizeUploadedImage } from './uploaded-image.util';
 
 @Controller('posts')
 @UseGuards(JwtAuthGuard)
@@ -112,6 +115,29 @@ export class PostsController {
    * scheduled through that campaign's routing. AI_TIMEOUT-scale work (link resolution,
    * product fetch, judge, copywriting) — the client sets its timeout accordingly.
    */
+  /**
+   * Owner image upload for the post editor — phone gallery / computer file. Normalized
+   * (EXIF rotation, size cap, JPEG) before storage; returns the public URL every platform
+   * can ingest. The 8MB limit is the raw upload; storage weighs a few hundred KB.
+   */
+  @Post('upload-image')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
+  async uploadImage(
+    @Req() req: Request,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string } | undefined,
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException('לא התקבל קובץ תמונה');
+    if (!/^image\//.test(file.mimetype || '')) throw new BadRequestException('הקובץ אינו תמונה');
+    let normalized: Buffer;
+    try {
+      normalized = await normalizeUploadedImage(file.buffer);
+    } catch {
+      throw new BadRequestException('קובץ התמונה לא נקרא — נסה JPG/PNG אחר');
+    }
+    return this.svc.saveUploadedImage(this.uid(req), normalized);
+  }
+
   @Post('smart-intake')
   @HttpCode(200)
   smartIntake(@Req() req: Request, @Body('url') url: string) {

@@ -17,13 +17,14 @@ import { SubscriptionModule } from '../subscription/subscription.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { CollageModule } from '../collage/collage.module';
 import { PinterestModule } from '../pinterest/pinterest.module';
+import { UploadedImage } from './uploaded-image.entity';
 
 @Module({
   imports: [
     // Campaign is registered as a REPOSITORY (not CampaignsService) on purpose:
     // CampaignsModule already imports PostsModule, so injecting the service back
     // would close a circular dependency.
-    TypeOrmModule.forFeature([Post, PostedProduct, Template, Campaign]),
+    TypeOrmModule.forFeature([Post, PostedProduct, Template, Campaign, UploadedImage]),
     CredentialsModule,
     CouponsModule,
     LinksModule,

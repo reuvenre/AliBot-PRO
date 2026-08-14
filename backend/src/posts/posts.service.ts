@@ -23,7 +23,7 @@ import { PRODUCT_FIT_SYSTEM, ProductFitContext, ProductFitItem, ProductFitVerdic
 import { hotHours } from '../optimizer/hot-hours';
 import { PriceBand, preferInBand, soldPriceBand } from '../optimizer/sold-price-band';
 import { VariantStat, pickVariant, variantHint } from './copy-variants';
-import { igFetchHeaders, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { igFetchHeaders, isIgFittableHost, isOwnUploadedUrl, unwrapOwnProxy } from './instagram-image';
 import { composePinFrame } from './pin-frame-compose';
 import {
   buildSmartIntakePrompt, fallbackKeyword, parseIntakeVerdict,
@@ -42,6 +42,7 @@ import { CouponsService, currencySymbol } from '../coupons/coupons.service';
 import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { PinterestService } from '../pinterest/pinterest.service';
+import { UploadedImage } from './uploaded-image.entity';
 import {
   describeMissingScopes, isTierBlockError, parseGrantedScopes, PUBLISH_SCOPE,
   TIER_BLOCK_MESSAGE, tierBlockActive,
@@ -189,6 +190,8 @@ export class PostsService {
     private readonly campaignRepo: Repository<Campaign>,
     @InjectRepository(PostedProduct)
     private readonly postedRepo: Repository<PostedProduct>,
+    @InjectRepository(UploadedImage)
+    private readonly uploadedImages: Repository<UploadedImage>,
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
     private readonly ai: AiService,
@@ -2952,6 +2955,25 @@ export class PostsService {
     this.enhancedFrames.set(postId, { buf: media.buffers[0], at: now });
   }
 
+  /**
+   * Store an owner-uploaded image (already normalized by the controller) and return the
+   * public URL every platform can ingest. DB-backed on purpose: no object storage here,
+   * and the URL must survive restarts (see uploaded-image.entity.ts).
+   */
+  async saveUploadedImage(userId: string, data: Buffer): Promise<{ url: string }> {
+    const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+    if (!base) throw new BadRequestException('BACKEND_URL אינו מוגדר — אין כתובת ציבורית לתמונות');
+    const row = await this.uploadedImages.save(this.uploadedImages.create({ user_id: userId, data, mime: 'image/jpeg' }));
+    return { url: `${base}/posts/uploaded/${row.id}` };
+  }
+
+  /** Bytes for the public /posts/uploaded/:id endpoint; null for an unknown id. */
+  async getUploadedImage(id: string): Promise<{ data: Buffer; mime: string } | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) return null;
+    const row = await this.uploadedImages.findOne({ where: { id } }).catch(() => null);
+    return row ? { data: row.data, mime: row.mime } : null;
+  }
+
   // Pinterest pin frames get their own store: Pinterest validates the image URL AT pin
   // creation with an impatient fetcher, so the frame is composed BEFORE the create call
   // and served from memory — a millisecond read instead of an on-the-fly compose that
@@ -4393,7 +4415,7 @@ export class PostsService {
     try {
       const target = unwrapOwnProxy(imageUrl);
       const host = new URL(target).hostname;
-      if (!isIgFittableHost(host)) return imageUrl;
+      if (!isIgFittableHost(host) && !isOwnUploadedUrl(target)) return imageUrl;
       const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
       if (!base) return imageUrl;
       return `${base}/posts/ig-image?src=${encodeURIComponent(target)}`;
@@ -4493,7 +4515,7 @@ export class PostsService {
       const frameBase = (process.env.BACKEND_URL || '').replace(/\/$/, '');
       const frameTarget = unwrapOwnProxy(image);
       const frameHost = new URL(frameTarget).hostname;
-      if (frameBase && isIgFittableHost(frameHost)) {
+      if (frameBase && (isIgFittableHost(frameHost) || isOwnUploadedUrl(frameTarget))) {
         const upstream = await axios.get(frameTarget, {
           responseType: 'arraybuffer', maxRedirects: 0, headers: igFetchHeaders(frameHost),
           timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,

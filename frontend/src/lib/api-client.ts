@@ -553,6 +553,13 @@ export const postsApi = {
   retryFailed: (id: string) => http.post<Post>(`/posts/${id}/retry-failed`, {}, { timeout: AI_TIMEOUT }).then(extract),
 
   /** Re-publish a post via the queue (no time) or schedule it (with scheduled_at). */
+  /** Device image upload → public URL. Axios detects FormData and sets the boundary. */
+  uploadImage: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return http.post<{ url: string }>('/posts/upload-image', fd, { timeout: 60_000 }).then(extract);
+  },
+
   /** Smart link intake — resolve, judge, file the keyword, schedule. AI-scale latency. */
   smartIntake: (url: string) =>
     http.post<{

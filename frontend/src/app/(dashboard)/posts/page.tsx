@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FileText, RefreshCw, Loader2, RotateCcw,
   CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, Settings2,
@@ -639,6 +639,8 @@ function EditPostModal({ post, onClose, onSaved }: {
   const [price, setPrice] = useState<string>(post.price_ils != null ? String(post.price_ils) : '');
   const [image, setImage] = useState(post.product_image || '');
   const [zoom, setZoom] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [link, setLink] = useState(post.affiliate_url || '');
   const [scheduledAt, setScheduledAt] = useState(() => toLocalInput(post.scheduled_at));
   const [saving, setSaving] = useState(false);
@@ -817,7 +819,31 @@ function EditPostModal({ post, onClose, onSaved }: {
         ) : (
           <>
             <label className="block text-xs text-white/50 mb-1.5">כתובת תמונה ראשית</label>
-            <input value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://…" className={`${inputCls} mb-3`} dir="ltr" />
+            <div className="flex items-center gap-2 mb-3">
+              <input value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://…" className={inputCls} dir="ltr" />
+              {/* Device upload — phone gallery / computer file. The file goes to the server
+                  (normalized + stored) and comes back as a public URL every platform can
+                  ingest; the field simply receives that URL like any pasted one. */}
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                title="העלה תמונה מהמכשיר"
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600/15 hover:bg-teal-600/25 border border-teal-500/30 text-teal-300 text-xs font-medium disabled:opacity-60 transition-all">
+                {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                {uploading ? 'מעלה…' : 'העלה'}
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = ''; // allow re-picking the same file
+                  if (!f) return;
+                  setUploading(true); setError('');
+                  try {
+                    const res = await postsApi.uploadImage(f);
+                    setImage(res.url);
+                  } catch (err: any) {
+                    setError(err?.response?.data?.message || 'העלאת התמונה נכשלה');
+                  } finally { setUploading(false); }
+                }} />
+            </div>
           </>
         )}
 

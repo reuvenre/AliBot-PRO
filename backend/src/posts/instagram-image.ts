@@ -56,6 +56,17 @@ export function unwrapOwnProxy(url: string): string {
 
 /** Hosts the fit endpoint may fetch from — the product-image CDNs the system publishes,
  *  nothing else. This is a PUBLIC endpoint; an open fetcher would be an SSRF service. */
+/**
+ * Is this URL one of OUR uploaded-image URLs? Owner uploads live behind our own public
+ * endpoint, so the CDN allowlist can never contain them — but they are exactly as safe to
+ * fetch (we minted the id, we serve the bytes), and every pipeline that letterboxes or
+ * frames an allowlisted image must treat an uploaded one the same.
+ */
+export function isOwnUploadedUrl(url: string): boolean {
+  const base = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+  return !!base && String(url || '').startsWith(`${base}/posts/uploaded/`);
+}
+
 export function isIgFittableHost(host: string): boolean {
   return /(^|\.)yupoo\.com$/i.test(host)
     || /(^|\.)alicdn\.com$/i.test(host)

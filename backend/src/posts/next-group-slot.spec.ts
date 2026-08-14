@@ -28,6 +28,7 @@ describe('PostsService.nextGroupSlot', () => {
 
     return new PostsService(
       repo, null as any, null as any, null as any,
+      null as any, // uploadedImages — slot booking never touches it
       credentials, null as any, null as any, null as any,
       channels, null as any, null as any, null as any, null as any,
       null as any, // pinterest — slot booking never touches it

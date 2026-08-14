@@ -1,7 +1,7 @@
 import { BadRequestException, Controller, Get, Logger, Param, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import axios from 'axios';
-import { igFetchHeaders, igFitBox, isIgFittableHost, unwrapOwnProxy } from './instagram-image';
+import { igFetchHeaders, igFitBox, isIgFittableHost, isOwnUploadedUrl, unwrapOwnProxy } from './instagram-image';
 import { buildPinOverlaySvg, PIN_H, PIN_IMAGE_H, PIN_W } from './pin-frame';
 // sharp's runtime is CommonJS (module.exports = sharp) but its types use `export default`,
 // and this tsconfig has NO esModuleInterop — so `import sharp from 'sharp'` compiles to
@@ -76,6 +76,20 @@ export class InstagramImageController {
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(out);
+  }
+
+  /**
+   * An owner-uploaded image, from the DB. PUBLIC — platform fetchers cannot authenticate;
+   * the unguessable uuid IS the access control, same as the enhanced-frame endpoint.
+   */
+  @Get('uploaded/:id')
+  async uploaded(@Param('id') id: string, @Res() res: Response) {
+    const img = await this.posts.getUploadedImage(id);
+    if (!img) { res.status(404).send('not found'); return; }
+    res.setHeader('Content-Type', img.mime || 'image/jpeg');
+    // Immutable by construction — a new upload mints a new id.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(img.data);
   }
 
   /**
@@ -155,7 +169,7 @@ export class InstagramImageController {
     const target = unwrapOwnProxy(String(src || ''));
     let host = '';
     try { host = new URL(target).hostname; } catch { throw new BadRequestException('bad url'); }
-    if (!isIgFittableHost(host)) throw new BadRequestException('forbidden host');
+    if (!isIgFittableHost(host) && !isOwnUploadedUrl(target)) throw new BadRequestException('forbidden host');
 
     const upstream = await axios.get(target, {
       responseType: 'arraybuffer',
