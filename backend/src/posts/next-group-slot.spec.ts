@@ -113,6 +113,21 @@ describe('PostsService.nextGroupSlot', () => {
     expect(skip).toBe(true);
   });
 
+  it('is not fooled by a far booking shadowing a near one (manual re-timing)', async () => {
+    // The owner spread pasted products manually across the evening. The raw MAX pending
+    // is the FURTHEST one — past the horizon — and it used to shadow the near booking:
+    // the group looked free and the scheduler stacked a post next to the owner's 16:00.
+    // The query now also reports the horizon-bounded booking (pending_near); occupancy
+    // must read it and skip.
+    const now = Date.now();
+    const svc = serviceWith([
+      { campaign_id: MINE, pending: iso(now + 4 * 60 * MIN), pending_near: iso(now + 20 * MIN), sent: null },
+    ]);
+
+    const { skip } = await svc.nextGroupSlot('u1', GROUP, new Date(now), MINE);
+    expect(skip).toBe(true);
+  });
+
   it('skips when this campaign itself published within the interval', async () => {
     // Its own cadence is already satisfied — this is the halving guard, and it must not be
     // loosened by the sibling fix above.

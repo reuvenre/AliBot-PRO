@@ -1995,9 +1995,23 @@ export class PostsService {
     // skipped it — so a campaign cron firing during those seconds saw the group as free,
     // booked the same minute, and the group got 06:00 and 06:01 back-to-back. The stale
     // safety is the 30-minute pending reset cron, so a hung send blocks at most that long.
+    // The pacing HORIZON: only work landing within the current interval competes for this
+    // slot. A post scheduled far ahead (a manual announcement queued for tonight) must not
+    // make the group look busy for the hours in between — that silenced every campaign on
+    // every group the post fanned out to, which is why the horizon is explicit here.
+    const horizonMs = now + intervalMin * 60_000;
+
     const rows = await this.repo.createQueryBuilder('p')
       .select('p.campaign_id', 'campaign_id')
       .addSelect("MAX(CASE WHEN p.status IN ('scheduled','queued','pending') THEN COALESCE(p.scheduled_at, p.pending_at) END)", 'pending')
+      // The NEAREST-TERM occupancy: the latest booking that lands INSIDE the horizon.
+      // Aggregating only the overall MAX let a far-future booking SHADOW a near one —
+      // a campaign with posts at both 16:00 and 20:00 reported only 20:00, the horizon
+      // dropped it, the group looked free, and the scheduler stacked a new post right
+      // next to the owner's manually-timed 16:00 one. Occupancy reads THIS column; the
+      // raw MAX above stays for the fair-share bookkeeping.
+      .addSelect("MAX(CASE WHEN p.status IN ('scheduled','queued','pending') AND COALESCE(p.scheduled_at, p.pending_at) <= :horizon THEN COALESCE(p.scheduled_at, p.pending_at) END)", 'pending_near')
+      .setParameter('horizon', new Date(horizonMs))
       .addSelect("MAX(CASE WHEN p.status = 'sent' THEN p.sent_at END)", 'sent')
       // The sent post's SLOT time (scheduled_at), for spacing the next slot from. Spacing
       // from sent_at made the clock creep: each send finishes seconds after its slot, the
@@ -2016,12 +2030,6 @@ export class PostsService {
       .groupBy('p.campaign_id')
       .getRawMany();
 
-    // The pacing HORIZON: only work landing within the current interval competes for this
-    // slot. A post scheduled far ahead (a manual announcement queued for tonight) must not
-    // make the group look busy for the hours in between — that silenced every campaign on
-    // every group the post fanned out to, which is why the horizon is explicit here.
-    const horizonMs = now + intervalMin * 60_000;
-
     let latestMs = 0;
     let pendingSoon = false;
     let lastSentMs = 0;
@@ -2039,7 +2047,11 @@ export class PostsService {
     let manualPendingSoon = false;
     for (const r of rows) {
       const cid = String(r.campaign_id ?? '');
-      const pend = r.pending ? new Date(r.pending).getTime() : 0;
+      // Occupancy prefers the horizon-bounded aggregate (see the query above): the raw
+      // MAX is a far booking whenever both exist, and it must not shadow the near one.
+      const pendRaw = r.pending_near ?? r.pending;
+      const pend = pendRaw ? new Date(pendRaw).getTime() : 0;
+      const pendAny = r.pending ? new Date(r.pending).getTime() : 0;
       const sent = r.sent ? new Date(r.sent).getTime() : 0;
       // An overdue pending post (pend < now) still occupies the group — it's the far-future
       // one we ignore. Re-spaced backlog lands at now + 1·interval, so the nearest queued
@@ -2064,7 +2076,7 @@ export class PostsService {
           mySentAnchorMs = Math.max(mySentAnchorMs, Math.min(anchor, sent));
         }
       }
-      lastSentByCampaign.set(cid, Math.max(pend, sent));
+      lastSentByCampaign.set(cid, Math.max(pendAny, sent));
     }
 
     if (!latestMs) return { slot: notBefore, skip: false };
