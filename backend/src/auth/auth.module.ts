@@ -9,14 +9,16 @@ import { GoogleStrategy } from './google.strategy';
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
 import { SecurityModule } from '../security/security.module';
+import { CredentialsModule } from '../credentials/credentials.module';
 
 @Module({
-  imports: [SecurityModule, 
+  imports: [SecurityModule,
     PassportModule,
     JwtModule.register({}),
     ConfigModule,
     UsersModule,
     MailModule,
+    CredentialsModule,
   ],
   providers: [AuthService, JwtStrategy, GoogleStrategy],
   controllers: [AuthController],

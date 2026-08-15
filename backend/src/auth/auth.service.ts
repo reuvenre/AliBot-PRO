@@ -1,6 +1,7 @@
 import {
   Injectable, Optional, UnauthorizedException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
+import axios from 'axios';
 import * as crypto from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -11,6 +12,7 @@ import { encrypt, decrypt } from '../common/crypto';
 import { generateTotpSecret, verifyTotp, totpUri } from '../common/totp';
 import { primaryUrl } from '../common/urls';
 import { SecurityService } from '../security/security.service';
+import { CredentialsService } from '../credentials/credentials.service';
 import * as QRCode from 'qrcode';
 
 const REFRESH_COOKIE = 'refresh_token';
@@ -26,6 +28,7 @@ export class AuthService {
     private config: ConfigService,
     private mail: MailService,
     @Optional() private security?: SecurityService,
+    @Optional() private credentials?: CredentialsService,
   ) {}
 
   // ── Token helpers ──────────────────────────────────────────────────────────
@@ -80,7 +83,63 @@ export class AuthService {
     // Welcome email with the user guide — every new subscriber gets "here's what you
     // have and how it works" on day one. Best-effort: must never block registration.
     this.sendWelcomeEmail(email, name).catch(() => {});
+    // Owner heads-up (email + WhatsApp) — registration is open to the world, so every
+    // signup is a sales event the owner wants to know about. Best-effort, never blocks.
+    this.notifyOwnerNewUser(user.email, name).catch(() => {});
     return this.issueTokens(user, res);
+  }
+
+  /**
+   * Tell the OWNER a new user just signed up: email to the bootstrap-admin address,
+   * plus a WhatsApp note through the admin's own Green API line. The WhatsApp target
+   * is OWNER_WHATSAPP_CHAT_ID when set; otherwise the line's own number — WhatsApp's
+   * "message yourself" chat — so it works with zero configuration and never touches
+   * the customer groups. Entirely best-effort.
+   */
+  private async notifyOwnerNewUser(newEmail: string, name?: string): Promise<void> {
+    const ownerEmail = (process.env.ADMIN_EMAIL || 'rubypc6@gmail.com').toLowerCase();
+    if (newEmail.toLowerCase() === ownerEmail) return; // the owner's own signup is not news
+    const when = new Date().toLocaleString('he-IL', {
+      timeZone: process.env.SCHEDULER_TZ || 'Asia/Jerusalem', dateStyle: 'short', timeStyle: 'short',
+    });
+    const who = name?.trim() ? `${name.trim()} (${newEmail})` : newEmail;
+
+    this.mail.sendHtml(
+      ownerEmail,
+      '👤 משתמש חדש נרשם ל-Nexlify',
+      `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px">
+        <h3 style="margin:0 0 10px">משתמש חדש נרשם למערכת 🎉</h3>
+        <p style="margin:4px 0;font-size:15px"><b>${who}</b></p>
+        <p style="margin:4px 0;color:#555">נרשם ב-${when} · תוכנית חינם</p>
+        <p style="margin:14px 0 0;color:#555">לצפייה וניהול — מסך האדמין במערכת.</p>
+      </div>`,
+    ).catch(() => {});
+
+    try {
+      const owner = await this.users.findByEmail(ownerEmail);
+      if (!owner) return;
+      const creds = await this.credentials?.getRaw(owner.id);
+      const instance = creds?.green_api_instance_id;
+      const token = creds?.green_api_token;
+      if (!instance || !token) return; // WhatsApp not connected → email alone
+      const base = (creds?.green_api_url || 'https://api.green-api.com').replace(/\/$/, '');
+
+      let chat = (process.env.OWNER_WHATSAPP_CHAT_ID || '').trim();
+      if (!chat) {
+        const st = await axios.get(`${base}/waInstance${instance}/getWaSettings/${token}`, { timeout: 10000 });
+        chat = String(st.data?.wid || '');
+      }
+      if (!chat) return;
+      if (!chat.includes('@')) chat = `${chat.replace(/\D/g, '')}@c.us`;
+
+      await axios.post(
+        `${base}/waInstance${instance}/sendMessage/${token}`,
+        { chatId: chat, message: `👤 משתמש חדש נרשם ל-Nexlify!\n${who}\n${when} · תוכנית חינם` },
+        { timeout: 15000 },
+      );
+    } catch (err: any) {
+      this.logger.warn(`new-user WhatsApp notify failed: ${err?.message}`);
+    }
   }
 
   /** Welcome email pointing at the living in-app user guide (plan-aware /guide page). */
