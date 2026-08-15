@@ -205,14 +205,35 @@ export class UsersService implements OnModuleInit {
       'channels', 'campaigns', 'credential_sets',
     ];
     await this.repo.manager.transaction(async (em) => {
-      await em.query(
-        `DELETE FROM campaign_posted_products
-         WHERE campaign_id IN (SELECT id FROM campaigns WHERE user_id = $1)`, [targetId],
-      );
-      for (const table of USER_TABLES) {
-        await em.query(`DELETE FROM "${table}" WHERE user_id = $1`, [targetId]);
+      // A table can be absent on a given deployment (entity shipped before its
+      // migration ran there). Absent table = nothing to delete — skip it instead of
+      // failing the whole wipe. This exact gap surfaced as a bare 500 in production.
+      const exists = async (table: string): Promise<boolean> => {
+        const [reg] = await em.query(`SELECT to_regclass($1) AS t`, [`public.${table}`]);
+        return !!reg?.t;
+      };
+      if (await exists('campaign_posted_products')) {
+        await em.query(
+          `DELETE FROM campaign_posted_products
+           WHERE campaign_id IN (SELECT id FROM campaigns WHERE user_id = $1)`, [targetId],
+        );
       }
-      await em.query(`DELETE FROM users WHERE id = $1`, [targetId]);
+      for (const table of USER_TABLES) {
+        if (!(await exists(table))) continue;
+        try {
+          await em.query(`DELETE FROM "${table}" WHERE user_id = $1`, [targetId]);
+        } catch (err: any) {
+          // Name the failing table — a bare 500 sent the investigation guessing.
+          throw new BadRequestException(`המחיקה נכשלה בטבלת ${table}: ${err?.message || err}`);
+        }
+      }
+      try {
+        await em.query(`DELETE FROM users WHERE id = $1`, [targetId]);
+      } catch (err: any) {
+        // Most likely an FK from a table this wipe doesn't know about — the driver
+        // message names the constraint, which is exactly the lead we need.
+        throw new BadRequestException(`מחיקת רשומת המשתמש נכשלה: ${err?.message || err}`);
+      }
     });
     return { deleted: true };
   }
