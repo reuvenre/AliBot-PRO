@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -152,6 +152,50 @@ export class UsersService implements OnModuleInit {
    *  (auth.service.changeEmail) — this is the bare write. */
   async updateEmail(userId: string, email: string): Promise<void> {
     await this.repo.update(userId, { email });
+  }
+
+  /**
+   * Permanently delete a user AND all their data. Guard rails: never yourself, never an
+   * admin (demote first — prevents wiping the owner by mistake), and an account that
+   * actually published must be BLOCKED first — deletion is for dead/blocked accounts,
+   * not a shortcut around a live customer. All rows go in one transaction; the
+   * security_events audit trail is deliberately kept (it has no FK and IS the record
+   * that the account existed).
+   */
+  async adminDelete(actorId: string, targetId: string): Promise<{ deleted: true }> {
+    if (actorId === targetId) throw new BadRequestException('אי אפשר למחוק את החשבון של עצמך');
+    const target = await this.findById(targetId);
+    if (!target) throw new NotFoundException('משתמש לא נמצא');
+    if (target.role === 'admin') throw new BadRequestException('אי אפשר למחוק חשבון אדמין — הסר קודם את הרשאת האדמין');
+    if (!target.is_blocked) {
+      const [{ n }] = await this.repo.manager.query(
+        `SELECT count(*)::int AS n FROM posts WHERE user_id = $1 AND status = 'sent'`, [targetId],
+      );
+      if (Number(n) > 0) {
+        throw new BadRequestException('המשתמש פרסם בפועל — חסום אותו קודם, ורק אז מחק');
+      }
+    }
+
+    // Fixed table list on purpose (no interpolated identifiers). campaign_posted_products
+    // hangs off campaigns (no user_id of its own) → deleted via the campaign join first.
+    const USER_TABLES = [
+      'posts', 'uploaded_images', 'custom_posts', 'agent_runs', 'optimizer_runs',
+      'manager_actions', 'link_clicks', 'link_targets', 'earnings', 'coupons',
+      'templates', 'notification_prefs', 'payment_sessions', 'ai_usage',
+      'catalog_products', 'supplier_products', 'supplier_catalogs',
+      'channels', 'campaigns', 'credential_sets',
+    ];
+    await this.repo.manager.transaction(async (em) => {
+      await em.query(
+        `DELETE FROM campaign_posted_products
+         WHERE campaign_id IN (SELECT id FROM campaigns WHERE user_id = $1)`, [targetId],
+      );
+      for (const table of USER_TABLES) {
+        await em.query(`DELETE FROM "${table}" WHERE user_id = $1`, [targetId]);
+      }
+      await em.query(`DELETE FROM users WHERE id = $1`, [targetId]);
+    });
+    return { deleted: true };
   }
 
   findById(id: string) {

@@ -280,6 +280,25 @@ function ManageUserModal({ user, plans, isSelf, onClose, onSaved }: {
   const [creditsAmount, setCreditsAmount] = useState('');
   const [granting, setGranting] = useState(false);
   const [grantResult, setGrantResult] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteForever = async () => {
+    // Deletion is irreversible and wipes ALL the user's data — a typed-out confirm
+    // (not a yes/no click) is the guard that matches the blast radius.
+    const typed = window.prompt(
+      `מחיקה לצמיתות של ${user.email} וכל הנתונים שלו (פוסטים, קמפיינים, ערוצים, הכנסות).\n` +
+      'אי אפשר לשחזר. כדי לאשר — הקלד: מחק',
+    );
+    if (typed !== 'מחק') return;
+    setDeleting(true); setError('');
+    try {
+      await adminApi.deleteUser(user.id);
+      onSaved();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'המחיקה נכשלה');
+      setDeleting(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true); setError('');
@@ -386,6 +405,22 @@ function ManageUserModal({ user, plans, isSelf, onClose, onSaved }: {
           </button>
           <button onClick={onClose} className="px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-all">ביטול</button>
         </div>
+
+        {/* Danger zone — delete only for blocked / never-published accounts (the server
+            enforces it; admins and yourself are refused outright). */}
+        {!isSelf && user.role !== 'admin' && (
+          <div className="border-t border-edge pt-3 mt-1">
+            <button
+              type="button" onClick={deleteForever} disabled={deleting}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-500/30 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-50 text-red-400 text-xs font-medium transition-all">
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+              מחק משתמש לצמיתות (כולל כל הנתונים)
+            </button>
+            <p className="text-2xs text-white/25 mt-1.5 text-center">
+              זמין רק לחשבון חסום או לחשבון שמעולם לא פרסם. בלתי הפיך.
+            </p>
+          </div>
+        )}
       </div>
     </ModalShell>
   );

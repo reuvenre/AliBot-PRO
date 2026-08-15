@@ -14,6 +14,7 @@ export type SecurityEventType =
   | 'role_changed'
   | 'admin_created'
   | 'email_changed'
+  | 'user_deleted'
   | 'decrypt_failed';
 
 @Entity('security_events')

@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, HttpCode, Param, Patch, Post, Req, UseGuards,
+  BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req, UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 import axios from 'axios';
@@ -85,6 +85,20 @@ export class AdminController {
     }
     await this.users.setBlocked(id, blocked === true);
     return { ok: true, blocked: blocked === true };
+  }
+
+  /** Permanently delete a user + ALL their data. Blocked/never-published accounts only;
+   *  admins and your own account are refused (the service enforces all three). Audited. */
+  @Delete('users/:id')
+  @HttpCode(200)
+  async deleteUser(@Req() req: Request, @Param('id') id: string) {
+    const target = await this.users.findById(id);
+    const res = await this.users.adminDelete(this.uid(req), id);
+    void this.security.record('user_deleted', {
+      email: target?.email || null, userId: id,
+      detail: `החשבון נמחק לצמיתות (by admin ${this.uid(req)})`,
+    });
+    return res;
   }
 
   /** Set any user's subscription plan (demo-mode billing — instant activation). */

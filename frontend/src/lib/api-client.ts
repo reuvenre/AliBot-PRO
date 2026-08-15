@@ -272,6 +272,9 @@ export const adminApi = {
     http.patch<{ ok: boolean }>(`/admin/users/${userId}/role`, { role }).then(extract),
   setBlocked: (userId: string, blocked: boolean) =>
     http.patch<{ ok: boolean; blocked: boolean }>(`/admin/users/${userId}/block`, { blocked }).then(extract),
+  /** Permanently delete a user + all their data (blocked/never-published accounts only). */
+  deleteUser: (userId: string) =>
+    http.delete<{ deleted: boolean }>(`/admin/users/${userId}`).then(extract),
   broadcast: (data: {
     subject: string; message: string; target?: 'all' | 'users' | 'admins';
     channels?: ('email' | 'telegram' | 'whatsapp')[]; whatsapp_numbers?: string;
