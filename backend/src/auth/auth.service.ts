@@ -1,5 +1,5 @@
 import {
-  Injectable, Optional, UnauthorizedException, BadRequestException, Logger,
+  Injectable, Optional, UnauthorizedException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { JwtService } from '@nestjs/jwt';
@@ -238,6 +238,30 @@ export class AuthService {
     }
     if (newPassword.length < 8) throw new BadRequestException('הסיסמה החדשה חייבת להכיל לפחות 8 תווים');
     await this.users.updatePassword(user.id, newPassword);
+  }
+
+  /**
+   * Direct self-service email change — ADMIN accounts only. The email is the login
+   * identifier, so letting any account re-point it silently is an account-takeover
+   * surface; the system owner gets the shortcut, everyone else keeps the guarded flow.
+   * Sessions stay valid (tokens are keyed to the user id, not the email). Audited.
+   */
+  async changeEmail(user: User, rawEmail: string): Promise<{ email: string }> {
+    if (user.role !== 'admin') {
+      throw new ForbiddenException('שינוי כתובת מייל ישיר זמין לחשבון אדמין בלבד');
+    }
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      throw new BadRequestException('כתובת אימייל לא תקינה');
+    }
+    if (email === user.email) return { email };
+    const taken = await this.users.findByEmail(email);
+    if (taken && taken.id !== user.id) {
+      throw new BadRequestException('הכתובת כבר משויכת לחשבון אחר');
+    }
+    await this.users.updateEmail(user.id, email);
+    void this.security?.record('email_changed', { email, userId: user.id, detail: `הוחלף מ-${user.email}` });
+    return { email };
   }
 
   async refresh(req: any, res: any) {

@@ -134,6 +134,15 @@ export class AuthController {
     return { message: 'Password changed successfully' };
   }
 
+  /** Direct email change — admin accounts only (the service enforces the role). */
+  @Post('change-email')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  changeEmail(@Req() req: Request, @Body('email') email: string) {
+    if (!email) throw new BadRequestException('חסרה כתובת אימייל');
+    return this.auth.changeEmail(req.user as any, email);
+  }
+
   // ── Google OAuth ────────────────────────────────────────────────────────────
 
   @Get('google')

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { SettingsSaveBar } from './SettingsSaveBar';
-import { credentialsApi } from '@/lib/api-client';
+import { authApi, credentialsApi } from '@/lib/api-client';
 
 const CURRENCIES = [
   { value: 'USD_ILS', label: '₪ שקל (ILS)', flag: '🇮🇱' },
@@ -16,12 +16,18 @@ const PROFILE_KEY = 'alibot-profile';
 
 export function ProfileForm() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [currency, setCurrency] = useState('USD_ILS');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  // Editable copy of the account email — admin only. Seeded from the session user once
+  // it loads; a non-admin keeps the read-only view.
+  const [email, setEmail] = useState('');
+  useEffect(() => { if (user?.email) setEmail(user.email); }, [user?.email]);
 
   useEffect(() => {
     // Load saved profile from localStorage
@@ -44,14 +50,20 @@ export function ProfileForm() {
 
   const handleSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    setSaving(true);
+    setSaving(true); setError('');
     try {
       // Persist profile fields locally (no dedicated profile API endpoint yet)
       localStorage.setItem(PROFILE_KEY, JSON.stringify({ firstName, lastName, phone }));
+      // Admin email change rides the same save button — only when actually edited.
+      if (isAdmin && email.trim() && user?.email && email.trim().toLowerCase() !== user.email.toLowerCase()) {
+        await authApi.changeEmail(email.trim());
+      }
       // Save currency preference to credentials
       await credentialsApi.upsert({ currency_pair: currency } as any);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'השמירה נכשלה');
     } finally {
       setSaving(false);
     }
@@ -83,13 +95,25 @@ export function ProfileForm() {
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-white/50 mb-1.5">אימייל</label>
-            <input
-              type="email"
-              value={user?.email || ''}
-              readOnly
-              className="w-full bg-white/3 border border-edge rounded-lg px-3 py-2.5 text-sm text-white/40 outline-none cursor-not-allowed"
-            />
+            <label className="block text-xs font-medium text-white/50 mb-1.5">
+              אימייל{isAdmin && <span className="text-amber-400/70"> · ניתן לעריכה (אדמין)</span>}
+            </label>
+            {isAdmin ? (
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                dir="ltr"
+                className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+              />
+            ) : (
+              <input
+                type="email"
+                value={user?.email || ''}
+                readOnly
+                className="w-full bg-white/3 border border-edge rounded-lg px-3 py-2.5 text-sm text-white/40 outline-none cursor-not-allowed"
+              />
+            )}
           </div>
           <div className="col-span-2">
             <label className="block text-xs font-medium text-white/50 mb-1.5">טלפון</label>
@@ -107,8 +131,11 @@ export function ProfileForm() {
                 only. Saying so beats implying they follow the account. */}
             <p className="text-2xs text-white/30 leading-relaxed">
               השם והטלפון נשמרים בדפדפן הזה בלבד (אין להם עדיין שדה בחשבון) — לא יופיעו במכשיר אחר.
-              כתובת המייל היא מזהה החשבון ומנוהלת בטאב &quot;אבטחה&quot;.
+              {isAdmin
+                ? ' כתובת המייל היא מזהה ההתחברות שלך — שינוי כאן יחול מיידית (ההתחברות הבאה עם הכתובת החדשה). השינוי נרשם ביומן האבטחה.'
+                : ' כתובת המייל היא מזהה החשבון ומנוהלת בטאב "אבטחה".'}
             </p>
+            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
           </div>
         </form>
       </section>

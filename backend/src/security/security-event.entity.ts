@@ -13,6 +13,7 @@ export type SecurityEventType =
   | 'password_reset_requested'
   | 'role_changed'
   | 'admin_created'
+  | 'email_changed'
   | 'decrypt_failed';
 
 @Entity('security_events')

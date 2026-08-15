@@ -226,6 +226,10 @@ export const authApi = {
 
   changePassword: (currentPassword: string, newPassword: string) =>
     http.post<{ message: string }>('/auth/change-password', { currentPassword, newPassword }).then(extract),
+
+  /** Direct email change — admin accounts only (the backend enforces the role). */
+  changeEmail: (email: string) =>
+    http.post<{ email: string }>('/auth/change-email', { email }).then(extract),
 };
 
 // ─── Credentials API ─────────────────────────────────────────────────────────

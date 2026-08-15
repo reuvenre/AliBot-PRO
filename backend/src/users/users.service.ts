@@ -148,6 +148,12 @@ export class UsersService implements OnModuleInit {
     return this.repo.findOne({ where: { email } });
   }
 
+  /** Change a user's login email. Validation + uniqueness are the CALLER's job
+   *  (auth.service.changeEmail) — this is the bare write. */
+  async updateEmail(userId: string, email: string): Promise<void> {
+    await this.repo.update(userId, { email });
+  }
+
   findById(id: string) {
     return this.repo.findOne({ where: { id } });
   }
