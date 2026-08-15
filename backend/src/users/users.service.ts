@@ -213,10 +213,15 @@ export class UsersService implements OnModuleInit {
         return !!reg?.t;
       };
       if (await exists('campaign_posted_products')) {
+        // campaign_posted_products.campaign_id is VARCHAR while campaigns.id is UUID —
+        // without the ::text cast Postgres has no varchar=uuid operator and the very
+        // first statement of this transaction died (the production 500).
         await em.query(
           `DELETE FROM campaign_posted_products
-           WHERE campaign_id IN (SELECT id FROM campaigns WHERE user_id = $1)`, [targetId],
-        );
+           WHERE campaign_id IN (SELECT id::text FROM campaigns WHERE user_id = $1)`, [targetId],
+        ).catch((err: any) => {
+          throw new BadRequestException(`המחיקה נכשלה בטבלת campaign_posted_products: ${err?.message || err}`);
+        });
       }
       for (const table of USER_TABLES) {
         if (!(await exists(table))) continue;
