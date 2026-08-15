@@ -31,6 +31,25 @@ export class UsersService implements OnModuleInit {
         .set({ role: 'admin' })
         .where('LOWER(email) = :email AND role != :role', { email: ADMIN_EMAIL, role: 'admin' })
         .execute();
+
+      // BREAK-GLASS lockout recovery: the admin changed their login email to an address
+      // they can't actually use and locked themselves out. Setting ADMIN_EMAIL_RESCUE=true
+      // in the environment renames the (single) admin account back to ADMIN_EMAIL on the
+      // next boot. Deliberately env-gated and inert by default — only someone with access
+      // to the hosting dashboard (the real owner) can flip it, and it should be removed
+      // right after recovering. No-op when an account with ADMIN_EMAIL already exists.
+      if (process.env.ADMIN_EMAIL_RESCUE === 'true') {
+        const existing = await this.repo.findOne({ where: { email: ADMIN_EMAIL } });
+        if (!existing) {
+          const admins = await this.repo.find({ where: { role: 'admin' } });
+          if (admins.length === 1) {
+            await this.repo.update(admins[0].id, { email: ADMIN_EMAIL });
+            this.logger.warn(`ADMIN_EMAIL_RESCUE: admin ${admins[0].id} email reset to ${ADMIN_EMAIL} (was ${admins[0].email}) — remove the env var now`);
+          } else {
+            this.logger.warn(`ADMIN_EMAIL_RESCUE set but ${admins.length} admin accounts exist — refusing to guess, no change made`);
+          }
+        }
+      }
     } catch (err: any) {
       // Table may not exist yet on a brand-new DB before sync/migrations — ignore.
       this.logger.warn(`Admin bootstrap skipped: ${err.message}`);
