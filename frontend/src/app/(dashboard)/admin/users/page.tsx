@@ -104,25 +104,28 @@ export default function AdminUsersPage() {
           </h1>
           <p className="text-sm text-white/40 mt-1">הוספה, הרשאות, מנויים, חסימה ושליחת תפוצה</p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* max-w-full + overflow-x-auto + shrink-0 children: on a phone the row is wider
+            than the screen, and without its own scroll the leftmost button was cut off
+            with no way to reach it (same fix as the posts-screen filter bars). */}
+        <div className="flex items-center gap-2 max-w-full overflow-x-auto pb-1">
           <button onClick={testSmtp} disabled={smtpTesting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all">
+            className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all">
             {smtpTesting ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} בדוק SMTP
           </button>
           <button onClick={testWatchdog} disabled={wdTesting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all">
+            className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all">
             {wdTesting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} בדוק התראת Watchdog
           </button>
           <button onClick={() => setBroadcasting(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition-all">
+            className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition-all">
             <Send size={14} /> שלח תפוצה
           </button>
           <button onClick={() => setAdding(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600/90 hover:bg-blue-600 text-white text-sm font-medium rounded-xl transition-all">
+            className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-blue-600/90 hover:bg-blue-600 text-white text-sm font-medium rounded-xl transition-all">
             <UserPlus size={14} /> הוסף משתמש
           </button>
           <button onClick={load} disabled={loading}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all">
+            className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> רענן
           </button>
         </div>
