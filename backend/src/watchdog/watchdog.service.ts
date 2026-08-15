@@ -571,7 +571,8 @@ export class WatchdogService implements OnModuleInit {
       const expectedCron = c.schedule_cron ? cronTypicalIntervalMin(c.schedule_cron) : null;
       if (!expectedCron) continue;
       // Same night suppression: don't report slow cadence while the window is closed.
-      if (!this.nowInWindow(await this.campaignWindowResolved(c))) continue;
+      const win = await this.campaignWindowResolved(c);
+      if (!this.nowInWindow(win)) continue;
 
       let groups: string[] = [];
       try { groups = JSON.parse(c.target_channels || '[]'); } catch { groups = []; }
@@ -629,8 +630,13 @@ export class WatchdogService implements OnModuleInit {
       const times = sends.map((s) => new Date(s.sent_at).getTime()).sort((a, b) => b - a);
       const gaps: number[] = [];
       for (let i = 0; i < times.length - 1; i++) {
-        const g = (times[i] - times[i + 1]) / 60_000;
-        if (g <= expected * 3) gaps.push(g); // drop night/pause gaps
+        // Measure each gap in OPEN-WINDOW minutes, like the silent check does. Wall-clock
+        // gaps count the closed night: on a crowded group (expected 300) a legitimate
+        // 22:00 → next-morning send is ~540 wall minutes — under the 3× outlier drop —
+        // and the median read as drift when the campaign was pacing exactly right
+        // (issue #48: "בפועל ~542 דק'" was one night, not nine hours of silence).
+        const g = this.openMinutesBetween(times[i + 1], times[i], win.startHour, win.endHour, win.tz);
+        if (g > 0 && g <= expected * 3) gaps.push(g); // drop outlier/pause gaps
       }
       if (gaps.length < 2) continue; // not enough signal
       gaps.sort((a, b) => a - b);
