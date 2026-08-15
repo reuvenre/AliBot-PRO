@@ -284,25 +284,28 @@ function ManageUserModal({ user, plans, isSelf, onClose, onSaved }: {
   const [granting, setGranting] = useState(false);
   const [grantResult, setGrantResult] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // Two-step in-modal confirm. The first version used window.prompt — on mobile the
-  // browser dialog is unreliable (blocked in some contexts, invisible RTL marks fail
-  // the exact-match), and a failed match exited SILENTLY with no error. First click
-  // arms the button for a few seconds, second click deletes; everything stays in the
-  // modal where errors are actually visible.
+  // Two-step in-modal confirm (window.prompt was unreliable on mobile). The armed
+  // state persists until the owner clicks again or cancels — a timed auto-disarm
+  // just confused the flow. The delete error renders INSIDE the danger zone: the
+  // shared error line sits near the save buttons, which on a phone is scrolled out
+  // of view when the danger zone at the bottom is what you're looking at — a failed
+  // delete looked like "nothing happened".
   const [armDelete, setArmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const deleteForever = async () => {
     if (!armDelete) {
-      setArmDelete(true);
-      setTimeout(() => setArmDelete(false), 6000);
+      setArmDelete(true); setDeleteError('');
       return;
     }
-    setDeleting(true); setError('');
+    setDeleting(true); setDeleteError('');
     try {
       await adminApi.deleteUser(user.id);
       onSaved();
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'המחיקה נכשלה');
+      const status = e?.response?.status;
+      const msg = e?.response?.data?.message || e?.message || 'שגיאה לא ידועה';
+      setDeleteError(`המחיקה נכשלה${status ? ` (${status})` : ''}: ${msg}`);
       setDeleting(false); setArmDelete(false);
     }
   };
@@ -432,6 +435,15 @@ function ManageUserModal({ user, plans, isSelf, onClose, onSaved }: {
                 ? `מוחק את ${user.email} על כל הנתונים — בלתי הפיך`
                 : 'זמין רק לחשבון חסום או לחשבון שמעולם לא פרסם. בלתי הפיך.'}
             </p>
+            {armDelete && !deleting && (
+              <button type="button" onClick={() => setArmDelete(false)}
+                className="w-full text-2xs text-white/40 hover:text-white/70 mt-1 text-center">
+                ביטול
+              </button>
+            )}
+            {deleteError && (
+              <p className="text-xs text-red-400 mt-2 text-center break-words" dir="rtl">{deleteError}</p>
+            )}
           </div>
         )}
       </div>
