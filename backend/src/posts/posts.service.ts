@@ -1258,14 +1258,22 @@ export class PostsService {
    *
    * One model call answers both questions (which campaign by AUDIENCE, what keyword);
    * the keyword joins the campaign's rotation so future runs find more like this product.
-   * No fitting campaign — or no AI key, or an unreadable verdict — degrades to a plain
-   * queued post on the default channel: a wrong audience assignment posts to a real group
-   * of real people, so the judge fails closed (see smart-intake.ts).
+   * No fitting campaign — or no AI key, or an unreadable verdict — HANDS THE CHOICE TO
+   * THE OWNER: a wrong audience assignment posts to a real group of real people, so the
+   * judge fails closed (see smart-intake.ts) and the modal shows the campaign list
+   * instead of silently dropping into the default queue. The follow-up call carries the
+   * owner's pick in `campaignId` (or `toQueue` for an explicit default-queue choice).
    */
-  async smartIntake(userId: string, url: string): Promise<{
-    post_id: string; keyword: string; campaign_name: string | null;
-    keyword_added: boolean; scheduled_at: Date | null; note: string;
-  }> {
+  async smartIntake(userId: string, url: string, opts?: { campaignId?: string; toQueue?: boolean }): Promise<
+    | {
+      needs_choice: true; product_title: string; keyword: string;
+      campaigns: Array<{ id: string; name: string; status: string }>;
+    }
+    | {
+      post_id: string; keyword: string; campaign_name: string | null;
+      keyword_added: boolean; scheduled_at: Date | null; note: string;
+    }
+  > {
     const creds = await this.credentials.getRaw(userId);
     if (!creds) throw new BadRequestException('חסרים פרטי חיבור — הגדר אותם במסך ההגדרות');
     const link = String(url || '').trim();
@@ -1314,7 +1322,26 @@ export class PostsService {
     }
 
     const keyword = verdict?.keyword || fallbackKeyword(String(product.title || '')) || 'product';
-    const campaign = verdict && verdict.campaign >= 0 ? campaigns[verdict.campaign] : null;
+    let campaign = verdict && verdict.campaign >= 0 ? campaigns[verdict.campaign] : null;
+
+    // The OWNER's explicit pick outranks the judge (the follow-up call after needs_choice,
+    // or a deliberate override) — validated against their own campaign list.
+    if (opts?.campaignId) {
+      campaign = campaigns.find((c) => c.id === opts.campaignId) || null;
+      if (!campaign) throw new BadRequestException('הקמפיין שנבחר לא נמצא');
+    }
+
+    // Judge came up empty and the owner has campaigns to choose from → return the list
+    // instead of creating anything. Explicit toQueue (the owner confirmed "default
+    // queue") or an account with no campaigns at all proceeds as before.
+    if (!campaign && !opts?.toQueue && campaigns.length) {
+      return {
+        needs_choice: true as const,
+        product_title: String(product.title || ''),
+        keyword,
+        campaigns: campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+      };
+    }
 
     const currencyPair = campaign?.currency_pair?.trim() || creds.currency_pair || 'USD_ILS';
     const rate = await this.rates.getRate(currencyPair);
@@ -1400,8 +1427,10 @@ export class PostsService {
       keyword_added: keywordAdded,
       scheduled_at: scheduledAt,
       note: campaign
-        ? (verdict?.reason || 'שויך לפי התאמת קהל')
-        : 'לא נמצא טייס מתאים — הפוסט נכנס לתור של ערוץ ברירת המחדל',
+        ? (opts?.campaignId ? 'שויך לטייס לפי בחירתך' : (verdict?.reason || 'שויך לפי התאמת קהל'))
+        : (opts?.toQueue
+          ? 'נכנס לתור ערוץ ברירת המחדל לפי בחירתך'
+          : 'אין טייסים בחשבון — הפוסט נכנס לתור של ערוץ ברירת המחדל'),
     };
   }
 

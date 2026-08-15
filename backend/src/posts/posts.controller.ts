@@ -152,8 +152,16 @@ export class PostsController {
 
   @Post('smart-intake')
   @HttpCode(200)
-  smartIntake(@Req() req: Request, @Body('url') url: string) {
-    return this.svc.smartIntake(this.uid(req), url);
+  smartIntake(
+    @Req() req: Request,
+    @Body('url') url: string,
+    @Body('campaign_id') campaignId?: string,
+    @Body('to_queue') toQueue?: boolean,
+  ) {
+    return this.svc.smartIntake(this.uid(req), url, {
+      campaignId: campaignId || undefined,
+      toQueue: toQueue === true,
+    });
   }
 
   @Post(':id/requeue')

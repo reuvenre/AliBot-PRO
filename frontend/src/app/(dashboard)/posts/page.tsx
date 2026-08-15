@@ -999,11 +999,15 @@ function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: ()
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<Awaited<ReturnType<typeof postsApi.smartIntake>> | null>(null);
+  // The owner's pick when the judge couldn't place the product: a campaign id, or
+  // 'queue' for the explicit default-queue choice.
+  const [choice, setChoice] = useState('');
 
-  const submit = async () => {
+  const submit = async (opts?: { campaign_id?: string; to_queue?: boolean }) => {
     setBusy(true); setError('');
     try {
-      setResult(await postsApi.smartIntake(url));
+      setResult(await postsApi.smartIntake(url, opts));
+      setChoice('');
     } catch (e: any) {
       setError(e?.response?.data?.message || 'הקליטה נכשלה');
     } finally { setBusy(false); }
@@ -1028,7 +1032,7 @@ function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: ()
               placeholder="https://he.aliexpress.com/item/... או s.click.aliexpress.com/..."
               className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-teal-500/50 mb-3" />
             {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
-            <button onClick={submit} disabled={busy || !url.trim()}
+            <button onClick={() => submit()} disabled={busy || !url.trim()}
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl">
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
               {busy ? 'מזהה, שופט ומתזמן…' : 'נתח ותזמן'}
@@ -1036,7 +1040,44 @@ function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: ()
           </>
         )}
 
-        {result && (
+        {/* The judge couldn't place the product — the choice is the OWNER's, not a silent
+            fall-through to the default queue. */}
+        {result?.needs_choice && (
+          <div className="space-y-2.5">
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 space-y-1">
+              <p className="text-sm text-amber-300 font-medium">הסוכן לא הצליח לשייך לטייס — הבחירה שלך</p>
+              {result.product_title && <p className="text-xs text-white/70" dir="ltr">{result.product_title}</p>}
+              <p className="text-xs text-white/50">מילת מפתח מוצעת: <b dir="ltr">{result.keyword}</b></p>
+            </div>
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {(result.campaigns || []).map((c) => (
+                <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
+                  ${choice === c.id ? 'border-teal-500/60 bg-teal-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                  <input type="radio" name="intake-campaign" checked={choice === c.id} onChange={() => setChoice(c.id)} className="accent-teal-500" />
+                  <span className="text-sm text-white/80 flex-1">{c.name}</span>
+                  {c.status === 'paused' && <span className="text-2xs text-white/30">מושהה</span>}
+                </label>
+              ))}
+              <label className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
+                ${choice === 'queue' ? 'border-teal-500/60 bg-teal-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                <input type="radio" name="intake-campaign" checked={choice === 'queue'} onChange={() => setChoice('queue')} className="accent-teal-500" />
+                <span className="text-sm text-white/60 flex-1">ללא טייס — לתור של ערוץ ברירת המחדל</span>
+              </label>
+            </div>
+            {error && <p className="text-xs text-red-400">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => { setResult(null); setChoice(''); }}
+                className="flex-1 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm">ביטול</button>
+              <button disabled={busy || !choice}
+                onClick={() => submit(choice === 'queue' ? { to_queue: true } : { campaign_id: choice })}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-medium">
+                {busy ? <Loader2 size={14} className="animate-spin" /> : null} שייך ותזמן
+              </button>
+            </div>
+          </div>
+        )}
+
+        {result && !result.needs_choice && (
           <div className="space-y-2.5">
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 space-y-1.5">
               <p className="text-sm text-emerald-300 font-medium">✓ הפוסט נוצר</p>

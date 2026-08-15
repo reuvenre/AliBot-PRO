@@ -572,12 +572,16 @@ export const postsApi = {
     }).then(extract);
   },
 
-  /** Smart link intake — resolve, judge, file the keyword, schedule. AI-scale latency. */
-  smartIntake: (url: string) =>
+  /** Smart link intake — resolve, judge, file the keyword, schedule. AI-scale latency.
+   *  When the judge can't place the product, the response carries needs_choice + the
+   *  campaign list; re-call with campaign_id (the owner's pick) or to_queue. */
+  smartIntake: (url: string, opts?: { campaign_id?: string; to_queue?: boolean }) =>
     http.post<{
-      post_id: string; keyword: string; campaign_name: string | null;
-      keyword_added: boolean; scheduled_at: string | null; note: string;
-    }>('/posts/smart-intake', { url }, { timeout: AI_TIMEOUT }).then(extract),
+      needs_choice?: boolean; product_title?: string;
+      campaigns?: Array<{ id: string; name: string; status: string }>;
+      post_id?: string; keyword: string; campaign_name?: string | null;
+      keyword_added?: boolean; scheduled_at?: string | null; note?: string;
+    }>('/posts/smart-intake', { url, ...opts }, { timeout: AI_TIMEOUT }).then(extract),
 
   requeue: (id: string, scheduledAt?: string, channels?: string[], platforms?: PushPlatform[]) =>
     http.post<Post>(`/posts/${id}/requeue`, {
