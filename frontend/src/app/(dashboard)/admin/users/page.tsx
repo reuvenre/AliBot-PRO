@@ -284,22 +284,26 @@ function ManageUserModal({ user, plans, isSelf, onClose, onSaved }: {
   const [granting, setGranting] = useState(false);
   const [grantResult, setGrantResult] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Two-step in-modal confirm. The first version used window.prompt — on mobile the
+  // browser dialog is unreliable (blocked in some contexts, invisible RTL marks fail
+  // the exact-match), and a failed match exited SILENTLY with no error. First click
+  // arms the button for a few seconds, second click deletes; everything stays in the
+  // modal where errors are actually visible.
+  const [armDelete, setArmDelete] = useState(false);
 
   const deleteForever = async () => {
-    // Deletion is irreversible and wipes ALL the user's data — a typed-out confirm
-    // (not a yes/no click) is the guard that matches the blast radius.
-    const typed = window.prompt(
-      `מחיקה לצמיתות של ${user.email} וכל הנתונים שלו (פוסטים, קמפיינים, ערוצים, הכנסות).\n` +
-      'אי אפשר לשחזר. כדי לאשר — הקלד: מחק',
-    );
-    if (typed !== 'מחק') return;
+    if (!armDelete) {
+      setArmDelete(true);
+      setTimeout(() => setArmDelete(false), 6000);
+      return;
+    }
     setDeleting(true); setError('');
     try {
       await adminApi.deleteUser(user.id);
       onSaved();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'המחיקה נכשלה');
-      setDeleting(false);
+      setDeleting(false); setArmDelete(false);
     }
   };
 
@@ -415,12 +419,18 @@ function ManageUserModal({ user, plans, isSelf, onClose, onSaved }: {
           <div className="border-t border-edge pt-3 mt-1">
             <button
               type="button" onClick={deleteForever} disabled={deleting}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-500/30 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-50 text-red-400 text-xs font-medium transition-all">
+              className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg border disabled:opacity-50 text-xs font-medium transition-all ${
+                armDelete
+                  ? 'border-red-500 bg-red-600 hover:bg-red-500 text-white'
+                  : 'border-red-500/30 bg-red-500/5 hover:bg-red-500/15 text-red-400'
+              }`}>
               {deleting ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
-              מחק משתמש לצמיתות (כולל כל הנתונים)
+              {deleting ? 'מוחק…' : armDelete ? 'בטוח? לחיצה נוספת מוחקת לצמיתות' : 'מחק משתמש לצמיתות (כולל כל הנתונים)'}
             </button>
             <p className="text-2xs text-white/25 mt-1.5 text-center">
-              זמין רק לחשבון חסום או לחשבון שמעולם לא פרסם. בלתי הפיך.
+              {armDelete
+                ? `מוחק את ${user.email} על כל הנתונים — בלתי הפיך`
+                : 'זמין רק לחשבון חסום או לחשבון שמעולם לא פרסם. בלתי הפיך.'}
             </p>
           </div>
         )}
