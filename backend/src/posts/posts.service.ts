@@ -4537,11 +4537,20 @@ export class PostsService {
     // with "Media ID is not available". Poll the container's status_code until FINISHED
     // (ERROR = the image itself was rejected; timeout → still try to publish below).
     for (let i = 0; i < 10; i++) {
-      const st = await axios.get(
-        `https://graph.facebook.com/${GRAPH_VERSION}/${creationId}`,
-        { params: { fields: 'status_code', access_token: token }, timeout: 8000, validateStatus: () => true },
-      );
-      const code = st.data?.status_code;
+      // A network blip DURING the poll must not kill a publish whose container already
+      // exists — treat it as "still processing" and let the bounded loop try again.
+      // An uncaught ETIMEDOUT here failed the whole send (partial-publish alert) even
+      // though the container was fine and the next poll would have answered.
+      let code: string | undefined;
+      try {
+        const st = await axios.get(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${creationId}`,
+          { params: { fields: 'status_code', access_token: token }, timeout: 8000, validateStatus: () => true },
+        );
+        code = st.data?.status_code;
+      } catch (err: any) {
+        this.logger.warn(`instagram status poll network error (treating as pending): ${err?.message}`);
+      }
       if (code === 'FINISHED') break;
       if (code === 'ERROR') {
         throw new Error('אינסטגרם דחה את התמונה בעת העיבוד — ודא שהיא JPEG נגיש (לא WebP) וביחס גובה-רוחב נתמך');
@@ -4553,11 +4562,25 @@ export class PostsService {
     // retry the known not-ready error a few times before giving up.
     let lastErr = '';
     for (let attempt = 0; attempt < 3; attempt++) {
-      const publish = await axios.post(
-        `${base}/media_publish`,
-        new URLSearchParams({ creation_id: creationId, access_token: token }).toString(),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000, validateStatus: () => true },
-      );
+      let publish;
+      try {
+        publish = await axios.post(
+          `${base}/media_publish`,
+          new URLSearchParams({ creation_id: creationId, access_token: token }).toString(),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000, validateStatus: () => true },
+        );
+      } catch (err: any) {
+        // Connect-phase failure = the request never reached Meta, so retrying cannot
+        // double-publish. A RESPONSE-phase timeout still aborts (the publish may have
+        // landed) — same distinction as the container-create step.
+        if (isMetaConnectionError(err)) {
+          this.logger.warn('instagram publish: connection never reached Meta, retrying');
+          lastErr = 'החיבור לשרתי מטא נכשל ברמת הרשת בעת הפרסום';
+          await new Promise((r) => setTimeout(r, 2500));
+          continue;
+        }
+        throw err;
+      }
       if (!publish.data?.error && publish.data?.id) {
         post.instagram_post_id = publish.data.id;
         return;
