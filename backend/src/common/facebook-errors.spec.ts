@@ -184,7 +184,16 @@ describe('connection-level Meta failures', () => {
       expect(isMetaConnectionError(aggregate(['ECONNREFUSED', 'ENETUNREACH']))).toBe(true);
     });
 
+    it('treats an INNER (connect-phase) ETIMEDOUT as retry-safe', () => {
+      // Issue #50: Happy Eyeballs aggregate with ETIMEDOUT — the socket never opened,
+      // nothing reached Meta, yet the container-create retry never fired.
+      expect(isMetaConnectionError(aggregate(['ETIMEDOUT']))).toBe(true);
+      expect(isMetaConnectionError(aggregate(['ETIMEDOUT', 'ECONNREFUSED']))).toBe(true);
+    });
+
     it('rejects timeouts, HTTP responses and plain errors', () => {
+      // A TOP-LEVEL timeout is response-phase — the request may have arrived.
+      expect(isMetaConnectionError(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }))).toBe(false);
       expect(isMetaConnectionError(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))).toBe(false);
       expect(isMetaConnectionError({ code: 'ECONNRESET', response: { status: 400 } })).toBe(false);
       expect(isMetaConnectionError(new Error('anything'))).toBe(false);

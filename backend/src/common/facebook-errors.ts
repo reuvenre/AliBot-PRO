@@ -23,6 +23,15 @@ const CONNECTION_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
 ]);
 
+/**
+ * Inside an AggregateError the codes come from Node's Happy Eyeballs CONNECT loop, so an
+ * INNER ETIMEDOUT is a connect-phase timeout — the socket never opened and nothing reached
+ * Meta (same distinction telegram-retry.ts documents). A TOP-LEVEL ETIMEDOUT stays
+ * non-retryable: on an established connection the request may have arrived and only the
+ * reply was lost. Issue #50 was exactly the inner case going un-retried.
+ */
+const AGGREGATE_CONNECT_CODES = new Set([...CONNECTION_CODES, 'ETIMEDOUT']);
+
 /** Every error code hiding in the failure — its own plus an AggregateError's inner ones
  *  (Node's Happy Eyeballs connect throws those with an EMPTY top-level message). */
 function errorCodes(err: any): string[] {
@@ -39,6 +48,12 @@ function errorCodes(err: any): string[] {
  */
 export function isMetaConnectionError(err: any): boolean {
   if (err?.response) return false;
+  const inner = Array.isArray((err as AggregateError)?.errors) ? (err as AggregateError).errors : [];
+  const innerCodes = inner
+    .map((e: any) => e?.code)
+    .filter((c: any): c is string => typeof c === 'string' && !!c);
+  // Aggregate (connect-phase) failures may include ETIMEDOUT — see AGGREGATE_CONNECT_CODES.
+  if (innerCodes.length) return innerCodes.every((c: string) => AGGREGATE_CONNECT_CODES.has(c));
   const codes = errorCodes(err);
   return codes.length > 0 && codes.every((c) => CONNECTION_CODES.has(c));
 }
