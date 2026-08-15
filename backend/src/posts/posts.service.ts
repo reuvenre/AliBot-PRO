@@ -2202,9 +2202,15 @@ export class PostsService {
    */
   private async keywordPerformance(campaignId: string): Promise<Map<string, KeywordPerformance>> {
     const rows: any[] = await this.repo.query(
+      // Clicks = short-link clicks PLUS Pinterest outbound clicks. Pins carry the DIRECT
+      // affiliate link (a redirect in the pin's link field risks rejection), so their
+      // clicks never pass through /r/<code> — they arrive via the Pinterest analytics
+      // sync into posts.pinterest_clicks. Counting only clicks_count left the weighted
+      // rotation BLIND on Pinterest-only campaigns: every keyword scored zero and the
+      // rotation degraded to round-robin exactly where the learning was asked about.
       `SELECT pp.keyword,
               count(DISTINCT pp.product_id)::int          AS posts,
-              coalesce(sum(p.clicks_count), 0)::int        AS clicks,
+              coalesce(sum(p.clicks_count + coalesce(p.pinterest_clicks, 0)), 0)::int AS clicks,
               coalesce((
                 SELECT sum(e.commission_ils) FROM earnings e
                 WHERE e.product_id IN (
