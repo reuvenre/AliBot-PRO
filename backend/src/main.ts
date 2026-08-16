@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { DataSource } from 'typeorm';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { installRetryAfterInterceptor } from './common/http-retry';
 
@@ -24,7 +25,13 @@ process.on('uncaughtException', (err) => {
 async function bootstrap() {
   // rawBody:true keeps the unparsed request body available (req.rawBody) so payment-webhook
   // signatures can be verified over the exact bytes the provider signed.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  // The default 100kb JSON body is too small for one thing we accept as text: the
+  // AliExpress portal's order export, pasted whole into the reconciliation check. A
+  // year of orders is a few hundred KB, and the failure mode is a bare 413 that reads
+  // like the feature is broken.
+  app.useBodyParser('json', { limit: '5mb' });
 
   // Behind Cloudflare + the platform router — trust the proxy chain so req.ip / secure
   // reflect the real client, and the rate limiter buckets per client (see

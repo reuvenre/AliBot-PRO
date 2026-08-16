@@ -4,6 +4,7 @@ import { Between, IsNull, Repository } from 'typeorm';
 import { Earning } from './earning.entity';
 import { Post } from '../posts/post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
+import { parsePortalCsv } from './portal-csv';
 import { CredentialsService } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { signAliexpress } from '../common/aliexpress-sign';
@@ -61,6 +62,7 @@ function parseAliTime(s: string | null | undefined): Date | null {
 @Injectable()
 export class EarningsService {
   private readonly logger = new Logger(EarningsService.name);
+
   /** Users with an in-flight sync — blocks concurrent/duplicate runs. */
   private readonly syncing = new Set<string>();
 
@@ -74,6 +76,72 @@ export class EarningsService {
     private readonly credentials: CredentialsService,
     private readonly rates: RatesService,
   ) {}
+
+  /**
+   * Compare the portal's own export against what the sync stored — which sub-order is
+   * missing, and which stored row the portal no longer shows.
+   *
+   * The sync keys on sub_order_id, exactly the portal's row grain, so the two counts are
+   * directly comparable and a gap has one concrete answer. Read-only: it never inserts
+   * the missing row, because a row the API refuses to return is a symptom, and filling it
+   * in by hand would hide the cause on the next month's export too.
+   */
+  async reconcile(userId: string, csv: string) {
+    const rows = parsePortalCsv(csv);
+    if (!rows.length) {
+      return {
+        portal_rows: 0, matched: 0, missing: [], extra: [], extra_count: 0,
+        note: 'לא זוהו מזהי הזמנה בקובץ — הדבק את ה-CSV מהפורטל או רשימת מזהים, שורה לכל הזמנה.',
+      };
+    }
+
+    const ids = rows.map((r) => r.sub_order_id);
+    const found = new Set<string>();
+    // Chunked so a year's export doesn't build one enormous IN (...) list.
+    for (let i = 0; i < ids.length; i += 500) {
+      const slice = ids.slice(i, i + 500);
+      const hits: Array<{ order_id: string }> = await this.repo.query(
+        'SELECT order_id FROM earnings WHERE user_id = $1 AND order_id = ANY($2::text[])',
+        [userId, slice],
+      ).catch(() => []);
+      for (const h of hits) found.add(String(h.order_id));
+    }
+
+    const missing = rows.filter((r) => !found.has(r.sub_order_id));
+
+    // The other direction: rows the system holds inside the export's date span that the
+    // portal no longer lists (a cancelled order the sync hasn't caught up with).
+    const paidTimes = rows.map((r) => r.paid_at).filter(Boolean).sort();
+    let extra: Array<{ order_id: string; product_id: string; commission_usd: number }> = [];
+    if (paidTimes.length) {
+      extra = await this.repo.query(
+        `SELECT order_id, product_id, commission_usd FROM earnings
+         WHERE user_id = $1 AND paid_date IS NOT NULL
+           AND paid_date >= $2::timestamptz AND paid_date <= $3::timestamptz
+           AND NOT (order_id = ANY($4::text[]))
+         ORDER BY paid_date DESC LIMIT 20`,
+        [userId, paidTimes[0], paidTimes[paidTimes.length - 1], ids],
+      ).catch(() => []);
+    }
+
+    return {
+      portal_rows: rows.length,
+      matched: rows.length - missing.length,
+      missing: missing.map((r) => ({
+        sub_order_id: r.sub_order_id,
+        order_id: r.order_id,
+        product_id: r.product_id,
+        title: r.title,
+        commission_usd: r.commission_usd,
+        amount_usd: r.amount_usd,
+        paid_at: r.paid_at,
+        status: r.status,
+      })),
+      extra,
+      extra_count: extra.length,
+      note: null as string | null,
+    };
+  }
 
   // ── Revenue attribution ───────────────────────────────────────────────────
 

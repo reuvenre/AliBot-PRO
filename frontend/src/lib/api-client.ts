@@ -759,6 +759,20 @@ export const earningsApi = {
     result?: { synced: number; updated: number; by_status?: Record<string, { found: number; new: number; updated: number; error?: string }> };
     error?: string;
   }>('/earnings/sync/status').then(extract),
+
+  /** Compare the portal's own export against the DB — which sub-order never arrived. */
+  reconcile: (csv: string) =>
+    http.post<{
+      portal_rows: number;
+      matched: number;
+      missing: Array<{
+        sub_order_id: string; order_id: string; product_id: string; title: string;
+        commission_usd: number; amount_usd: number; paid_at: string; status: string;
+      }>;
+      extra: Array<{ order_id: string; product_id: string; commission_usd: number }>;
+      extra_count: number;
+      note: string | null;
+    }>('/earnings/reconcile', { csv }, { timeout: 60_000 }).then(extract),
 };
 
 // ─── Channels API ────────────────────────────────────────────────────────────

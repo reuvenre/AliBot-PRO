@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCart, TrendingUp, DollarSign, CheckCircle2, Clock, XCircle,
-  Loader2, AlertTriangle, Download, CalendarRange,
+  Loader2, AlertTriangle, Download, CalendarRange, FileSearch, X,
 } from 'lucide-react';
 import { earningsApi } from '@/lib/api-client';
 import type { Earning, EarningStatus } from '@/types';
@@ -158,6 +158,27 @@ export default function OrdersPage() {
   // against the AliExpress portal, which logs orders on that clock. Israel-time dates here
   // made the same order appear a day "early" (a 22:48 IL purchase = next-day 03:48 in the
   // portal) and read as a wrong date.
+  // Portal reconciliation: the export and our sync count the same thing (one row per
+  // SUB-order), so "the portal says 67 and the system says 66" has one concrete answer —
+  // which id is in the file and not in the DB. Reading 19-digit numbers by eye is how a
+  // missing order stays missing.
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileRes, setReconcileRes] = useState<Awaited<ReturnType<typeof earningsApi.reconcile>> | null>(null);
+  const [reconcileErr, setReconcileErr] = useState('');
+  const runReconcile = async () => {
+    setReconciling(true); setReconcileErr(''); setReconcileRes(null);
+    try {
+      setReconcileRes(await earningsApi.reconcile(csvText));
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setReconcileErr(err?.response?.data?.message || 'ההשוואה נכשלה');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
   const fmtDate = (d: string) =>
     new Date(d).toLocaleDateString('he-IL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' });
 
@@ -169,14 +190,96 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold text-white">הזמנות</h1>
           <p className="text-sm text-white/40 mt-1">הזמנות ועמלות אמיתיות מ-AliExpress</p>
         </div>
-        <button onClick={handleSync} disabled={syncing}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all">
-          {syncing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {syncing ? 'מסנכרן מ-AliExpress...' : 'סנכרן הזמנות'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setReconcileOpen((v) => !v)}
+            title="הדבק את קובץ ההזמנות מהפורטל — המערכת תגיד לך איזו הזמנה חסרה אצלה"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white/70 text-sm rounded-xl transition-all whitespace-nowrap">
+            <FileSearch size={14} />
+            השווה מול הפורטל
+          </button>
+          <button onClick={handleSync} disabled={syncing}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl transition-all whitespace-nowrap">
+            {syncing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {syncing ? 'מסנכרן מ-AliExpress...' : 'סנכרן הזמנות'}
+          </button>
+        </div>
       </div>
 
       {syncMsg && <p className="text-xs text-emerald-400 mb-4">{syncMsg}</p>}
+
+      {reconcileOpen && (
+        <div className="mb-6 rounded-2xl border border-edge bg-surface-secondary p-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <FileSearch size={15} className="text-blue-400" />
+                השוואה מול פורטל השותפים
+              </h3>
+              <p className="text-xs text-white/40 mt-1">
+                בפורטל: דוחות ← הזמנות ← ייצוא CSV. הדבק כאן את כל הקובץ (או רשימת מזהי הזמנה, שורה לכל אחת).
+              </p>
+            </div>
+            <button onClick={() => setReconcileOpen(false)} className="text-white/30 hover:text-white/60 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+
+          <textarea
+            value={csvText}
+            onChange={(e) => setCsvText(e.target.value)}
+            dir="ltr"
+            rows={5}
+            placeholder='"CompletedPaymentsTime",...,"OrderID","SubOrderID",...'
+            className="w-full bg-surface border border-edge rounded-xl px-3 py-2.5 text-xs text-white/80 font-mono resize-y"
+          />
+          <button onClick={runReconcile} disabled={reconciling || !csvText.trim()}
+            className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-xl transition-all">
+            {reconciling ? <Loader2 size={14} className="animate-spin" /> : <FileSearch size={14} />}
+            השווה
+          </button>
+
+          {reconcileErr && <p className="text-xs text-red-400 mt-3">⚠️ {reconcileErr}</p>}
+
+          {reconcileRes && (
+            <div className="mt-4 space-y-3">
+              <p className="text-xs text-white/60">
+                בקובץ: <span className="font-semibold text-white">{reconcileRes.portal_rows}</span> הזמנות ·
+                נמצאו במערכת: <span className="font-semibold text-emerald-300">{reconcileRes.matched}</span> ·
+                חסרות: <span className={`font-semibold ${reconcileRes.missing.length ? 'text-red-300' : 'text-emerald-300'}`}>{reconcileRes.missing.length}</span>
+              </p>
+              {reconcileRes.note && <p className="text-xs text-amber-300">{reconcileRes.note}</p>}
+
+              {reconcileRes.missing.length === 0 && !reconcileRes.note && (
+                <p className="text-sm text-emerald-300">✓ כל ההזמנות שבקובץ קיימות במערכת.</p>
+              )}
+
+              {reconcileRes.missing.map((m) => (
+                <div key={m.sub_order_id} className="rounded-xl border border-red-500/25 bg-red-500/[0.07] px-3.5 py-3">
+                  <p className="text-sm text-white font-medium">{m.title || 'ללא כותרת'}</p>
+                  <p className="text-xs text-white/50 mt-1" dir="ltr">
+                    sub-order {m.sub_order_id} · order {m.order_id} · product {m.product_id}
+                  </p>
+                  <p className="text-xs text-white/50 mt-0.5">
+                    {m.paid_at} · ${m.amount_usd.toFixed(2)} · עמלה ${m.commission_usd.toFixed(2)} · {m.status}
+                  </p>
+                </div>
+              ))}
+
+              {reconcileRes.extra_count > 0 && (
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-3.5 py-3">
+                  <p className="text-xs text-amber-200">
+                    {reconcileRes.extra_count} הזמנות קיימות אצלנו בטווח התאריכים של הקובץ ואינן מופיעות בו
+                    (בדרך כלל הזמנה שבוטלה בפורטל):
+                  </p>
+                  <p className="text-xs text-white/50 mt-1" dir="ltr">
+                    {reconcileRes.extra.map((e) => e.order_id).join(', ')}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {error && (
         <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/25 rounded-xl px-3.5 py-2.5 mb-4">
           <AlertTriangle size={13} className="text-red-400 shrink-0" />

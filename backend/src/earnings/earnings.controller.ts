@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Req, UseGuards, HttpCode } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, UseGuards, HttpCode } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EarningsService } from './earnings.service';
@@ -11,6 +11,13 @@ export class EarningsController {
     private readonly svc: EarningsService,
     private readonly subscription: SubscriptionService,
   ) {}
+
+  /** Which sub-order from the portal's export never made it into the DB. */
+  @Post('reconcile')
+  @HttpCode(200)
+  reconcile(@Req() req: Request, @Body('csv') csv: string) {
+    return this.svc.reconcile((req.user as any).id, csv || '');
+  }
 
   @Get('summary')
   summary(
