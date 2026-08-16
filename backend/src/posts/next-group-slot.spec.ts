@@ -32,6 +32,7 @@ describe('PostsService.nextGroupSlot', () => {
       credentials, null as any, null as any, null as any,
       channels, null as any, null as any, null as any, null as any,
       null as any, // pinterest — slot booking never touches it
+      null as any, // incentive — slot booking never touches it
     );
   }
 

@@ -18,6 +18,7 @@ describe('PostsService.updatePost — main image vs album', () => {
       null as any, null as any, null as any, null as any, null as any,
       null as any, null as any, null as any, null as any, null as any,
       null as any,
+      null as any, // incentive
     );
   }
 

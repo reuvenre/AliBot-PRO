@@ -54,6 +54,7 @@ describe('PostsService.nextGroupSlot — honors a future notBefore', () => {
       credentials, null as any, null as any, null as any,
       channels, null as any, null as any, null as any, null as any,
       null as any,
+      null as any, // incentive
     );
   }
 

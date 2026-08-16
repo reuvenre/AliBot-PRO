@@ -19,6 +19,7 @@ import { RatesModule } from './rates/rates.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { ChannelsModule } from './channels/channels.module';
 import { CouponsModule } from './coupons/coupons.module';
+import { IncentiveModule } from './incentive/incentive.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TemplatesModule } from './templates/templates.module';
 import { CatalogModule } from './catalog/catalog.module';
@@ -93,6 +94,7 @@ import { HealthController } from './health.controller';
     UsersModule,
     CredentialsModule,
     CouponsModule,
+    IncentiveModule,
     NotificationsModule,
     CampaignsModule,
     ProductsModule,

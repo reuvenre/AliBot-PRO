@@ -42,6 +42,7 @@ import { CouponsService, currencySymbol } from '../coupons/coupons.service';
 import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { PinterestService } from '../pinterest/pinterest.service';
+import { IncentiveService } from '../incentive/incentive.service';
 import { UploadedImage } from './uploaded-image.entity';
 import {
   describeMissingScopes, isTierBlockError, parseGrantedScopes, PUBLISH_SCOPE,
@@ -202,6 +203,7 @@ export class PostsService {
     private readonly links: LinksService,
     private readonly products: ProductsService,
     private readonly pinterest: PinterestService,
+    private readonly incentive: IncentiveService,
   ) {}
 
   /**
@@ -2278,6 +2280,22 @@ export class PostsService {
       }
       seasonHint = seasonalHint(campaign.language || 'he');
     }
+
+    // BONUS POOLS (AliExpress incentive campaigns the owner registered for in the portal):
+    // while a pool is live, a sale in its category pays the normal commission PLUS a bonus
+    // — so those categories are simply worth more per post than anything else this campaign
+    // could publish. Their keywords join the rotation for the duration, and only for
+    // campaigns publishing to the pool's own groups (a Home & Living bonus must never push
+    // kitchen organisers into a tactical channel). The window closing removes them by
+    // itself, with nothing to switch off.
+    let incentiveTargets: string[] = [];
+    try { incentiveTargets = JSON.parse(campaign.target_channels || '[]'); } catch { incentiveTargets = []; }
+    const bonus = await this.incentive.keywordsFor(userId, incentiveTargets);
+    if (bonus.keywords.length) {
+      for (const kw of bonus.keywords) if (!kwList.includes(kw)) kwList.push(kw);
+      this.logger.log(`campaign ${campaign.id}: ${bonus.keywords.length} bonus keywords in rotation (${bonus.names.join(', ')})`);
+    }
+
     const perPost = Math.max(1, campaign.posts_per_run);
     const baseCursor = campaign.keyword_cursor ?? 0;
     this.campaignRepo.increment({ id: campaign.id }, 'keyword_cursor', perPost).catch(() => {});

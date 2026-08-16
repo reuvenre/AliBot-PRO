@@ -322,6 +322,38 @@ export const notificationsApi = {
 
 // ─── Coupons API ─────────────────────────────────────────────────────────────
 
+// ─── Incentive programs (AliExpress portal bonus pools) ──────────────────────
+
+export interface IncentiveProgram {
+  id: string;
+  name: string;
+  keywords_json: string;
+  target_channels: string | null;
+  starts_at: string;
+  ends_at: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface IncentiveInput {
+  name?: string;
+  keywords?: string[];
+  target_channels?: string[];
+  starts_at?: string;
+  ends_at?: string;
+  active?: boolean;
+}
+
+export const incentiveApi = {
+  list: () => http.get<IncentiveProgram[]>('/incentive-programs').then(extract),
+  create: (data: IncentiveInput) =>
+    http.post<IncentiveProgram>('/incentive-programs', data).then(extract),
+  update: (id: string, data: IncentiveInput) =>
+    http.patch<IncentiveProgram>(`/incentive-programs/${id}`, data).then(extract),
+  remove: (id: string) =>
+    http.delete<{ deleted: boolean }>(`/incentive-programs/${id}`).then(extract),
+};
+
 export const couponsApi = {
   list: () => http.get<Coupon[]>('/coupons').then(extract),
   /** Parse a pasted block without saving — for the import preview. */

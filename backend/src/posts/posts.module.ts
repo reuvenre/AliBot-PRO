@@ -16,6 +16,7 @@ import { AiModule } from '../ai/ai.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { CollageModule } from '../collage/collage.module';
+import { IncentiveModule } from '../incentive/incentive.module';
 import { PinterestModule } from '../pinterest/pinterest.module';
 import { UploadedImage } from './uploaded-image.entity';
 
@@ -38,6 +39,9 @@ import { UploadedImage } from './uploaded-image.entity';
     // Safe direction: PinterestModule holds only the Post REPOSITORY, never PostsService,
     // so this does not close a cycle.
     PinterestModule,
+    // Bonus-pool steering: reads the owner's registered incentive campaigns.
+    // One-way (IncentiveModule knows nothing about posts), so no cycle.
+    IncentiveModule,
   ],
   providers: [PostsService],
   controllers: [PostsController, InstagramImageController],

@@ -26,6 +26,7 @@ describe('PostsService.regenerateForPost', () => {
       null as any, null as any, null as any, null as any, null as any,
       null as any, null as any, null as any, null as any, null as any,
       null as any,
+      null as any, // incentive
     );
     return svc as any;
   }
