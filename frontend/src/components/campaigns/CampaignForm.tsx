@@ -53,6 +53,11 @@ const RECOMMENDED_WINDOWS: Record<string, { start: number; end: number; why: str
 
 const CRON_PRESETS = [
   { label: 'כל שעה',         value: '0 * * * *' },
+  // The step between hourly and 3-hourly was missing, and it is the one a Pinterest
+  // campaign wants: the board grows on pin VOLUME spread through the day, while hourly
+  // outruns the supply of fresh products (the user-wide dedup skips anything already
+  // published) and doubles credit burn for runs that return nothing.
+  { label: 'כל שעתיים',      value: '0 */2 * * *' },
   { label: 'כל 3 שעות',      value: '0 */3 * * *' },
   { label: 'כל 6 שעות',      value: '0 */6 * * *' },
   { label: 'פעם ביום (9:00)', value: '0 9 * * *' },
