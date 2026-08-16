@@ -2288,7 +2288,9 @@ export class PostsService {
     // the autopilots the owner picked for that pool (a Home & Living bonus must never push
     // kitchen organisers into a tactical channel). The window closing removes them by
     // itself, with nothing to switch off.
-    const bonus = await this.incentive.keywordsFor(userId, campaign.id);
+    let bonusChannels: string[] = [];
+    try { bonusChannels = JSON.parse(campaign.target_channels || '[]'); } catch { bonusChannels = []; }
+    const bonus = await this.incentive.keywordsFor(userId, campaign.id, bonusChannels);
     if (bonus.keywords.length) {
       for (const kw of bonus.keywords) if (!kwList.includes(kw)) kwList.push(kw);
       this.logger.log(`campaign ${campaign.id}: ${bonus.keywords.length} bonus keywords in rotation (${bonus.names.join(', ')})`);

@@ -84,7 +84,9 @@ export class IncentiveService {
    * Never throws: a failure here means the campaign runs on its own keywords, which is
    * exactly the pre-bonus behaviour — earning less is not a reason to publish nothing.
    */
-  async keywordsFor(userId: string, campaignId: string): Promise<{ keywords: string[]; names: string[] }> {
+  async keywordsFor(
+    userId: string, campaignId: string, channels: string[] = [],
+  ): Promise<{ keywords: string[]; names: string[] }> {
     try {
       // Plan gate: steering the rotation is an Autopilot-tier feature. Recording pools
       // and getting the monthly reminder stay open to every plan — knowing the money is
@@ -94,13 +96,21 @@ export class IncentiveService {
       }
       const now = new Date();
       const rows = await this.repo.find({ where: { user_id: userId, active: true } });
-      const live = rows.filter((r) => new Date(r.starts_at) <= now && new Date(r.ends_at) >= now);
+      // `active` is re-checked here, not left to the query alone: this is the owner's
+      // off switch, and a correctness gate this cheap should be visible in the code that
+      // decides — not only in a where-clause one layer away.
+      const live = rows.filter((r) => r.active !== false
+        && new Date(r.starts_at) <= now && new Date(r.ends_at) >= now);
       const keywords: string[] = [];
       const names: string[] = [];
       for (const r of live) {
         let own: string[] = [];
         try { own = r.target_campaigns ? JSON.parse(r.target_campaigns) : []; } catch { own = []; }
-        if (own.length && !own.includes(campaignId)) continue;
+        // LEGACY tolerance: the first version of the screen stored Telegram GROUP ids.
+        // A row saved from a still-cached old page would otherwise match nothing and
+        // silently steer no campaign at all — so a stored id also counts when it is one
+        // of this campaign's target groups.
+        if (own.length && !own.includes(campaignId) && !own.some((id) => channels.includes(id))) continue;
         let kws: string[] = [];
         try { kws = JSON.parse(r.keywords_json || '[]'); } catch { kws = []; }
         const clean = cleanKeywords(kws);
