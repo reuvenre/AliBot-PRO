@@ -19,6 +19,7 @@ import {
 } from './regression';
 import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
 import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
+import { pendingVerdict } from './pending-posts';
 import { isTierBlockError } from '../pinterest/pinterest-scopes';
 import { feasibleCadenceMin } from './cadence-feasible';
 
@@ -512,9 +513,28 @@ export class WatchdogService implements OnModuleInit {
         }
       }
 
-      // (c) Pending posts waiting (scheduled but not going out).
-      const pending = await this.posts.count({ where: { campaign_id: c.id, status: 'scheduled' } }).catch(() => 0);
-      if (pending) reasons.push(`${pending} פוסטים ממתינים בסטטוס scheduled`);
+      // (c) Pending posts — but WHEN they are due decides whether this is a fault at all.
+      //
+      //     A campaign that publishes a few times a day is quiet between its runs BY
+      //     DESIGN, and its next post already sits in the queue with a future scheduled_at.
+      //     The old check counted that as evidence of being stuck and alerted every night
+      //     on a healthy low-frequency campaign (the Pinterest one, whose next slot was
+      //     23:00). A booked future slot is the opposite of silence — the campaign ran,
+      //     produced a post, and the post is waiting for its time.
+      //
+      //     An OVERDUE pending post is the real fault: due in the past and still sitting.
+      const nextPending = await this.posts.createQueryBuilder('p')
+        .select('MIN(p.scheduled_at)', 'next')
+        .where('p.campaign_id = :cid', { cid: c.id })
+        .andWhere("p.status = 'scheduled'")
+        .getRawOne()
+        .catch(() => null);
+      const nextPendingMs = nextPending?.next ? new Date(nextPending.next).getTime() : 0;
+      const verdict = pendingVerdict(nextPendingMs, now);
+      if (verdict === 'booked') continue; // the next publish is already scheduled — not silent
+      if (verdict === 'overdue') {
+        reasons.push(`פוסט ממתין שעבר זמנו (${Math.round((now - nextPendingMs) / 60_000)} דק' באיחור) ואינו יוצא`);
+      }
 
       // (d) Strict filters that may reject every product.
       if ((c.min_rating ?? 0) >= 4.5 || (c.min_discount ?? 0) >= 40) {
