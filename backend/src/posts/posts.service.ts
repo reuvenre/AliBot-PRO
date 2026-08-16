@@ -9,7 +9,7 @@ import FormData = require('form-data');
 import { Post } from './post.entity';
 import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
-import { COPY_JUDGE_SYSTEM, parseJudgeVerdict } from './copy-judge';
+import { COPY_JUDGE_SYSTEM, COPY_JUDGE_PINTEREST_NOTE, parseJudgeVerdict } from './copy-judge';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
@@ -5157,10 +5157,12 @@ export class PostsService {
    * missing key, timeout, unparseable answer — passes the draft; the deterministic gate
    * already approved it, and a broken judge must never be why a post didn't go out.
    */
-  private async copySanityVerdict(creds: DecryptedCredentials, candidate: string): Promise<string | null> {
+  private async copySanityVerdict(creds: DecryptedCredentials, candidate: string, style?: 'pinterest'): Promise<string | null> {
     try {
       const res = await this.ai.generate(creds, {
-        system: COPY_JUDGE_SYSTEM,
+        // Pinterest pins have their own valid shape — without the style note the judge
+        // rejected every pin draft as "not a marketing post" (issue #51).
+        system: style === 'pinterest' ? COPY_JUDGE_SYSTEM + COPY_JUDGE_PINTEREST_NOTE : COPY_JUDGE_SYSTEM,
         // The defects this judge hunts (meta-commentary, checklists, numbering) show up
         // in the opening or the flow of the text — 3000 chars covers every real post.
         prompt: candidate.slice(0, 3000),
@@ -5337,11 +5339,11 @@ export class PostsService {
       // three different leak shapes reached channels before this existed).
       let defect = copyDefect(candidate);
       if (!defect) {
-        defect = await this.copySanityVerdict(creds, candidate);
+        defect = await this.copySanityVerdict(creds, candidate, opts?.style);
         // Final attempt + patterns passed: a single judge BAD now kills the post outright
         // (no silent fallback below), so require a SECOND independent BAD before failing —
         // a flaky verdict gets overturned, a systematic one stays authoritative.
-        if (defect && attempt === 1) defect = await this.copySanityVerdict(creds, candidate);
+        if (defect && attempt === 1) defect = await this.copySanityVerdict(creds, candidate, opts?.style);
       }
       if (!defect) { text = candidate; break; }
       reasons.push(defect);

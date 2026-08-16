@@ -25,6 +25,20 @@ export const COPY_JUDGE_SYSTEM =
   + 'OK if it reads as one clean, coherent marketing post — emojis, bullet lines, prices, '
   + 'discount percentages, coupon codes and links are all normal and expected.';
 
+/**
+ * Style note appended for PINTEREST-style drafts. The pin format is deliberately
+ * different from a feed post — a bare keyword-rich Title Case line, a blank line,
+ * a few helpful SEO sentences, a final hashtags line — and the base judge read that
+ * structure as "not a marketing post" and rejected EVERY pin draft at temperature 0
+ * (issue #51: the Pinterest campaign silently produced nothing for hours).
+ */
+export const COPY_JUDGE_PINTEREST_NOTE =
+  '\nNote: this candidate is a PINTEREST PIN. The pin format is: a plain keyword-rich '
+  + 'product-title line (Title Case, no emoji), an empty line, 2-3 helpful SEO sentences '
+  + 'with a price and a short call-to-action, and a final line of hashtags. That structure '
+  + 'IS the marketing post — judge only for leaked instructions, self-review, placeholders, '
+  + 'or truncation, exactly as above.';
+
 export type JudgeVerdict = 'ok' | 'bad' | 'unknown';
 
 /**
