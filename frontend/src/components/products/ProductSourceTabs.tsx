@@ -14,7 +14,7 @@ export function ProductSourceTabs() {
   const isFlylink = pathname.startsWith('/suppliers');
 
   return (
-    <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 w-fit mb-5">
+    <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 w-fit mb-5 overflow-x-auto max-w-full">
       <button
         onClick={() => router.push('/products')}
         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${

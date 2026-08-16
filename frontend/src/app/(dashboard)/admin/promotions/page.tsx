@@ -92,7 +92,7 @@ export default function AdminPromotionsPage() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Sparkles size={19} className="text-amber-400" /> מבצעים

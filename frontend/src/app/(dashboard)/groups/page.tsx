@@ -715,7 +715,7 @@ export default function GroupsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">ניהול ערוצים</h1>
           <p className="text-sm text-white/40 mt-1">נהל את ערוצי הפרסום שלך ב-Telegram (WhatsApp ואינסטגרם — בקרוב)</p>

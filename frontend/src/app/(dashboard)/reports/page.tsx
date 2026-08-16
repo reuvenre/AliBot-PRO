@@ -82,7 +82,7 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
           <div className="flex items-center gap-2 text-white/30 text-xs mb-1">
             <BarChart3 size={12} />
@@ -93,12 +93,12 @@ export default function ReportsPage() {
         </div>
 
         {/* Period selector */}
-        <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1">
+        <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
           {UNIQUE_PERIODS.map((p) => (
             <button
               key={p.value}
               onClick={() => setPeriod(p.value)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap
                 ${period === p.value
                   ? 'bg-white/10 text-white'
                   : 'text-white/30 hover:text-white/60'

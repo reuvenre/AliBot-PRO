@@ -72,7 +72,7 @@ export default function SuppliersPage() {
         </p>
       </div>
 
-      <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 mb-6 w-fit">
+      <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 mb-6 w-fit overflow-x-auto max-w-full">
         {(['catalogs', 'products'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${tab === t ? 'bg-blue-600/20 text-blue-400' : 'text-white/40 hover:text-white/70'}`}>
@@ -268,7 +268,7 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
   return (
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1">
+        <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
           <button onClick={() => setMode('mine')}
             className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'mine' ? 'bg-blue-600/20 text-blue-400' : 'text-white/40 hover:text-white/70'}`}>המוצרים שלי</button>
           <button onClick={() => setMode('browse')} disabled={catalogs.length === 0}
@@ -653,7 +653,7 @@ function PostComposer({ productId, channels, defaultChannel, onSent }: {
           <div className="flex items-center gap-2">
             <Globe size={13} className="text-white/30" />
             <span className="text-xs text-white/40">שפת פוסט:</span>
-            <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-0.5">
+            <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-0.5 overflow-x-auto max-w-full">
               {POST_LANGS.map(({ value, label }) => (
                 <button key={value} onClick={() => setPostLang(value)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${postLang === value ? 'bg-white/10 text-white' : 'text-white/30 hover:text-white/60'}`}>

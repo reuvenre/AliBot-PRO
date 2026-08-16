@@ -406,14 +406,14 @@ export default function DiscoverPage() {
       </div>
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-white tracking-tight">גלה מוצרים</h1>
           <p className="text-body text-white/35 mt-1">חפש מוצרים מ-AliExpress והוסף לקטלוג שלך בלחיצה</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1">
+        <div className="flex items-center gap-1 bg-surface-secondary border border-edge rounded-xl p-1 overflow-x-auto max-w-full">
           <button
             onClick={() => handleTabSwitch('hot')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-body font-medium transition-all ${

@@ -50,7 +50,7 @@ export default function CampaignsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
           <div className="flex items-center gap-2 text-white/30 text-xs mb-1">
             <Megaphone size={12} />
@@ -61,12 +61,12 @@ export default function CampaignsPage() {
             <p className="text-sm text-white/40 mt-1">{total} טייסים אוטומטיים סה״כ</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={runAudit}
             disabled={auditing}
             title="סורק את מילות המפתח בכל הטייסים ומסמן שמות מותג וניסוחים שמושכים מוצרים מזויפים"
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all whitespace-nowrap"
           >
             {auditing ? <Loader2 size={15} className="animate-spin" /> : <ShieldAlert size={15} />}
             בדוק מילות מותג
@@ -75,14 +75,14 @@ export default function CampaignsPage() {
             onClick={translateKeywords}
             disabled={translating}
             title="תרגם את מילות המפתח בכל הקמפיינים מעברית לאנגלית — כדי שהחיפוש ב-AliExpress יתאים לאתר"
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all whitespace-nowrap"
           >
             {translating ? <Loader2 size={15} className="animate-spin" /> : <Languages size={15} />}
             תרגם מילות מפתח לאנגלית
           </button>
           <Link
             href="/campaigns/new"
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-all whitespace-nowrap"
           >
             <Plus size={15} />
             טייס אוטומטי חדש

@@ -1291,7 +1291,7 @@ export default function PostsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 text-white/30 text-xs mb-1">
             <FileText size={12} />
@@ -1299,19 +1299,19 @@ export default function PostsPage() {
           </div>
           <h1 className="text-2xl font-bold text-white">ניהול פוסטים</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setIntaking(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600/15 hover:bg-teal-600/25 border border-teal-500/30 text-teal-300 text-sm rounded-xl transition-all">
+            className="flex items-center gap-2 px-4 py-2 bg-teal-600/15 hover:bg-teal-600/25 border border-teal-500/30 text-teal-300 text-sm rounded-xl transition-all whitespace-nowrap">
             <Wand2 size={13} />
             קליטה מקישור
           </button>
           <button onClick={() => setImporting(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-sm rounded-xl transition-all">
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-sm rounded-xl transition-all whitespace-nowrap">
             <Upload size={13} />
             ייבוא מקובץ
           </button>
           <Link href="/settings"
-            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all">
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl transition-all whitespace-nowrap">
             <Settings2 size={13} />
             הגדרות
           </Link>
@@ -1319,7 +1319,7 @@ export default function PostsPage() {
             <button
               onClick={() => load({ silent: true })}
               disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/60 text-sm rounded-xl transition-all whitespace-nowrap"
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
               רענן

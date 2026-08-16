@@ -399,7 +399,7 @@ export default function TemplatesPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 text-white/30 text-xs mb-1">
             <FileText size={12} />
@@ -427,7 +427,7 @@ export default function TemplatesPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1 mb-6 w-fit">
+      <div className="flex bg-surface-secondary border border-edge rounded-xl p-1 gap-1 mb-6 w-fit overflow-x-auto max-w-full">
         {[
           { v: 'body' as const, l: 'תבניות גוף' },
           { v: 'footer' as const, l: 'כותרות תחתונות' },

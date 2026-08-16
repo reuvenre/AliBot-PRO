@@ -48,7 +48,7 @@ export default function AdminSecurityPage() {
 
   return (
     <div className="space-y-5" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <ShieldAlert size={19} className="text-red-400" /> יומן אבטחה

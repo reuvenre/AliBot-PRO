@@ -611,7 +611,7 @@ export default function QuickPostPage() {
             <div className="flex items-center gap-2">
               <Globe size={13} className="text-white/30" />
               <span className="text-xs text-white/40">שפת פוסט:</span>
-              <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-0.5">
+              <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-0.5 overflow-x-auto max-w-full">
                 {POST_LANGS.map(({ value, label }) => (
                   <button
                     key={value}
@@ -695,7 +695,7 @@ export default function QuickPostPage() {
       </div>
 
       {/* Source toggle: my catalog (default, instant) vs live AliExpress browsing */}
-      <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 mb-4 w-fit">
+      <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 mb-4 w-fit overflow-x-auto max-w-full">
         <button
           onClick={() => handleSourceChange('catalog')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all
@@ -768,7 +768,7 @@ export default function QuickPostPage() {
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
           </div>
 
-          <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1">
+          <div className="flex bg-surface-secondary border border-edge-hover rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
             {SORT_OPTIONS.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}

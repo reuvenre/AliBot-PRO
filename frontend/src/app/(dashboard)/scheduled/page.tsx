@@ -101,7 +101,7 @@ export default function ScheduledPostsPage() {
         <h2 className="text-sm font-semibold text-white">{form.id ? 'עריכת פוסט מתוזמן' : 'פוסט מתוזמן חדש'}</h2>
 
         {!form.id && (
-          <div className="flex bg-white/5 border border-edge-hover rounded-xl p-1 gap-1 w-fit">
+          <div className="flex bg-white/5 border border-edge-hover rounded-xl p-1 gap-1 w-fit overflow-x-auto max-w-full">
             <button onClick={() => setMode('text')}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'text' ? 'bg-blue-600/20 text-blue-300' : 'text-white/40 hover:text-white/70'}`}>
               <FileText size={13} /> טקסט חופשי

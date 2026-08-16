@@ -468,7 +468,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
 
       {/* Source toggle */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex bg-white/5 border border-edge-hover rounded-xl p-1 gap-1 w-fit">
+        <div className="flex bg-white/5 border border-edge-hover rounded-xl p-1 gap-1 w-fit overflow-x-auto max-w-full">
           {SOURCES.map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setSource(key)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${source === key ? 'bg-amber-600/20 text-amber-300' : 'text-white/40 hover:text-white/70'}`}>
