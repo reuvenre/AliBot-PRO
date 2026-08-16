@@ -3345,7 +3345,10 @@ export class PostsService {
    * FB-only post to a Telegram group it missed. `channels` (channel_ids) overrides the
    * post's own targets; omit to use them.
    */
-  async pushToPlatforms(userId: string, postId: string, platforms: string[], channels?: string[]): Promise<Post> {
+  async pushToPlatforms(
+    userId: string, postId: string, platforms: string[], channels?: string[],
+    opts?: { pinterestRewrite?: boolean },
+  ): Promise<Post> {
     const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
     if (!post) throw new NotFoundException('פוסט לא נמצא');
     const creds = await this.credentials.getRaw(userId);
@@ -3414,10 +3417,25 @@ export class PostsService {
       }
     }
     if (want.has('pinterest')) {
-      const body = await this.buildPostBody(post, creds, targetList[0]);
-      tasks.push(this.sendToPinterest(post, creds, body)
-        .then(() => { anySuccess = true; })
-        .catch((err: any) => { errors.push(`Pinterest: ${err?.response?.data?.message || err?.response?.data?.error?.message || err.message}`); }));
+      // A push re-sends the post AS IS by design (no AI re-charge) — which means a Hebrew
+      // Telegram post lands on an English board in Hebrew, priced in ₪. When the owner
+      // opts in, rewrite it for Pinterest instead: English SEO copy, USD price, pin
+      // format. The stored post is NOT touched — the Telegram message it already
+      // published stays exactly as it is.
+      const rewrite = opts?.pinterestRewrite
+        ? await this.pinterestRewrite(post, creds).catch((err: any) => {
+          errors.push(`Pinterest: הכתיבה מחדש נכשלה (${err?.message || err}) — הפין לא נשלח`);
+          return null;
+        })
+        : undefined;
+      if (!(opts?.pinterestRewrite && !rewrite)) {
+        const body = rewrite?.text ?? await this.buildPostBody(post, creds, targetList[0]);
+        tasks.push(this.sendToPinterest(post, creds, body, rewrite
+          ? { titleFromMessage: true, priceLabel: rewrite.priceLabel }
+          : undefined)
+          .then(() => { anySuccess = true; })
+          .catch((err: any) => { errors.push(`Pinterest: ${err?.response?.data?.message || err?.response?.data?.error?.message || err.message}`); }));
+      }
     }
     if (want.has('whatsapp')) {
       const body = await this.buildPostBody(post, creds, targetList[0]);
@@ -4624,7 +4642,7 @@ export class PostsService {
    * to the product. Needs a Pinterest access token (scopes: boards:read, pins:read,
    * pins:write) and a target board id, both from Settings ← Integrations. Requires an image.
    */
-  private async sendToPinterest(post: Post, creds: DecryptedCredentials, message: string, opts?: { titleFromMessage?: boolean }) {
+  private async sendToPinterest(post: Post, creds: DecryptedCredentials, message: string, opts?: { titleFromMessage?: boolean; priceLabel?: string }) {
     // PINTEREST_API_BASE exists for ONE purpose: Pinterest's Standard-access review
     // requires the demo video to show a pin actually created, and a Trial app can only
     // do that against the sandbox host. The sandbox does NOT accept the production OAuth
@@ -4723,7 +4741,9 @@ export class PostsService {
         if (upstream.status !== 200) {
           this.logger.warn(`pin ${post.id} publishing RAW: fetching the product photo returned ${upstream.status}`);
         } else {
-          const priceLabel = await this.pinPriceLabel(post, creds);
+          // A rewritten pin carries its own (USD) label — the stored post's currency is
+          // the Telegram one and would put ₪ on an English board.
+          const priceLabel = opts?.priceLabel ?? await this.pinPriceLabel(post, creds);
           const framed = await composePinFrame(Buffer.from(upstream.data), title, priceLabel);
           // PERSIST the frame, don't just park it in memory. Pinterest fetches this URL
           // seconds after the create call — but a deploy landing in those seconds wiped
@@ -4796,6 +4816,43 @@ export class PostsService {
       throw new Error(res.data?.message || res.data?.error?.message || `Pinterest publish failed (${res.status})`);
     }
     post.pinterest_post_id = res.data.id;
+  }
+
+  /**
+   * Rewrite an existing post for Pinterest: English SEO pin copy priced in USD. Used by
+   * an opted-in manual push — the copy a Telegram post carries (Hebrew, ₪) is wrong for
+   * a US board, and the push path has no campaign to take language/currency from. The
+   * post row is left untouched; only the pin gets this text.
+   */
+  private async pinterestRewrite(post: Post, creds: DecryptedCredentials): Promise<{ text: string; priceLabel: string }> {
+    const usd = await this.postPriceUsd(post, creds);
+    const product = {
+      product_id: post.product_id,
+      title: post.product_title,
+      image_url: post.product_image,
+      product_url: post.affiliate_url || '',
+      affiliate_url: post.affiliate_url || '',
+      // Already in the target currency → identity rate, no re-conversion downstream.
+      sale_price: usd, original_price: usd, currency: 'USD',
+      discount_percent: 0, orders_count: 0, rating: 0, category: '',
+    };
+    const text = await this.generateText(
+      product, 'en', 1, creds, undefined, usd > 0 ? usd : undefined,
+      undefined, undefined, false,
+      { currencyPair: 'USD_USD', style: 'pinterest' },
+    );
+    return { text, priceLabel: usd > 0 ? `$${usd.toFixed(2)}` : '' };
+  }
+
+  /** A post's price in USD: the stored affiliate-API value when it has one, else the
+   *  local price converted back at the account's live rate. 0 when unknown. */
+  private async postPriceUsd(post: Post, creds: DecryptedCredentials): Promise<number> {
+    const stored = Number(post.sale_price_usd);
+    if (stored > 0) return +stored.toFixed(2);
+    const local = Number(post.price_ils);
+    if (!(local > 0)) return 0;
+    const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS').catch(() => 0);
+    return rate > 0 ? +(local / rate).toFixed(2) : 0;
   }
 
   /**

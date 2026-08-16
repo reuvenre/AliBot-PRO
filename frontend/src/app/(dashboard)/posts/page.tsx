@@ -1122,6 +1122,11 @@ function PushModal({ post, channels, onClose, onDone }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
+  // Pushing a Hebrew Telegram post to a US board lands Hebrew copy priced in ₪ — the
+  // push deliberately re-sends the post as is. Opting in rewrites the PIN only.
+  // Defaults ON when Pinterest is picked (that is the wanted behaviour ~always), and
+  // the note below states the credit cost so it is never a silent charge.
+  const [pinRewrite, setPinRewrite] = useState(true);
 
   const togglePlatform = (p: PushPlatform) =>
     setPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -1129,7 +1134,8 @@ function PushModal({ post, channels, onClose, onDone }: {
   const submit = async () => {
     setBusy(true); setError('');
     try {
-      await postsApi.push(post.id, platforms, groupIds.length ? groupIds : undefined);
+      await postsApi.push(post.id, platforms, groupIds.length ? groupIds : undefined,
+        platforms.includes('pinterest') && pinRewrite);
       setDone('✓ נשלח');
       setTimeout(onDone, 900);
     } catch (e: any) {
@@ -1177,6 +1183,25 @@ function PushModal({ post, channels, onClose, onDone }: {
             <label className="block text-xs text-white/50 mb-1.5">קבוצות יעד</label>
             <GroupMultiSelect channels={channels} value={groupIds} onChange={setGroupIds} disabled={busy} />
           </div>
+
+          {platforms.includes('pinterest') && (
+            <button type="button" onClick={() => setPinRewrite((v) => !v)} disabled={busy}
+              className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-right transition-all ${
+                pinRewrite ? 'bg-teal-500/10 border-teal-500/40' : 'bg-white/[0.03] border-edge hover:border-edge-hover'
+              }`}>
+              <span className={`shrink-0 mt-0.5 w-3.5 h-3.5 rounded border flex items-center justify-center ${pinRewrite ? 'bg-teal-500 border-teal-500' : 'border-white/30'}`}>
+                {pinRewrite && <Check size={10} className="text-on-accent" strokeWidth={3} />}
+              </span>
+              <span className="flex-1">
+                <span className={`block text-xs font-medium ${pinRewrite ? 'text-teal-200' : 'text-white/60'}`}>
+                  כתוב מחדש לפינטרסט — אנגלית + מחיר ב-$
+                </span>
+                <span className="block text-2xs text-white/35 mt-0.5 leading-relaxed">
+                  הפין מקבל כותרת ותיאור בסגנון SEO של פינטרסט ומחיר בדולרים. הפוסט המקורי (והודעת הטלגרם שכבר יצאה) לא משתנים. עולה יצירת AI אחת.
+                </span>
+              </span>
+            </button>
+          )}
 
           <p className="text-2xs text-white/30 flex items-start gap-1.5">
             <AlertTriangle size={11} className="shrink-0 mt-0.5 text-white/25" />

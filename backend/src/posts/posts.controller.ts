@@ -187,8 +187,11 @@ export class PostsController {
     @Param('id') id: string,
     @Body('platforms') platforms: string[],
     @Body('channels') channels?: string[],
+    @Body('pinterest_rewrite') pinterestRewrite?: boolean,
   ) {
-    return this.svc.pushToPlatforms(this.uid(req), id, platforms, channels);
+    return this.svc.pushToPlatforms(this.uid(req), id, platforms, channels, {
+      pinterestRewrite: pinterestRewrite === true,
+    });
   }
 
   /** Pin this post as the template FLYLINK re-posts clone for its product (copy + images). */

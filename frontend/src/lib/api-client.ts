@@ -595,9 +595,11 @@ export const postsApi = {
       scheduled_at: scheduledAt, channels, platforms,
     }).then(extract),
 
-  /** Push an existing post to chosen platform(s) + group(s) — no re-charge, no duplicates. */
-  push: (id: string, platforms: PushPlatform[], channels?: string[]) =>
-    http.post<Post>(`/posts/${id}/push`, { platforms, channels }, { timeout: AI_TIMEOUT }).then(extract),
+  /** Push an existing post to chosen platform(s) + group(s) — no re-charge, no duplicates.
+   *  pinterestRewrite regenerates the pin's copy in English + USD (costs one AI
+   *  generation); the stored post keeps the text it already published. */
+  push: (id: string, platforms: PushPlatform[], channels?: string[], pinterestRewrite?: boolean) =>
+    http.post<Post>(`/posts/${id}/push`, { platforms, channels, pinterest_rewrite: pinterestRewrite }, { timeout: AI_TIMEOUT }).then(extract),
 
   /** Pin this post as the template FLYLINK re-posts clone for its product (copy + images). */
   setRepostSource: (id: string) =>
