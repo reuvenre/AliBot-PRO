@@ -49,7 +49,9 @@ export function classifyChannelChats(status: number, data: unknown): ChannelSupp
   if (channels.length) {
     return {
       verdict: 'supported', total_chats: chats.length, channels,
-      message: `נמצאו ${channels.length} ערוצים — ה-instance שלך מזהה ערוצים. אפשר לנסות לפרסם לאחד מהם.`,
+      message: `נמצאו ${channels.length} ערוצים — ה-instance שלך מזהה ערוצים, אבל זיהוי אינו פרסום: `
+        + 'נכון לאוגוסט 2026 שליחה של Green API דוחה מזהה @newsletter ומקבלת רק מספר אישי, '
+        + 'chat_id@lid או קבוצה. לחץ "שלח בדיקה" כדי לבדוק אם זה השתנה.',
     };
   }
   return {

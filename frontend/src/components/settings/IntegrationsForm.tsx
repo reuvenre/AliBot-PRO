@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2, Radio, Send } from 'lucide-react';
 import { credentialsApi, channelsApi, amazonApi, postsApi, pinterestApi } from '@/lib/api-client';
 import { SettingsSaveBar } from './SettingsSaveBar';
@@ -319,6 +319,12 @@ export function IntegrationsForm() {
   // Seeing a channel proves the instance knows it exists — not that it can publish to it.
   const [sendingWaCh, setSendingWaCh] = useState('');
   const [waChSend, setWaChSend] = useState<{ ok: boolean; lines: string[] } | null>(null);
+  // The result renders BELOW the button — on a phone that is off-screen, and the owner
+  // reads "nothing happened". Same failure the user-delete error had. Pull it into view.
+  const waChSendRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (waChSend) waChSendRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [waChSend]);
   const handleSendWaChannelTest = async (chatId: string) => {
     setSendingWaCh(chatId); setWaChSend(null);
     try {
@@ -534,7 +540,7 @@ export function IntegrationsForm() {
         )}
 
         {waChSend && (
-          <div className={`mt-2 rounded-xl border px-3.5 py-3 text-2xs leading-relaxed ${waChSend.ok
+          <div ref={waChSendRef} className={`mt-2 rounded-xl border px-3.5 py-3 text-2xs leading-relaxed ${waChSend.ok
             ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
             : 'border-red-500/25 bg-red-500/10 text-red-200'}`}>
             {waChSend.lines.map((line) => <p key={line} dir="auto">{line}</p>)}

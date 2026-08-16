@@ -33,6 +33,15 @@ export function describeGreenSendResult(status: number, data: unknown): GreenSen
     // Green API's own code for "quota / instance not paid".
     return { ok: false, detail: 'המכסה של ה-instance נגמרה או שהמנוי לא פעיל ב-Green API.' };
   }
+  // The answer Green API gives for an @newsletter target: its send API accepts only a
+  // person, a LID chat or a group. Verified 16.08.2026 against a live instance — worth
+  // naming in Hebrew instead of making the owner parse an English validation dump.
+  if (/must be one of the next formats/i.test(raw) && /@c\.us/i.test(raw)) {
+    return {
+      ok: false,
+      detail: 'Green API לא תומך בפרסום לערוצים — ה-API מקבל רק מספר אישי, chat_id@lid או קבוצה (@g.us).',
+    };
+  }
   if (status >= 400) {
     return { ok: false, detail: `נדחה (HTTP ${status})${raw ? ` — ${raw}` : ''}` };
   }

@@ -24,6 +24,16 @@ describe('describeGreenSendResult', () => {
     expect(describeGreenSendResult(466, {}).detail).toContain('מכסה');
   });
 
+  it('names the channel dead-end in Hebrew instead of dumping the validation text', () => {
+    // The real 400 a live instance returned for an @newsletter target on 16.08.2026.
+    const res = describeGreenSendResult(400, {
+      message: "Validation failed. Details: 'chatId' must be one of the next formats: "
+        + "'phone_number@c.us', 'chat_id@lid' or 'group_id@g.us'",
+    });
+    expect(res.ok).toBe(false);
+    expect(res.detail).toContain('לא תומך בפרסום לערוצים');
+  });
+
   it('passes the instance\'s own rejection text through', () => {
     const res = describeGreenSendResult(400, { message: 'chatId is not valid' });
     expect(res.ok).toBe(false);
