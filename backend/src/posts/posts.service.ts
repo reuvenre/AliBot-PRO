@@ -4709,16 +4709,35 @@ export class PostsService {
       const frameBase = (process.env.BACKEND_URL || '').replace(/\/$/, '');
       const frameTarget = unwrapOwnProxy(image);
       const frameHost = new URL(frameTarget).hostname;
-      if (frameBase && (isIgFittableHost(frameHost) || isOwnUploadedUrl(frameTarget))) {
+      if (!frameBase) {
+        this.logger.warn(`pin ${post.id} publishing RAW: BACKEND_URL is unset, no public URL to serve a frame from`);
+      } else if (!isIgFittableHost(frameHost) && !isOwnUploadedUrl(frameTarget)) {
+        // Silent before: a product photo on a host outside the allowlist skipped the
+        // frame with no trace, and the owner saw an unexplained bare pin on the board.
+        this.logger.warn(`pin ${post.id} publishing RAW: image host ${frameHost} is not frame-eligible`);
+      } else {
         const upstream = await axios.get(frameTarget, {
           responseType: 'arraybuffer', maxRedirects: 0, headers: igFetchHeaders(frameHost),
           timeout: 12000, maxContentLength: 8 * 1024 * 1024, validateStatus: () => true,
         });
-        if (upstream.status === 200) {
+        if (upstream.status !== 200) {
+          this.logger.warn(`pin ${post.id} publishing RAW: fetching the product photo returned ${upstream.status}`);
+        } else {
           const priceLabel = await this.pinPriceLabel(post, creds);
           const framed = await composePinFrame(Buffer.from(upstream.data), title, priceLabel);
+          // PERSIST the frame, don't just park it in memory. Pinterest fetches this URL
+          // seconds after the create call — but a deploy landing in those seconds wiped
+          // the in-memory map, the endpoint 302'd to the original photo, and Pinterest
+          // stored the RAW image forever (two bare pins on the board after a night of
+          // deploys). A DB-backed /posts/uploaded/<uuid> URL survives restarts, so the
+          // frame is there whenever their fetcher arrives. Memory stays as the fallback
+          // when the row can't be written.
           this.registerPinFrame(post.id, framed);
-          image = `${frameBase}/posts/pin-frame/${post.id}`;
+          const stored = await this.saveUploadedImage(post.user_id, framed).catch((err: any) => {
+            this.logger.warn(`pin frame not persisted for ${post.id}, using the in-memory URL: ${err?.message}`);
+            return null;
+          });
+          image = stored?.url || `${frameBase}/posts/pin-frame/${post.id}`;
         }
       }
     } catch (e: any) {
