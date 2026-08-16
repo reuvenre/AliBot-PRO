@@ -5,6 +5,7 @@ import { Earning } from './earning.entity';
 import { Post } from '../posts/post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { parsePortalCsv } from './portal-csv';
+import { portalRangeEnd, portalRangeStart } from './portal-time';
 import { CredentialsService } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { signAliexpress } from '../common/aliexpress-sign';
@@ -379,10 +380,13 @@ export class EarningsService {
     userId: string, page = 1, limit = 20, status?: string, from?: string, to?: string,
     dateBasis: 'order' | 'paid' = 'order',
   ) {
-    // `to` is inclusive of the whole day the user picked (end-of-day), so a same-day
-    // from/to range still returns that day's orders.
-    const fromD = from ? new Date(from) : null;
-    const toD = to ? new Date(new Date(to).setHours(23, 59, 59, 999)) : null;
+    // Boundaries on AliExpress platform time (GMT+8) — the clock the portal counts by and
+    // the one this screen already displays in. Cutting on UTC midnight instead put every
+    // order paid between 00:00 and 08:00 portal-time into the PREVIOUS month, which is
+    // what made August read 66 against the portal's 67 with nothing actually missing.
+    // `to` is inclusive of the whole day the user picked.
+    const fromD = portalRangeStart(from);
+    const toD = portalRangeEnd(to);
 
     // basis 'paid' filters/sorts by payment-completed time — the SAME definition as the
     // AliExpress portal's "Completed Payments Time", so counts match it 1:1. Orders
