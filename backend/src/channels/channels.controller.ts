@@ -71,4 +71,11 @@ export class ChannelsController {
   whatsappChannelSupport(@Req() req: any) {
     return this.service.whatsappChannelSupport(req.user.id);
   }
+
+  /** Can it actually PUBLISH to that channel — text and image, reported separately? */
+  @Post('test-whatsapp-channel')
+  @HttpCode(200)
+  testWhatsAppChannel(@Req() req: any, @Body('chat_id') chatId: string) {
+    return this.service.testWhatsAppChannelSend(req.user.id, chatId || '');
+  }
 }

@@ -802,6 +802,15 @@ export const channelsApi = {
       channels: Array<{ id: string; name: string }>;
       message: string;
     }>(`/channels/whatsapp-channel-support`, {}, { timeout: 30_000 }).then(extract),
+
+  /** Try to actually publish to a channel — text and image reported separately. */
+  testWhatsAppChannelSend: (chatId: string) =>
+    http.post<{
+      ok: boolean;
+      error: string | null;
+      text: { ok: boolean; detail: string } | null;
+      image: { ok: boolean; detail: string } | null;
+    }>(`/channels/test-whatsapp-channel`, { chat_id: chatId }, { timeout: 60_000 }).then(extract),
 };
 
 // ─── Amazon (PA-API) ─────────────────────────────────────────────────────────

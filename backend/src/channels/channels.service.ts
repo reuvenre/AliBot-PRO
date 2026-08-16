@@ -9,6 +9,7 @@ import { SubscriptionService } from '../subscription/subscription.service';
 import { CredentialsService, GRAPH_VERSION } from '../credentials/credentials.service';
 import { facebookErrorText } from '../common/facebook-errors';
 import { classifyChannelChats, ChannelSupport } from './whatsapp-channel-support';
+import { describeGreenSendResult, GreenSendResult } from './green-send-result';
 import {
   canPublish, describeMissingScopes, missingScopes, parseGrantedScopes,
 } from '../pinterest/pinterest-scopes';
@@ -574,6 +575,55 @@ export class ChannelsService {
         message: err?.message || 'הבדיקה נכשלה — לא הצלחתי להגיע ל-Green API.',
       };
     }
+  }
+
+  /**
+   * The decisive probe: can this instance actually PUBLISH to a channel?
+   *
+   * Seeing a channel in getChats only proves the instance knows it exists. Publishing needs
+   * two separate capabilities, and they can differ — so both are tried and reported apart:
+   * a text message, and an image with a caption (what a real post is). A post that can only
+   * go out as text would be a different, much weaker feature, and the owner should learn
+   * that here rather than from a month of bare-text posts.
+   */
+  async testWhatsAppChannelSend(userId: string, chatId: string) {
+    const target = String(chatId || '').trim();
+    if (!target.endsWith('@newsletter')) {
+      return { ok: false, text: null, image: null, error: 'מזהה ערוץ חייב להסתיים ב-@newsletter.' };
+    }
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    if ((creds?.whatsapp_provider || 'green') !== 'green') {
+      return { ok: false, text: null, image: null, error: 'בדיקת ערוץ רלוונטית רק לספק Green API.' };
+    }
+    const instance = (creds?.green_api_instance_id || '').trim();
+    const token = creds?.green_api_token || '';
+    if (!instance || !token) {
+      return { ok: false, text: null, image: null, error: 'לא הוגדרו Instance ID / Token של Green API.' };
+    }
+
+    const base = (creds?.green_api_url || 'https://api.green-api.com').replace(/\/$/, '');
+    const call = async (method: string, payload: Record<string, unknown>): Promise<GreenSendResult> => {
+      try {
+        const res = await axios.post(`${base}/waInstance${instance}/${method}/${token}`, payload,
+          { timeout: 20_000, validateStatus: () => true });
+        return describeGreenSendResult(res.status, res.data);
+      } catch (err: any) {
+        return { ok: false, detail: err?.message || 'הקריאה נכשלה.' };
+      }
+    };
+
+    const text = await call('sendMessage', {
+      chatId: target, message: '✅ Nexlify — בדיקת פרסום לערוץ (טקסט)',
+    });
+    // A public asset of ours: Green API fetches the URL server-side, so it must be reachable
+    // from the internet — not a signed or localhost address.
+    const logo = `${(process.env.FRONTEND_URL || 'https://nexlify.win-solutions.co.il').replace(/\/$/, '')}/logo-full.png`;
+    const image = await call('sendFileByUrl', {
+      chatId: target, urlFile: logo, fileName: 'nexlify.png',
+      caption: '✅ Nexlify — בדיקת פרסום לערוץ (תמונה + כיתוב)',
+    });
+
+    return { ok: text.ok || image.ok, text, image, error: null as string | null };
   }
 
   /** When this group's Facebook PAGE last received a post — the FB throttle clock. */

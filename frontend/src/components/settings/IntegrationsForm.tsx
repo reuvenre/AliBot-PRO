@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2, Radio } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2, Radio, Send } from 'lucide-react';
 import { credentialsApi, channelsApi, amazonApi, postsApi, pinterestApi } from '@/lib/api-client';
 import { SettingsSaveBar } from './SettingsSaveBar';
 import type { Channel } from '@/types';
@@ -316,6 +316,29 @@ export function IntegrationsForm() {
     }
   };
 
+  // Seeing a channel proves the instance knows it exists — not that it can publish to it.
+  const [sendingWaCh, setSendingWaCh] = useState('');
+  const [waChSend, setWaChSend] = useState<{ ok: boolean; lines: string[] } | null>(null);
+  const handleSendWaChannelTest = async (chatId: string) => {
+    setSendingWaCh(chatId); setWaChSend(null);
+    try {
+      const res = await channelsApi.testWhatsAppChannelSend(chatId);
+      if (res.error) { setWaChSend({ ok: false, lines: [res.error] }); return; }
+      setWaChSend({
+        ok: res.ok,
+        lines: [
+          `טקסט: ${res.text?.ok ? '✅' : '❌'} ${res.text?.detail || ''}`,
+          `תמונה + כיתוב: ${res.image?.ok ? '✅' : '❌'} ${res.image?.detail || ''}`,
+        ],
+      });
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setWaChSend({ ok: false, lines: [err?.response?.data?.message || 'הבדיקה נכשלה.'] });
+    } finally {
+      setSendingWaCh('');
+    }
+  };
+
   const handleTestWhatsApp = async () => {
     setTestingWa(true);
     try {
@@ -494,14 +517,28 @@ export function IntegrationsForm() {
               : 'border-amber-500/25 bg-amber-500/10 text-amber-200'}`}>
             <p>{waChannels.message}</p>
             {waChannels.channels.length > 0 && (
-              <ul className="mt-2 space-y-1">
+              <ul className="mt-2 space-y-2">
                 {waChannels.channels.map((c) => (
-                  <li key={c.id} className="text-white/70">
-                    {c.name || 'ערוץ'} — <span dir="ltr" className="font-mono">{c.id}</span>
+                  <li key={c.id} className="flex flex-wrap items-center gap-2 text-white/70">
+                    <span>{c.name || 'ערוץ'} — <span dir="ltr" className="font-mono">{c.id}</span></span>
+                    <button type="button" onClick={() => handleSendWaChannelTest(c.id)} disabled={!!sendingWaCh}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-edge-hover text-white/80 hover:bg-white/15 disabled:opacity-50 transition-colors">
+                      {sendingWaCh === c.id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                      שלח בדיקה
+                    </button>
                   </li>
                 ))}
               </ul>
             )}
+          </div>
+        )}
+
+        {waChSend && (
+          <div className={`mt-2 rounded-xl border px-3.5 py-3 text-2xs leading-relaxed ${waChSend.ok
+            ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+            : 'border-red-500/25 bg-red-500/10 text-red-200'}`}>
+            {waChSend.lines.map((line) => <p key={line} dir="auto">{line}</p>)}
+            <p className="text-white/40 mt-1.5">תבדוק בערוץ עצמו מה באמת הופיע — אישור מה-API הוא לא הוכחה שההודעה נראתה.</p>
           </div>
         )}
       </section>
