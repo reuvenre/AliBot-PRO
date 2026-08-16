@@ -7,8 +7,11 @@ import { useCountUp } from '@/lib/hooks/useCountUp';
 import type { OverviewStats } from '@/types';
 
 /**
- * The dashboard headline: commissions, clicks and posts over the last 12 weeks, each with
- * its own trend and a shared weekly bar chart. One request feeds all of it.
+ * The dashboard headline. The commissions tile answers "how am I doing THIS MONTH" — the
+ * question the owner actually opens the dashboard with, and the number he can hold against
+ * the AliExpress portal, which also reports by calendar month. Clicks and posts stay on the
+ * 12-week window, and the bar chart below keeps the long trend (explicitly labelled), so
+ * nothing was lost by making the big number the current one.
  */
 
 const WEEKS = 12;
@@ -102,7 +105,7 @@ export function OverviewPanel() {
   }, []);
 
   const m = data?.metrics;
-  const commissions = useCountUp(m?.commissions.total ?? 0);
+  const commissions = useCountUp(data?.month.total ?? 0);
   const clicks = useCountUp(m?.clicks.total ?? 0);
   const posts = useCountUp(m?.posts.total ?? 0);
 
@@ -118,26 +121,29 @@ export function OverviewPanel() {
     );
   }
 
-  const hasAnything = m.commissions.total > 0 || m.clicks.total > 0 || m.posts.total > 0;
+  const hasAnything = m.commissions.total > 0 || m.clicks.total > 0 || m.posts.total > 0
+    || data.month.total > 0;
 
   return (
     <section className="mb-8">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <Tile
-          label="עמלות" icon={BadgeDollarSign} accent="text-emerald-300"
+          label="עמלות · החודש הנוכחי" icon={BadgeDollarSign} accent="text-emerald-300"
           value={`$${commissions.toLocaleString('en-US', { maximumFractionDigits: 2 })}`}
           note={data.ils_approx
             ? `≈ ₪${(commissions * data.ils_approx.rate).toLocaleString('he-IL', { maximumFractionDigits: 0 })} בשער היום`
             : undefined}
-          series={m.commissions.series} delta={m.commissions.delta_pct}
+          // The trend line stays weekly (that IS the trend); the delta compares this month
+          // against the same elapsed stretch of the previous one.
+          series={m.commissions.series} delta={data.month.delta_pct}
         />
         <Tile
-          label="קליקים" icon={MousePointerClick} accent="text-blue-300"
+          label={`קליקים · ${data.weeks} שבועות`} icon={MousePointerClick} accent="text-blue-300"
           value={Math.round(clicks).toLocaleString('he-IL')}
           series={m.clicks.series} delta={m.clicks.delta_pct}
         />
         <Tile
-          label="פוסטים" icon={Send} accent="text-violet-300"
+          label={`פוסטים · ${data.weeks} שבועות`} icon={Send} accent="text-violet-300"
           value={Math.round(posts).toLocaleString('he-IL')}
           series={m.posts.series} delta={m.posts.delta_pct}
         />

@@ -31,7 +31,7 @@ export class EarningsController {
   @Get('summary')
   summary(
     @Req() req: Request,
-    @Query('period') period: '7d' | '30d' | '90d' | 'all' = '30d',
+    @Query('period') period: '7d' | '30d' | '90d' | 'month' | 'all' = '30d',
   ) {
     return this.svc.summary((req.user as any).id, period);
   }

@@ -78,7 +78,7 @@ export default function DashboardPage() {
       const [camps, posts, earn, creds, channels, sub] = await Promise.all([
         campaignsApi.list({ limit: 100 }),
         postsApi.list({ limit: 5 }),
-        earningsApi.summary({ period: '30d' }),
+        earningsApi.summary({ period: 'month' }),
         credentialsApi.get().catch(() => null),
         channelsApi.list().catch(() => []),
         subscriptionApi.status().catch(() => null),
@@ -244,7 +244,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Headline trend — commissions/clicks/posts over 12 weeks, one request */}
+      {/* Headline — commissions for the CURRENT month, clicks/posts over 12 weeks */}
       <OverviewPanel />
 
       {/* Stats grid */}
@@ -252,8 +252,8 @@ export default function DashboardPage() {
         <StatCard label="טייסים אוטומטיים" value={isLoading ? '—' : stats.campaigns}                        sub={`${stats.activeCampaigns} פעילים`} icon={Megaphone}  accent="blue" />
         <StatCard label="סה״כ פוסטים"    value={isLoading ? '—' : stats.totalPosts.toLocaleString()}      sub={`${stats.sentToday} היום`}          icon={FileText}   accent="violet" />
         <StatCard label="ערוצים"         value={isLoading ? '—' : stats.channels}                         sub="ערוצי טלגרם"                         icon={Users}      accent="cyan" />
-        <StatCard label="הכנסות (30 יום)" value={isLoading ? '—' : `₪${totalEarnings.toFixed(0)}`}        sub="מוסדר + משוער"                       icon={DollarSign}  accent="green" />
-        <StatCard label="עמלה מוסדרת"    value={isLoading ? '—' : `₪${(earnings?.total_settled ?? 0).toFixed(0)}`} sub="30 ימים אחרונים"            icon={TrendingUp}  accent="amber" />
+        <StatCard label="הכנסות החודש"    value={isLoading ? '—' : `₪${totalEarnings.toFixed(0)}`}        sub="מוסדר + משוער"                       icon={DollarSign}  accent="green" />
+        <StatCard label="עמלה מוסדרת"    value={isLoading ? '—' : `₪${(earnings?.total_settled ?? 0).toFixed(0)}`} sub="החודש הנוכחי"                icon={TrendingUp}  accent="amber" />
         <Link href="/settings?tab=subscription" className="card p-5 group transition-all duration-300 hover:-translate-y-0.5 hover:border-edge-hover block">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-white/40">קרדיטים ({subscription?.plan_name || '—'})</p>

@@ -5,6 +5,7 @@ import { Earning } from '../earnings/earning.entity';
 import { LinkClick } from '../links/link-click.entity';
 import { Post } from '../posts/post.entity';
 import { RatesService } from '../rates/rates.service';
+import { portalRangeStart } from '../earnings/portal-time';
 import { densify, deltaPct, sum, weekKeys } from './stats.util';
 
 export interface MetricSeries {
@@ -25,6 +26,16 @@ export interface OverviewStats {
     commissions: MetricSeries;
     clicks: MetricSeries;
     posts: MetricSeries;
+  };
+  /** Commissions for the CURRENT calendar month on the portal's clock — the number the
+   *  owner compares against the AliExpress portal, next to the 12-week trend. */
+  month: {
+    /** 'YYYY-MM' in portal time. */
+    key: string;
+    total: number;
+    /** vs the SAME elapsed stretch of the previous month — comparing a half-finished
+     *  month against a whole one would print a fake collapse every month. */
+    delta_pct: number | null;
   };
 }
 
@@ -58,10 +69,11 @@ export class StatsService {
     const allKeys = weekKeys(now, n * 2);
     const from = new Date(`${allKeys[0]}T00:00:00.000Z`);
 
-    const [commissionRows, clickRows, postRows] = await Promise.all([
+    const [commissionRows, clickRows, postRows, month] = await Promise.all([
       this.commissionsByWeek(userId, from),
       this.clicksByWeek(userId, from),
       this.postsByWeek(userId, from),
+      this.commissionsThisMonth(userId),
     ]);
 
     const build = (rows: Array<{ bucket: string; value: number }>): MetricSeries => {
@@ -93,7 +105,46 @@ export class StatsService {
         clicks: build(clickRows),
         posts: build(postRows),
       },
+      month,
     };
+  }
+
+  /**
+   * Commissions inside the current CALENDAR month, counted on AliExpress platform time —
+   * the same clock the portal reports by and the orders screen filters on, so the figure
+   * the dashboard shows is the figure the owner sees in the portal.
+   *
+   * The comparison is against the same ELAPSED stretch of the previous month, not the
+   * whole of it: on the 3rd, three days of this month against a full previous month would
+   * print a catastrophic drop every single month.
+   */
+  private async commissionsThisMonth(userId: string) {
+    // 'en-CA' formats as YYYY-MM-DD, which is exactly the shape the range helpers parse.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+    const [y, mth] = today.split('-').map(Number);
+    const start = portalRangeStart(`${today.slice(0, 7)}-01`)!;
+    const prevMonth = mth === 1 ? `${y - 1}-12` : `${y}-${String(mth - 1).padStart(2, '0')}`;
+    const prevStart = portalRangeStart(`${prevMonth}-01`)!;
+    const elapsed = Date.now() - start.getTime();
+    const prevEnd = new Date(prevStart.getTime() + elapsed);
+
+    const total = (from: Date, to: Date) => this.earnings.createQueryBuilder('e')
+      .select('COALESCE(SUM(e.commission_usd), 0)', 'value')
+      .where('e.user_id = :userId', { userId })
+      // Payment time is the portal's own basis; paid_date is null only on rows synced
+      // before the column existed, where the order date is the best available stand-in.
+      .andWhere('COALESCE(e.paid_date, e.order_date) >= :from', { from })
+      .andWhere('COALESCE(e.paid_date, e.order_date) <= :to', { to })
+      .andWhere("e.status IN ('estimated', 'settled')")
+      .getRawOne()
+      .then((r) => Number(r?.value) || 0)
+      .catch(() => 0);
+
+    const [current, previous] = await Promise.all([
+      total(start, new Date()),
+      total(prevStart, prevEnd),
+    ]);
+    return { key: today.slice(0, 7), total: Math.round(current * 100) / 100, delta_pct: deltaPct(current, previous) };
   }
 
   /**

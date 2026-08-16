@@ -317,11 +317,14 @@ export class EarningsService {
     };
   }
 
-  async summary(userId: string, period: '7d' | '30d' | '90d' | 'all' = '30d') {
+  async summary(userId: string, period: '7d' | '30d' | '90d' | 'month' | 'all' = '30d') {
     const from = this.periodStart(period);
     const qb = this.repo.createQueryBuilder('e')
       .where('e.user_id = :userId', { userId });
-    if (from) qb.andWhere('e.order_date >= :from', { from });
+    // Payment time is the basis AliExpress reports by (and the orders screen filters on),
+    // so the same order lands in the same month everywhere. paid_date is null only on rows
+    // synced before the column existed, where the order date stands in.
+    if (from) qb.andWhere('COALESCE(e.paid_date, e.order_date) >= :from', { from });
 
     const earnings = await qb.getMany();
 
@@ -665,6 +668,12 @@ export class EarningsService {
   }
 
   private periodStart(period: string): Date | null {
+    // 'month' = the current CALENDAR month on AliExpress platform time — the same boundary
+    // the orders screen filters on, so the dashboard and the portal agree.
+    if (period === 'month') {
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+      return portalRangeStart(`${today.slice(0, 7)}-01`);
+    }
     const days = { '7d': 7, '30d': 30, '90d': 90 };
     if (!days[period]) return null;
     const d = new Date();

@@ -739,7 +739,7 @@ export const statsApi = {
 };
 
 export const earningsApi = {
-  summary: (params?: { period?: '7d' | '30d' | '90d' | 'all' }) =>
+  summary: (params?: { period?: '7d' | '30d' | '90d' | 'month' | 'all' }) =>
     http.get<EarningsSummary>('/earnings/summary', { params }).then(extract),
 
   /** "What actually earns" — commissions by keyword/campaign + clicks. */

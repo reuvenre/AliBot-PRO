@@ -709,6 +709,16 @@ export interface OverviewStats {
     clicks: MetricSeries;
     posts: MetricSeries;
   };
+  /** Commissions for the CURRENT calendar month on AliExpress platform time — the figure
+   *  that matches the portal, shown beside the 12-week trend. */
+  month: {
+    /** 'YYYY-MM' in portal time. */
+    key: string;
+    total: number;
+    /** vs the same ELAPSED stretch of the previous month, so a half-finished month is
+     *  not compared against a whole one. */
+    delta_pct: number | null;
+  };
 }
 
 export interface EarningsSummary {
