@@ -45,23 +45,39 @@ export function CookieConsent() {
 
   if (!show) return null;
 
+  // Themed with the design TOKENS, not fixed colours: the banner floats over the marketing
+  // pages, which render in the LIGHT theme by default — a hardcoded #161b22 card sat on
+  // them as a black slab, and its `text-white` label was flipped to near-black by the
+  // light-theme override in globals.css, i.e. dark text on a dark card. Tokens follow
+  // whichever theme is active. Note the buttons set their label colour INLINE for the same
+  // reason: `text-white` is not white in light mode, and these sit on solid colour.
   return (
-    <div dir="rtl" className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-2xl rounded-2xl border border-white/10 bg-[#161b22]/95 backdrop-blur shadow-2xl p-4 sm:p-5">
+    <div
+      dir="rtl"
+      className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-2xl rounded-2xl border backdrop-blur p-4 sm:p-5"
+      style={{
+        background: 'color-mix(in srgb, var(--bg-secondary) 96%, transparent)',
+        borderColor: 'var(--border)',
+        boxShadow: 'var(--shadow-elevated)',
+      }}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <p className="text-sm text-white/80 flex-1 leading-relaxed">
-          אנחנו משתמשים ב-cookies לצורך <b className="text-white">אנליטיקה</b> (Google Analytics) כדי לשפר את השירות.
-          אפשר לאשר או לדחות. פרטים ב<Link href="/privacy" className="text-amber-400 hover:text-amber-300 underline">מדיניות הפרטיות</Link>.
+        <p className="text-sm flex-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          אנחנו משתמשים ב-cookies לצורך <b style={{ color: 'var(--text)' }}>אנליטיקה</b> (Google Analytics) כדי לשפר את השירות.
+          אפשר לאשר או לדחות. פרטים ב<Link href="/privacy" className="underline text-blue-600 hover:text-blue-500">מדיניות הפרטיות</Link>.
         </p>
         <div className="flex gap-2 shrink-0">
           <button
             onClick={() => choose(false)}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white/70 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+            className="px-4 py-2 rounded-xl text-sm font-medium border transition-opacity hover:opacity-75"
+            style={{ color: 'var(--text-muted)', background: 'var(--bg-tertiary)', borderColor: 'var(--border)' }}
           >
             דחייה
           </button>
           <button
             onClick={() => choose(true)}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+            className="px-4 py-2 rounded-xl text-sm font-medium bg-blue-600 hover:bg-blue-500 transition-colors"
+            style={{ color: '#fff' }}
           >
             אישור
           </button>
