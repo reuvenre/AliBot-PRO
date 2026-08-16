@@ -123,6 +123,23 @@ export class CampaignSchedulerService {
     }
   }
 
+  /**
+   * Every 5 minutes — re-sends channels that died at the WIRE on an otherwise successful
+   * post. A partially-published post is `sent`, so no other check sees it: the failure
+   * used to sit until the watchdog raised an issue and the owner pressed retry by hand.
+   * Only connect-phase failures qualify (nothing reached the platform, so no duplicate is
+   * possible) and each post gets exactly one automatic attempt — see network-partial.ts.
+   */
+  @Cron('0 */5 * * * *')
+  async retryNetworkPartials() {
+    try {
+      const healed = await this.posts.retryNetworkPartials();
+      if (healed) this.logger.log(`Network auto-retry: recovered ${healed} partially-published post(s)`);
+    } catch (err: any) {
+      this.logger.error(`Network auto-retry tick failed: ${err.message}`);
+    }
+  }
+
   /** Runs every minute — sends posts that have reached their scheduled_at time */
   @Cron(CronExpression.EVERY_MINUTE)
   async sendScheduledPosts() {

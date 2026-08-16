@@ -16,6 +16,7 @@ import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { toWhatsAppText } from './whatsapp-format';
+import { AUTO_RETRY_MARK, isRetryableNetworkPartial } from './network-partial';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
 import { occupiesCurrentInterval } from './group-pacing';
@@ -3271,6 +3272,63 @@ export class PostsService {
    * read from `error_message`; only those are re-sent, and publish credits are NOT
    * charged again (the post was already billed on its original publish).
    */
+  /** Guards the auto-retry sweep against overlapping scheduler ticks. */
+  private retryingNetworkPartials = false;
+
+  /**
+   * Re-send the channels that died at the WIRE, without waiting for the owner.
+   *
+   * A partially-published post is invisible to every other check — it is `sent` — so this
+   * class of failure used to sit until the watchdog raised an issue and a human pressed
+   * "retry". For a connect-phase failure that ceremony buys nothing: nothing reached Meta,
+   * so re-sending is safe, and a few minutes later the network is usually back.
+   *
+   * Exactly ONE automatic attempt per post: the row is stamped whether or not the retry
+   * worked, so a genuinely broken channel can never spin the scheduler. Anything the owner
+   * must fix, and anything that might already have published, is left alone — see
+   * network-partial.ts.
+   */
+  async retryNetworkPartials(limit = 5): Promise<number> {
+    if (this.retryingNetworkPartials) return 0;
+    this.retryingNetworkPartials = true;
+    try {
+      const rows: Array<{ id: string; user_id: string }> = await this.repo.query(
+        `SELECT id, user_id FROM posts
+         WHERE status = 'sent' AND error_message IS NOT NULL
+           AND error_message LIKE '%נכשל ברמת הרשת%'
+           AND error_message NOT LIKE $1
+           AND sent_at > now() - interval '6 hours'
+         ORDER BY sent_at DESC LIMIT $2`,
+        [`%${AUTO_RETRY_MARK}%`, limit],
+      ).catch(() => []);
+
+      let healed = 0;
+      for (const row of rows) {
+        const before = await this.repo.findOne({ where: { id: row.id } });
+        if (!isRetryableNetworkPartial(before?.error_message)) continue;
+        try {
+          await this.retryFailedChannels(row.user_id, row.id);
+        } catch (err: any) {
+          this.logger.warn(`auto-retry post ${row.id}: ${err?.message || err}`);
+        }
+        // Stamp AFTER the attempt, on whatever error text the retry left behind — a retry
+        // that succeeded clears the message and needs no stamp; one that failed keeps it
+        // and must never be picked up again.
+        const after = await this.repo.findOne({ where: { id: row.id } });
+        if (after?.error_message && !after.error_message.includes(AUTO_RETRY_MARK)) {
+          after.error_message = `${after.error_message}${AUTO_RETRY_MARK}`;
+          await this.repo.save(after);
+        } else if (after && !after.error_message) {
+          healed++;
+          this.logger.log(`auto-retry post ${row.id}: recovered — all channels published`);
+        }
+      }
+      return healed;
+    } finally {
+      this.retryingNetworkPartials = false;
+    }
+  }
+
   async retryFailedChannels(userId: string, postId: string): Promise<Post> {
     const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
     if (!post) throw new NotFoundException('פוסט לא נמצא');
