@@ -1,4 +1,20 @@
 ﻿import 'reflect-metadata';
+import { setDefaultResultOrder } from 'node:dns';
+
+/**
+ * Resolve IPv4 FIRST for every outbound request.
+ *
+ * Node 18+ defaults to 'verbatim' — it tries the addresses in the order DNS returned them,
+ * which usually means the AAAA (IPv6) record first. On a host whose IPv6 route is
+ * blackholed the connect doesn't fail fast, it hangs until the OS gives up, and Happy
+ * Eyeballs surfaces that as an AggregateError whose inner code is ETIMEDOUT.
+ *
+ * That is the exact signature behind the recurring "published partially" alerts — and it
+ * hit Telegram and Meta alike within the same hours. Two unrelated destinations failing
+ * the same way is not two outages; it is our own egress. Preferring IPv4 skips the dead
+ * path entirely instead of paying its timeout on every publish.
+ */
+setDefaultResultOrder('ipv4first');
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';

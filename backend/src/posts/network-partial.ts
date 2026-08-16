@@ -4,33 +4,45 @@
  * A post that reached Telegram and lost Facebook stays `sent` with an error_message, so
  * nothing else notices it — the watchdog raises an issue and the owner presses retry by
  * hand. For one failure family that hand is pure ceremony: a connection that died at the
- * wire. Nothing reached Meta, so re-sending cannot duplicate, and the fix is simply to
- * try again a few minutes later when the network is back.
+ * wire. Nothing reached the platform, so re-sending cannot duplicate, and the fix is
+ * simply to try again once the network is back.
  *
- * The line this module draws is the whole safety argument:
- *   RETRYABLE — "החיבור נכשל ברמת הרשת": an AggregateError from Node's connect loop. The
- *               socket never opened. Provably nothing was published.
- *   NOT       — a TIMEOUT ("לא השיבה בזמן"). The request may have arrived and only the
- *               reply was lost; retrying would put the post on the page twice.
- *   NOT       — anything the owner must fix (token, permission, bad id). A retry fails
- *               identically and buries the real message under noise.
+ * The verdict is NOT read out of the wording. "שגיאת חיבור לטלגרם (ETIMEDOUT)" is produced
+ * both by a connect-phase failure (safe) and by a timeout on an open socket (unsafe — the
+ * post may already be live). Only the sender, holding the error object, can tell those
+ * apart, so it stamps NET_SAFE_TAG at failure time and this module trusts nothing else.
  */
 
-/** Appended once a post has had its free automatic retry — the loop stop. */
+/** Stamped by telegramErrorText / facebookErrorText on a provable connect-phase failure. */
+export const NET_SAFE_TAG = '[net]';
+
+/** Appended once per automatic attempt — the counter that stops the loop. */
 export const AUTO_RETRY_MARK = ' · נוסה שוב אוטומטית';
 
-/** The connect-phase wording facebook-errors.ts produces for a wire-level failure. */
-const NETWORK_PHRASE = /נכשל ברמת הרשת/;
+/**
+ * A blip can outlast one attempt, and every attempt here is provably safe, so a few are
+ * allowed. Spaced by the scheduler's 5-minute tick this covers roughly a quarter hour —
+ * long enough for a routing wobble, short enough that a real outage stops being retried.
+ */
+export const MAX_AUTO_RETRIES = 3;
 
-/** Wording that means "the request may have landed" — never auto-retried. */
-const TIMEOUT_PHRASE = /לא השיבה בזמן|timeout/i;
+/** Rows written before the tag existed still carry this Meta-only wording. */
+const LEGACY_META_PHRASE = /נכשל ברמת הרשת/;
+
+/** How many automatic attempts this post has already had. */
+export function autoRetryCount(errorMessage: string | null | undefined): number {
+  return String(errorMessage || '').split(AUTO_RETRY_MARK).length - 1;
+}
 
 export function isRetryableNetworkPartial(errorMessage: string | null | undefined): boolean {
-  const text = String(errorMessage || '');
-  if (!text.trim()) return false;
-  if (text.includes(AUTO_RETRY_MARK)) return false; // already had its turn
-  if (!NETWORK_PHRASE.test(text)) return false;
-  // A mixed error ("Facebook: network … | Instagram: token expired") is NOT auto-retried:
-  // one half would fail identically, and the owner needs to read the half that matters.
-  return !TIMEOUT_PHRASE.test(text);
+  const text = String(errorMessage || '').trim();
+  if (!text) return false;
+  if (autoRetryCount(text) >= MAX_AUTO_RETRIES) return false;
+
+  // EVERY failed platform must be wire-safe. A mixed error ("Telegram: network |
+  // Instagram: token expired") would spend an attempt on a half that fails identically,
+  // and bury the half the owner needs to read.
+  const segments = text.split(AUTO_RETRY_MARK)[0].split('|').map((s) => s.trim()).filter(Boolean);
+  if (!segments.length) return false;
+  return segments.every((seg) => seg.includes(NET_SAFE_TAG) || LEGACY_META_PHRASE.test(seg));
 }

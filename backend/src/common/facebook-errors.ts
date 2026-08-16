@@ -174,10 +174,16 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
   }
 }
 
+/** Marks a failure that provably never reached Meta — see telegram-retry.ts NET_SAFE_TAG. */
+export const NET_SAFE_TAG = '[net]';
+
 /** One-line form for a post's error_message / the errors list shown in the UI. */
 export function facebookErrorText(err: any, platform: MetaPlatform = 'facebook'): string {
   const { code, message } = facebookError(err, platform);
-  return code ? `(#${code}) ${message}` : message;
+  const text = code ? `(#${code}) ${message}` : message;
+  // The tag is the auto-retry's only input: a connect-phase failure published nothing, so
+  // re-sending it cannot duplicate. Everything else is left for the owner to read.
+  return isMetaConnectionError(err) ? `${text} ${NET_SAFE_TAG}` : text;
 }
 
 /**

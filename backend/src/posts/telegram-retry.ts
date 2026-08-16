@@ -63,14 +63,27 @@ export function isTelegramConnectionError(err: any): boolean {
  * reason can hide, and when all are empty say "connection failure" explicitly — because
  * with no HTTP response, that is exactly what it was.
  */
+/**
+ * Stamped onto an error the sender PROVED never reached the platform. The auto-retry keys
+ * on this, not on wording: "שגיאת חיבור לטלגרם (ETIMEDOUT)" is produced both by a
+ * connect-phase failure (safe — nothing was sent) and by a top-level timeout on an open
+ * socket (unsafe — Telegram may have published). Only the sender, holding the error
+ * object, can tell them apart, so it records the verdict here.
+ */
+export const NET_SAFE_TAG = '[net]';
+
 export function telegramErrorText(err: any): string {
+  const tag = isTelegramConnectionError(err) ? ` ${NET_SAFE_TAG}` : '';
   const desc = err?.response?.data?.description;
+  // A response means Telegram answered — never taggable, whatever it says.
   if (desc) return String(desc);
-  if (err?.message) return String(err.message);
+  if (err?.message) return `${String(err.message)}${tag}`;
   const inner = (err as AggregateError)?.errors;
   const codes = Array.isArray(inner)
     ? Array.from(new Set(inner.map((e: any) => e?.code || e?.message).filter(Boolean)))
     : [];
   const code = err?.code || codes.join(', ');
-  return code ? `שגיאת חיבור לטלגרם (${code})` : 'שגיאת חיבור לטלגרם — הבקשה לא הגיעה לשרתי טלגרם';
+  return code
+    ? `שגיאת חיבור לטלגרם (${code})${tag}`
+    : `שגיאת חיבור לטלגרם — הבקשה לא הגיעה לשרתי טלגרם${tag}`;
 }

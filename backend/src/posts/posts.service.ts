@@ -16,7 +16,7 @@ import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { toWhatsAppText } from './whatsapp-format';
-import { AUTO_RETRY_MARK, isRetryableNetworkPartial } from './network-partial';
+import { AUTO_RETRY_MARK, NET_SAFE_TAG, isRetryableNetworkPartial } from './network-partial';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
 import { occupiesCurrentInterval } from './group-pacing';
@@ -3292,14 +3292,16 @@ export class PostsService {
     if (this.retryingNetworkPartials) return 0;
     this.retryingNetworkPartials = true;
     try {
+      // Cast a WIDE net in SQL (anything wire-tagged or legacy-worded) and let
+      // isRetryableNetworkPartial make the real decision per row — the attempt counter and
+      // the mixed-error rule are easier to get right in one place than in a LIKE clause.
       const rows: Array<{ id: string; user_id: string }> = await this.repo.query(
         `SELECT id, user_id FROM posts
          WHERE status = 'sent' AND error_message IS NOT NULL
-           AND error_message LIKE '%נכשל ברמת הרשת%'
-           AND error_message NOT LIKE $1
+           AND (error_message LIKE $1 OR error_message LIKE '%נכשל ברמת הרשת%')
            AND sent_at > now() - interval '6 hours'
          ORDER BY sent_at DESC LIMIT $2`,
-        [`%${AUTO_RETRY_MARK}%`, limit],
+        [`%${NET_SAFE_TAG}%`, limit],
       ).catch(() => []);
 
       let healed = 0;
@@ -3312,10 +3314,10 @@ export class PostsService {
           this.logger.warn(`auto-retry post ${row.id}: ${err?.message || err}`);
         }
         // Stamp AFTER the attempt, on whatever error text the retry left behind — a retry
-        // that succeeded clears the message and needs no stamp; one that failed keeps it
-        // and must never be picked up again.
+        // that succeeded clears the message and needs no stamp; one that failed keeps it,
+        // and the stamp is what counts this attempt against MAX_AUTO_RETRIES.
         const after = await this.repo.findOne({ where: { id: row.id } });
-        if (after?.error_message && !after.error_message.includes(AUTO_RETRY_MARK)) {
+        if (after?.error_message) {
           after.error_message = `${after.error_message}${AUTO_RETRY_MARK}`;
           await this.repo.save(after);
         } else if (after && !after.error_message) {
