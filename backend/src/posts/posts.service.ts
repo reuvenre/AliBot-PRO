@@ -2285,12 +2285,10 @@ export class PostsService {
     // while a pool is live, a sale in its category pays the normal commission PLUS a bonus
     // — so those categories are simply worth more per post than anything else this campaign
     // could publish. Their keywords join the rotation for the duration, and only for
-    // campaigns publishing to the pool's own groups (a Home & Living bonus must never push
+    // the autopilots the owner picked for that pool (a Home & Living bonus must never push
     // kitchen organisers into a tactical channel). The window closing removes them by
     // itself, with nothing to switch off.
-    let incentiveTargets: string[] = [];
-    try { incentiveTargets = JSON.parse(campaign.target_channels || '[]'); } catch { incentiveTargets = []; }
-    const bonus = await this.incentive.keywordsFor(userId, incentiveTargets);
+    const bonus = await this.incentive.keywordsFor(userId, campaign.id);
     if (bonus.keywords.length) {
       for (const kw of bonus.keywords) if (!kwList.includes(kw)) kwList.push(kw);
       this.logger.log(`campaign ${campaign.id}: ${bonus.keywords.length} bonus keywords in rotation (${bonus.names.join(', ')})`);

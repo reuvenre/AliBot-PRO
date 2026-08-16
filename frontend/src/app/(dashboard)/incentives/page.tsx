@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Gift, Loader2, Plus, Power, RefreshCw, Trash2, ExternalLink, AlertTriangle,
 } from 'lucide-react';
-import { channelsApi, incentiveApi } from '@/lib/api-client';
+import { campaignsApi, incentiveApi } from '@/lib/api-client';
 import type { IncentiveProgram, IncentiveInput } from '@/lib/api-client';
-import type { Channel } from '@/types';
+import type { Campaign } from '@/types';
 
 /**
  * The owner's registered AliExpress incentive campaigns (portal bonus pools).
@@ -17,7 +17,9 @@ import type { Channel } from '@/types';
  * that earn a bonus get the airtime.
  */
 
-const PORTAL_URL = 'https://portals.aliexpress.com/campaign/index.htm';
+/** The Incentive Campaign page in the affiliate portal. Verified by the owner —
+ *  the older /campaign/index.htm path now answers with a 404 error page. */
+const PORTAL_URL = 'https://portals.aliexpress.com/affiportals/web/incentive.htm';
 
 /** <input type="date"> value from an ISO string. */
 function toDateInput(iso?: string | null, fallback?: Date): string {
@@ -33,7 +35,7 @@ function endOfThisMonth(): Date {
 function parseKeywords(json: string): string[] {
   try { const a = JSON.parse(json || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
 }
-function parseChannels(json: string | null): string[] {
+function parseTargets(json: string | null): string[] {
   try { const a = json ? JSON.parse(json) : []; return Array.isArray(a) ? a : []; } catch { return []; }
 }
 
@@ -50,7 +52,7 @@ const labelCls = 'block text-xs text-white/50 mb-1.5';
 
 export default function IncentivesPage() {
   const [rows, setRows] = useState<IncentiveProgram[]>([]);
-  const [channels, setChannels] = useState<Channel[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
@@ -58,11 +60,11 @@ export default function IncentivesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, chs] = await Promise.all([
+      const [list, camps] = await Promise.all([
         incentiveApi.list(),
-        channelsApi.list().catch(() => [] as Channel[]),
+        campaignsApi.list({ limit: 100 }).then((r) => r.data).catch(() => [] as Campaign[]),
       ]);
-      setRows(list); setChannels(chs); setError('');
+      setRows(list); setCampaigns(camps); setError('');
     } catch (e: any) {
       setError(e?.response?.data?.message || 'טעינת קמפייני הבונוס נכשלה');
     } finally { setLoading(false); }
@@ -102,7 +104,7 @@ export default function IncentivesPage() {
       <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-5">
         <p className="text-xs text-white/60 leading-relaxed">
           <b className="text-amber-300">איך זה עובד:</b> נרשמים לקמפיין בפורטל (חינם), ואז מוסיפים אותו כאן עם
-          מילות החיפוש של הקטגוריה. כל עוד הקמפיין פעיל, הטייסים שמפרסמים לקבוצות שבחרת יכניסו את
+          מילות החיפוש של הקטגוריה. כל עוד הקמפיין פעיל, הטייסים שבחרת יכניסו את
           המילים האלה לרוטציה — כך שהמוצרים שמזכים בבונוס מקבלים זמן אוויר. בתום התאריך הכל חוזר לשגרה לבד.
           תזכורת להירשם מחדש נשלחת ב-1 לכל חודש.
         </p>
@@ -127,30 +129,30 @@ export default function IncentivesPage() {
           )}
           <div className="space-y-3">
             {rows.map((p) => (
-              <ProgramCard key={p.id} program={p} channels={channels} onChanged={load} />
+              <ProgramCard key={p.id} program={p} campaigns={campaigns} onChanged={load} />
             ))}
           </div>
         </>
       )}
 
       {adding && (
-        <ProgramModal channels={channels} onClose={() => setAdding(false)}
+        <ProgramModal campaigns={campaigns} onClose={() => setAdding(false)}
           onSaved={() => { setAdding(false); load(); }} />
       )}
     </div>
   );
 }
 
-function ProgramCard({ program, channels, onChanged }: {
-  program: IncentiveProgram; channels: Channel[]; onChanged: () => void;
+function ProgramCard({ program, campaigns, onChanged }: {
+  program: IncentiveProgram; campaigns: Campaign[]; onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const status = statusOf(program);
   const keywords = parseKeywords(program.keywords_json);
-  const groupIds = parseChannels(program.target_channels);
-  const groupNames = groupIds.length
-    ? groupIds.map((id) => channels.find((c) => c.channel_id === id || c.id === id)?.name || id).join(', ')
+  const targetIds = parseTargets(program.target_campaigns);
+  const targetNames = targetIds.length
+    ? targetIds.map((id) => campaigns.find((c) => c.id === id)?.name || id).join(', ')
     : 'כל הטייסים';
 
   const toggle = async () => {
@@ -173,7 +175,7 @@ function ProgramCard({ program, channels, onChanged }: {
             <span className={`text-2xs px-2 py-0.5 rounded-full border ${status.cls}`}>{status.label}</span>
           </div>
           <p className="text-2xs text-white/40 mt-1.5">
-            {new Date(program.starts_at).toLocaleDateString('he-IL')} — {new Date(program.ends_at).toLocaleDateString('he-IL')} · יעד: {groupNames}
+            {new Date(program.starts_at).toLocaleDateString('he-IL')} — {new Date(program.ends_at).toLocaleDateString('he-IL')} · יעד: {targetNames}
           </p>
           {keywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -196,21 +198,21 @@ function ProgramCard({ program, channels, onChanged }: {
       </div>
 
       {editing && (
-        <ProgramModal program={program} channels={channels} onClose={() => setEditing(false)}
+        <ProgramModal program={program} campaigns={campaigns} onClose={() => setEditing(false)}
           onSaved={() => { setEditing(false); onChanged(); }} />
       )}
     </div>
   );
 }
 
-function ProgramModal({ program, channels, onClose, onSaved }: {
-  program?: IncentiveProgram; channels: Channel[]; onClose: () => void; onSaved: () => void;
+function ProgramModal({ program, campaigns, onClose, onSaved }: {
+  program?: IncentiveProgram; campaigns: Campaign[]; onClose: () => void; onSaved: () => void;
 }) {
   const [name, setName] = useState(program?.name || '');
   const [keywords, setKeywords] = useState(parseKeywords(program?.keywords_json || '[]').join(', '));
   const [startsAt, setStartsAt] = useState(toDateInput(program?.starts_at));
   const [endsAt, setEndsAt] = useState(toDateInput(program?.ends_at, endOfThisMonth()));
-  const [groupIds, setGroupIds] = useState<string[]>(parseChannels(program?.target_channels || null));
+  const [targetIds, setTargetIds] = useState<string[]>(parseTargets(program?.target_campaigns || null));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -220,7 +222,7 @@ function ProgramModal({ program, channels, onClose, onSaved }: {
     if (!kws.length) { setError('הוסף לפחות מילת חיפוש אחת באנגלית'); return; }
     setSaving(true); setError('');
     const dto: IncentiveInput = {
-      name: name.trim(), keywords: kws, target_channels: groupIds,
+      name: name.trim(), keywords: kws, target_campaigns: targetIds,
       starts_at: new Date(`${startsAt}T00:00:00`).toISOString(),
       ends_at: new Date(`${endsAt}T23:59:59`).toISOString(),
     };
@@ -234,8 +236,8 @@ function ProgramModal({ program, channels, onClose, onSaved }: {
     }
   };
 
-  const toggleGroup = (id: string) =>
-    setGroupIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggleTarget = (id: string) =>
+    setTargetIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -273,20 +275,20 @@ function ProgramModal({ program, channels, onClose, onSaved }: {
           </div>
 
           <div>
-            <label className={labelCls}>לאילו קבוצות זה רלוונטי (ריק = כל הטייסים)</label>
+            <label className={labelCls}>לאילו טייסים זה רלוונטי (ריק = כל הטייסים)</label>
             <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-              {channels.map((c) => {
-                const id = c.channel_id || c.id;
-                const on = groupIds.includes(id);
+              {campaigns.map((c) => {
+                const on = targetIds.includes(c.id);
                 return (
                   <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
                     ${on ? 'border-amber-500/60 bg-amber-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
-                    <input type="checkbox" checked={on} onChange={() => toggleGroup(id)} className="accent-amber-500" />
+                    <input type="checkbox" checked={on} onChange={() => toggleTarget(c.id)} className="accent-amber-500" />
                     <span className="text-sm text-white/80 flex-1 truncate">{c.name}</span>
+                    {c.status !== 'active' && <span className="text-2xs text-white/30">מושהה</span>}
                   </label>
                 );
               })}
-              {channels.length === 0 && <p className="text-2xs text-white/30">אין ערוצים מוגדרים.</p>}
+              {campaigns.length === 0 && <p className="text-2xs text-white/30">אין טייסים מוגדרים.</p>}
             </div>
           </div>
 

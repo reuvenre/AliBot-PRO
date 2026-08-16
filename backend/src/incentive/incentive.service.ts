@@ -11,14 +11,15 @@ import { User } from '../users/user.entity';
 export interface IncentiveInput {
   name?: string;
   keywords?: string[];
-  target_channels?: string[];
+  target_campaigns?: string[];
   starts_at?: string;
   ends_at?: string;
   active?: boolean;
 }
 
-/** The portal page the owner has to open — every reminder points here. */
-const PORTAL_URL = 'https://portals.aliexpress.com/campaign/index.htm';
+/** The Incentive Campaign page in the affiliate portal — every reminder points here.
+ *  Verified by the owner; the older /campaign/index.htm path now 404s. */
+const PORTAL_URL = 'https://portals.aliexpress.com/affiportals/web/incentive.htm';
 
 @Injectable()
 export class IncentiveService {
@@ -42,7 +43,7 @@ export class IncentiveService {
       user_id: userId,
       name: (dto.name || '').trim() || 'קמפיין בונוס',
       keywords_json: JSON.stringify(cleanKeywords(dto.keywords)),
-      target_channels: dto.target_channels?.length ? JSON.stringify(dto.target_channels) : null,
+      target_campaigns: dto.target_campaigns?.length ? JSON.stringify(dto.target_campaigns) : null,
       starts_at: dto.starts_at ? new Date(dto.starts_at) : new Date(),
       ends_at: dto.ends_at ? new Date(dto.ends_at) : endOfMonth(new Date()),
       active: dto.active !== false,
@@ -55,8 +56,8 @@ export class IncentiveService {
     if (!row) throw new NotFoundException('קמפיין הבונוס לא נמצא');
     if (typeof dto.name === 'string' && dto.name.trim()) row.name = dto.name.trim();
     if (Array.isArray(dto.keywords)) row.keywords_json = JSON.stringify(cleanKeywords(dto.keywords));
-    if (Array.isArray(dto.target_channels)) {
-      row.target_channels = dto.target_channels.length ? JSON.stringify(dto.target_channels) : null;
+    if (Array.isArray(dto.target_campaigns)) {
+      row.target_campaigns = dto.target_campaigns.length ? JSON.stringify(dto.target_campaigns) : null;
     }
     if (dto.starts_at) row.starts_at = new Date(dto.starts_at);
     if (dto.ends_at) row.ends_at = new Date(dto.ends_at);
@@ -74,15 +75,14 @@ export class IncentiveService {
   // ── What the autopilot consumes ───────────────────────────────────────────
 
   /**
-   * The bonus keywords in force for a campaign publishing to `channels`, right now.
-   * A program with no groups of its own applies to every campaign; one WITH groups
-   * applies only to campaigns that share at least one (a Home & Living bonus must not
-   * push kitchen organisers into a tactical-gear channel).
+   * The bonus keywords in force for THIS campaign, right now. A program with no
+   * campaigns of its own applies to all of them; one with a list applies only to those
+   * (a Home & Living bonus must not push kitchen organisers into a tactical channel).
    *
    * Never throws: a failure here means the campaign runs on its own keywords, which is
    * exactly the pre-bonus behaviour — earning less is not a reason to publish nothing.
    */
-  async keywordsFor(userId: string, channels: string[]): Promise<{ keywords: string[]; names: string[] }> {
+  async keywordsFor(userId: string, campaignId: string): Promise<{ keywords: string[]; names: string[] }> {
     try {
       const now = new Date();
       const rows = await this.repo.find({ where: { user_id: userId, active: true } });
@@ -91,8 +91,8 @@ export class IncentiveService {
       const names: string[] = [];
       for (const r of live) {
         let own: string[] = [];
-        try { own = r.target_channels ? JSON.parse(r.target_channels) : []; } catch { own = []; }
-        if (own.length && !own.some((c) => channels.includes(c))) continue;
+        try { own = r.target_campaigns ? JSON.parse(r.target_campaigns) : []; } catch { own = []; }
+        if (own.length && !own.includes(campaignId)) continue;
         let kws: string[] = [];
         try { kws = JSON.parse(r.keywords_json || '[]'); } catch { kws = []; }
         const clean = cleanKeywords(kws);

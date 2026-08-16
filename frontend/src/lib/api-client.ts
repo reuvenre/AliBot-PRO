@@ -328,7 +328,7 @@ export interface IncentiveProgram {
   id: string;
   name: string;
   keywords_json: string;
-  target_channels: string | null;
+  target_campaigns: string | null;
   starts_at: string;
   ends_at: string;
   active: boolean;
@@ -338,7 +338,7 @@ export interface IncentiveProgram {
 export interface IncentiveInput {
   name?: string;
   keywords?: string[];
-  target_channels?: string[];
+  target_campaigns?: string[];
   starts_at?: string;
   ends_at?: string;
   active?: boolean;

@@ -31,9 +31,11 @@ export class IncentiveProgram {
   @Column({ type: 'text', default: '[]' })
   keywords_json: string;
 
-  /** Groups this bonus is relevant for. Empty/null = every campaign of this user. */
+  /** The autopilots (campaign ids) this bonus applies to. Empty/null = all of them.
+   *  Campaigns, not groups: a Pinterest campaign publishes to no Telegram group, so a
+   *  group-based target could never reach it. */
   @Column({ type: 'text', nullable: true })
-  target_channels: string | null;
+  target_campaigns: string | null;
 
   @Column({ type: 'timestamp' })
   starts_at: Date;
