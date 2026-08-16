@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Plus, Trash2, Radio } from 'lucide-react';
 import { credentialsApi, channelsApi, amazonApi, postsApi, pinterestApi } from '@/lib/api-client';
 import { SettingsSaveBar } from './SettingsSaveBar';
 import type { Channel } from '@/types';
@@ -296,6 +296,26 @@ export function IntegrationsForm() {
     }
   };
 
+  // Green API documents groups and direct chats and says nothing about channels, so the
+  // only trustworthy answer is the one this account's own instance gives.
+  const [checkingWaCh, setCheckingWaCh] = useState(false);
+  const [waChannels, setWaChannels] = useState<
+    { verdict: 'supported' | 'unsupported' | 'unknown'; message: string; channels: Array<{ id: string; name: string }> } | null
+  >(null);
+  const handleCheckWaChannels = async () => {
+    setCheckingWaCh(true); setWaChannels(null);
+    try {
+      if (greenToken.trim() || greenInstance.trim()) await handleSave();
+      const res = await channelsApi.whatsappChannelSupport();
+      setWaChannels({ verdict: res.verdict, message: res.message, channels: res.channels || [] });
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setWaChannels({ verdict: 'unknown', message: err?.response?.data?.message || 'הבדיקה נכשלה.', channels: [] });
+    } finally {
+      setCheckingWaCh(false);
+    }
+  };
+
   const handleTestWhatsApp = async () => {
     setTestingWa(true);
     try {
@@ -450,11 +470,40 @@ export function IntegrationsForm() {
         {whatsappError && <p className="text-2xs text-red-400 mt-3">⚠️ {whatsappError}</p>}
         {whatsappOk === true && <p className="text-2xs text-emerald-400 mt-3">✅ החיבור תקין — מוכן לפרסום.</p>}
 
-        <button type="button" onClick={handleTestWhatsApp} disabled={testingWa}
-          className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-white/5 border border-edge-hover text-white/80 hover:bg-white/10 disabled:opacity-50 transition-colors">
-          {testingWa ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-          בדוק תקינות וואטסאפ
-        </button>
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <button type="button" onClick={handleTestWhatsApp} disabled={testingWa}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-white/5 border border-edge-hover text-white/80 hover:bg-white/10 disabled:opacity-50 transition-colors">
+            {testingWa ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            בדוק תקינות וואטסאפ
+          </button>
+          {waProvider === 'green' && (
+            <button type="button" onClick={handleCheckWaChannels} disabled={checkingWaCh}
+              title="בודק מול ה-instance שלך אם הוא מזהה ערוצי וואטסאפ (Channels) ולא רק קבוצות"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-white/5 border border-edge-hover text-white/80 hover:bg-white/10 disabled:opacity-50 transition-colors">
+              {checkingWaCh ? <Loader2 size={13} className="animate-spin" /> : <Radio size={13} />}
+              בדוק תמיכה בערוצים
+            </button>
+          )}
+        </div>
+
+        {waChannels && (
+          <div className={`mt-3 rounded-xl border px-3.5 py-3 text-2xs leading-relaxed ${waChannels.verdict === 'supported'
+            ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+            : waChannels.verdict === 'unsupported'
+              ? 'border-red-500/25 bg-red-500/10 text-red-200'
+              : 'border-amber-500/25 bg-amber-500/10 text-amber-200'}`}>
+            <p>{waChannels.message}</p>
+            {waChannels.channels.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {waChannels.channels.map((c) => (
+                  <li key={c.id} className="text-white/70">
+                    {c.name || 'ערוץ'} — <span dir="ltr" className="font-mono">{c.id}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Pinterest — live. Pins carry a real clickable affiliate link (unlike Instagram). */}

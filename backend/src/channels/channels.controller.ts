@@ -64,4 +64,11 @@ export class ChannelsController {
   testWhatsApp(@Req() req: any) {
     return this.service.testWhatsApp(req.user.id);
   }
+
+  /** Does the owner's own Green API instance see WhatsApp channels (@newsletter)? */
+  @Post('whatsapp-channel-support')
+  @HttpCode(200)
+  whatsappChannelSupport(@Req() req: any) {
+    return this.service.whatsappChannelSupport(req.user.id);
+  }
 }

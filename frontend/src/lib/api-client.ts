@@ -792,6 +792,16 @@ export const channelsApi = {
   /** Verify the account's WhatsApp setup (Green API authorized / Cloud API token). */
   testWhatsApp: () =>
     http.post<{ ok: boolean; error?: string; state?: string }>(`/channels/test-whatsapp`).then(extract),
+
+  /** Ask the owner's own Green API instance whether it can see WhatsApp channels. */
+  whatsappChannelSupport: () =>
+    http.post<{
+      ok: boolean;
+      verdict: 'supported' | 'unsupported' | 'unknown';
+      total_chats: number;
+      channels: Array<{ id: string; name: string }>;
+      message: string;
+    }>(`/channels/whatsapp-channel-support`, {}, { timeout: 30_000 }).then(extract),
 };
 
 // ─── Amazon (PA-API) ─────────────────────────────────────────────────────────

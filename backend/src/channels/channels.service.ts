@@ -8,6 +8,7 @@ import { encrypt, decrypt, mask, normalizeTelegramChatId } from '../common/crypt
 import { SubscriptionService } from '../subscription/subscription.service';
 import { CredentialsService, GRAPH_VERSION } from '../credentials/credentials.service';
 import { facebookErrorText } from '../common/facebook-errors';
+import { classifyChannelChats, ChannelSupport } from './whatsapp-channel-support';
 import {
   canPublish, describeMissingScopes, missingScopes, parseGrantedScopes,
 } from '../pinterest/pinterest-scopes';
@@ -535,6 +536,43 @@ export class ChannelsService {
       return { ok: true, state: res.data?.display_phone_number || 'official' };
     } catch (err: any) {
       return { ok: false, error: err?.response?.data?.error?.message || err?.message || 'הבדיקה נכשלה.' };
+    }
+  }
+
+  /**
+   * Ask the owner's own Green API instance whether it can see WhatsApp channels.
+   *
+   * Green API's docs cover groups and direct chats and say nothing about channels, so
+   * neither the docs nor I can answer this for a given account — only the instance can.
+   * getChats is the cheapest probe: a channel shows up there with an `@newsletter` id.
+   */
+  async whatsappChannelSupport(userId: string): Promise<ChannelSupport & { ok: boolean }> {
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    if ((creds?.whatsapp_provider || 'green') !== 'green') {
+      return {
+        ok: false, verdict: 'unsupported', total_chats: 0, channels: [],
+        message: 'ה-API הרשמי של מטא לא תומך בקבוצות ולא בערוצים — רק בהודעות אישיות למי שנתן הסכמה.',
+      };
+    }
+    const instance = (creds?.green_api_instance_id || '').trim();
+    const token = creds?.green_api_token || '';
+    if (!instance || !token) {
+      return {
+        ok: false, verdict: 'unknown', total_chats: 0, channels: [],
+        message: 'לא הוגדרו Instance ID / Token של Green API בהגדרות ← אינטגרציות.',
+      };
+    }
+    const base = (creds?.green_api_url || 'https://api.green-api.com').replace(/\/$/, '');
+    try {
+      const res = await axios.get(`${base}/waInstance${instance}/getChats/${token}`,
+        { timeout: 15_000, validateStatus: () => true });
+      const verdict = classifyChannelChats(res.status, res.data);
+      return { ok: verdict.verdict !== 'unsupported', ...verdict };
+    } catch (err: any) {
+      return {
+        ok: false, verdict: 'unknown', total_chats: 0, channels: [],
+        message: err?.message || 'הבדיקה נכשלה — לא הצלחתי להגיע ל-Green API.',
+      };
     }
   }
 
