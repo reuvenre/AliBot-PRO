@@ -15,6 +15,8 @@ import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
 import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
+import { toWhatsAppText } from './whatsapp-format';
+import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
 import { occupiesCurrentInterval } from './group-pacing';
 import { platformFilterSql } from './platform-filter';
@@ -4922,6 +4924,23 @@ export class PostsService {
 
   /** Normalize a WhatsApp target into a chatId. A value already carrying '@' is used as-is;
    *  a bare id is treated as a GROUP (…@g.us) — the intended publishing target. */
+  /** When the previous WhatsApp message left this process, and the queue that serialises
+   *  the pacing so two concurrent sends don't both decide "the line is free". */
+  private waLastSentAt: number | null = null;
+  private waChain: Promise<void> = Promise.resolve();
+
+  /** Wait out this send's turn (jitter + minimum gap). Never throws — pacing must not be
+   *  the reason a post fails to publish. */
+  private paceWhatsApp(): Promise<void> {
+    const turn = this.waChain.then(async () => {
+      const delay = waDelayMs(this.waLastSentAt, Date.now(), Math.random());
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      this.waLastSentAt = Date.now();
+    });
+    this.waChain = turn.catch(() => { /* keep the line moving */ });
+    return this.waChain;
+  }
+
   private normalizeWaChatId(v: string): string {
     const s = (v || '').trim();
     if (!s) return '';
@@ -4936,9 +4955,16 @@ export class PostsService {
    * Sends the product image + caption; falls back to a text message when there's no image.
    */
   private async sendToWhatsApp(post: Post, creds: DecryptedCredentials, message: string) {
-    // Tagged ?s=wa + plain text (WhatsApp renders no HTML; links are clickable).
-    const caption = tagShortLinks(message, 'wa').replace(/<\/?[^>]+>/g, '');
+    // Tagged ?s=wa, then translated into WhatsApp's own markup: bold/italic/strike survive,
+    // and the "🔗 <url>" line becomes a bold CTA above a bare URL — the closest WhatsApp
+    // gets to Telegram's anchor button (it has no hyperlink markup at all).
+    const caption = toWhatsAppText(tagShortLinks(message, 'wa'));
     const provider = creds?.whatsapp_provider || 'green';
+
+    // Behaviour, not content, is what gets a WhatsApp number restricted — see
+    // whatsapp-pacing.ts. Hold the message a jittered moment so posts don't leave on the
+    // scheduler's round minute, and never fire two within the minimum gap.
+    await this.paceWhatsApp();
 
     let image = post.product_image || '';
     try {

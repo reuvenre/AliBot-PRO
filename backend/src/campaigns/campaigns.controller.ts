@@ -48,6 +48,12 @@ export class CampaignsController {
     return this.posts.translateCampaignKeywordsToEnglish(this.uid(req));
   }
 
+  /** Brand / counterfeit-magnet keywords across ALL campaigns. Declared BEFORE ':id'. */
+  @Get('keyword-audit')
+  keywordAudit(@Req() req: Request) {
+    return this.svc.keywordAudit(this.uid(req));
+  }
+
   @Get(':id')
   get(@Req() req: Request, @Param('id') id: string) {
     return this.svc.getPublic(this.uid(req), id); // target_channels as an array for the UI

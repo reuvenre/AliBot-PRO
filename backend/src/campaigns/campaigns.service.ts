@@ -10,6 +10,7 @@ import { SubscriptionService } from '../subscription/subscription.service';
 import { ChannelsService } from '../channels/channels.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { nextPublishAt } from './next-run';
+import { auditKeywords, KeywordFlag } from './brand-keywords';
 
 @Injectable()
 export class CampaignsService {
@@ -80,6 +81,57 @@ export class CampaignsService {
     let target_platforms: string[] = [];
     try { target_platforms = JSON.parse(c.target_platforms || '[]'); } catch { target_platforms = []; }
     return { ...c, target_channels, target_platforms };
+  }
+
+  /**
+   * Sweep EVERY campaign's keywords for brand / counterfeit-magnet terms.
+   *
+   * Deliberately a report, not a guard: the owner decides. What this removes is the part
+   * that can't be done by hand — nobody re-reads forty keywords spread over a dozen
+   * campaigns looking for the one `adidas official` that slipped in months ago, and that
+   * one is exactly what a Meta counterfeit report lands on. Retired keywords are included
+   * with a marker: the optimizer can put them back into rotation.
+   */
+  async keywordAudit(userId: string) {
+    const campaigns = await this.repo.find({
+      where: { user_id: userId },
+      order: { created_at: 'DESC' },
+    });
+
+    let scanned = 0;
+    const findings: Array<{
+      campaign_id: string; campaign_name: string; status: string; retired: boolean;
+    } & KeywordFlag> = [];
+
+    for (const c of campaigns) {
+      for (const [list, retired] of [[c.keywords, false], [c.retired_keywords, true]] as const) {
+        const keywords = Array.isArray(list) ? list : [];
+        scanned += keywords.length;
+        for (const flag of auditKeywords(keywords)) {
+          findings.push({
+            campaign_id: c.id,
+            campaign_name: c.name,
+            status: c.status,
+            retired,
+            ...flag,
+          });
+        }
+      }
+    }
+
+    // Active campaigns first, then high risk — a flagged keyword in a paused campaign is
+    // not publishing anything today.
+    const rank = (f: (typeof findings)[number]) =>
+      (f.status === 'active' && !f.retired ? 0 : 2) + (f.risk === 'high' ? 0 : 1);
+    findings.sort((a, b) => rank(a) - rank(b));
+
+    return {
+      campaigns: campaigns.length,
+      keywords_scanned: scanned,
+      high: findings.filter((f) => f.risk === 'high').length,
+      watch: findings.filter((f) => f.risk === 'watch').length,
+      findings,
+    };
   }
 
   async list(userId: string, page = 1, limit = 20, status?: string) {

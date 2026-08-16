@@ -466,6 +466,27 @@ export const discoveryApi = {
 
 // ─── Campaigns API ───────────────────────────────────────────────────────────
 
+/** One risky keyword found in a campaign, as the backend audit reports it. */
+export interface KeywordFinding {
+  campaign_id: string;
+  campaign_name: string;
+  status: string;
+  /** The keyword is out of rotation (retired by the optimizer) — lower urgency. */
+  retired: boolean;
+  keyword: string;
+  risk: 'high' | 'watch';
+  reason: string;
+  suggestion?: string;
+}
+
+export interface KeywordAudit {
+  campaigns: number;
+  keywords_scanned: number;
+  high: number;
+  watch: number;
+  findings: KeywordFinding[];
+}
+
 export const campaignsApi = {
   /** Active + upcoming commercial-calendar events for the dashboard strip. */
   seasonal: () =>
@@ -480,6 +501,10 @@ export const campaignsApi = {
     http.post<{ campaigns_updated: number; translations: Array<{ campaign: string; before: string; after: string }> }>(
       '/campaigns/translate-keywords', {}, { timeout: 120_000 },
     ).then(extract),
+
+  /** Brand / counterfeit-magnet keywords across every campaign — a report, not a guard. */
+  keywordAudit: () =>
+    http.get<KeywordAudit>('/campaigns/keyword-audit').then(extract),
 
   get: (id: string) => http.get<Campaign>(`/campaigns/${id}`).then(extract),
 

@@ -3,10 +3,10 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Plus, Megaphone, Loader2, Languages } from 'lucide-react';
+import { Plus, Megaphone, Loader2, Languages, ShieldAlert, X } from 'lucide-react';
 import { CampaignCard } from '@/components/campaigns/CampaignCard';
 import { useCampaigns } from '@/lib/hooks/useCampaigns';
-import { campaignsApi } from '@/lib/api-client';
+import { campaignsApi, type KeywordAudit } from '@/lib/api-client';
 
 export default function CampaignsPage() {
   const router = useRouter();
@@ -30,6 +30,23 @@ export default function CampaignsPage() {
     }
   };
 
+  // Brand-keyword sweep across every campaign. A report the owner reads — nothing is
+  // changed automatically, because only he knows which brand he sells on purpose.
+  const [auditing, setAuditing] = useState(false);
+  const [audit, setAudit] = useState<KeywordAudit | null>(null);
+  const [auditErr, setAuditErr] = useState<string | null>(null);
+  const runAudit = async () => {
+    setAuditing(true); setAuditErr(null);
+    try {
+      setAudit(await campaignsApi.keywordAudit());
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setAuditErr(err?.response?.data?.message || 'הבדיקה נכשלה');
+    } finally {
+      setAuditing(false);
+    }
+  };
+
   return (
     <div>
       {/* Header */}
@@ -45,6 +62,15 @@ export default function CampaignsPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={runAudit}
+            disabled={auditing}
+            title="סורק את מילות המפתח בכל הטייסים ומסמן שמות מותג וניסוחים שמושכים מוצרים מזויפים"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/70 text-sm rounded-xl transition-all"
+          >
+            {auditing ? <Loader2 size={15} className="animate-spin" /> : <ShieldAlert size={15} />}
+            בדוק מילות מותג
+          </button>
           <button
             onClick={translateKeywords}
             disabled={translating}
@@ -69,6 +95,70 @@ export default function CampaignsPage() {
           ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
           : 'bg-red-500/10 border-red-500/25 text-red-300'}`}>
           {translateMsg}
+        </div>
+      )}
+
+      {auditErr && (
+        <div className="mb-6 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          ⚠️ {auditErr}
+        </div>
+      )}
+
+      {/* Brand-keyword report */}
+      {audit && (
+        <div className="mb-6 rounded-2xl border border-edge bg-surface-secondary p-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <ShieldAlert size={15} className="text-amber-400" />
+                בדיקת מילות מותג
+              </h3>
+              <p className="text-xs text-white/40 mt-1">
+                נסרקו {audit.keywords_scanned} מילות מפתח ב-{audit.campaigns} טייסים ·{' '}
+                <span className="text-red-300">{audit.high} בסיכון גבוה</span> ·{' '}
+                <span className="text-amber-300">{audit.watch} לבדיקה</span>
+              </p>
+            </div>
+            <button onClick={() => setAudit(null)} className="text-white/30 hover:text-white/60 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+
+          {audit.findings.length === 0 ? (
+            <p className="text-sm text-emerald-300">✓ לא נמצאו שמות מותג או ניסוחים בעייתיים. מצוין.</p>
+          ) : (
+            <div className="space-y-2">
+              {audit.findings.map((f, i) => (
+                <div
+                  key={`${f.campaign_id}-${f.keyword}-${i}`}
+                  className={`rounded-xl border px-3.5 py-3 ${f.risk === 'high'
+                    ? 'border-red-500/25 bg-red-500/[0.07]'
+                    : 'border-amber-500/25 bg-amber-500/[0.07]'}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className={`text-[11px] px-2 py-0.5 rounded-lg font-medium ${f.risk === 'high'
+                      ? 'bg-red-500/20 text-red-200' : 'bg-amber-500/20 text-amber-200'}`}>
+                      {f.risk === 'high' ? 'סיכון גבוה' : 'לבדיקה'}
+                    </span>
+                    <span className="text-sm font-semibold text-white">{f.keyword}</span>
+                    <Link href={`/campaigns/${f.campaign_id}`} className="text-xs text-blue-300 hover:underline">
+                      {f.campaign_name}
+                    </Link>
+                    {f.retired && <span className="text-[11px] text-white/30">(הוצאה מרוטציה)</span>}
+                    {f.status !== 'active' && !f.retired && (
+                      <span className="text-[11px] text-white/30">(טייס מושהה)</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/55 leading-relaxed">{f.reason}</p>
+                  {f.suggestion && (
+                    <p className="text-xs text-white/40 mt-1">
+                      חלופה מוצעת: <span className="text-white/70 font-medium">{f.suggestion}</span>
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
