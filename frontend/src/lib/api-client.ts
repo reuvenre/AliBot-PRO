@@ -760,6 +760,11 @@ export const earningsApi = {
     error?: string;
   }>('/earnings/sync/status').then(extract),
 
+  /** The account's own orders as CSV — downloaded through axios so the JWT rides along
+   *  (a plain <a href> download carries no Authorization header). */
+  exportCsv: () =>
+    http.get('/earnings/export.csv', { responseType: 'blob' }).then((r) => r.data as Blob),
+
   /** Compare the portal's own export against the DB — which sub-order never arrived. */
   reconcile: (csv: string) =>
     http.post<{

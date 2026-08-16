@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCart, TrendingUp, DollarSign, CheckCircle2, Clock, XCircle,
-  Loader2, AlertTriangle, Download, CalendarRange, FileSearch, X,
+  Loader2, AlertTriangle, Download, CalendarRange, FileSearch, X, Upload, FileDown,
 } from 'lucide-react';
 import { earningsApi } from '@/lib/api-client';
 import type { Earning, EarningStatus } from '@/types';
@@ -167,6 +167,45 @@ export default function OrdersPage() {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileRes, setReconcileRes] = useState<Awaited<ReturnType<typeof earningsApi.reconcile>> | null>(null);
   const [reconcileErr, setReconcileErr] = useState('');
+  // The portal export is a file, and pasting 25KB of CSV into a phone textarea is not a
+  // thing anyone should be asked to do. Reading the file locally sends the same text.
+  const pickCsvFile = async (file: File | undefined) => {
+    if (!file) return;
+    const text = await file.text();
+    setCsvText(text);
+    setReconcileErr(''); setReconcileRes(null);
+    setReconciling(true);
+    try {
+      setReconcileRes(await earningsApi.reconcile(text));
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setReconcileErr(err?.response?.data?.message || 'ההשוואה נכשלה');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  // Our own orders as a file — the mirror of the portal export, for a side-by-side diff.
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const blob = await earningsApi.exportCsv();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nexlify-orders.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setReconcileErr('הייצוא נכשל');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const runReconcile = async () => {
     setReconciling(true); setReconcileErr(''); setReconcileRes(null);
     try {
@@ -191,6 +230,12 @@ export default function OrdersPage() {
           <p className="text-sm text-white/40 mt-1">הזמנות ועמלות אמיתיות מ-AliExpress</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button onClick={exportCsv} disabled={exporting}
+            title="מוריד את ההזמנות שבמערכת כקובץ CSV — אותו פורמט כמו הייצוא מהפורטל"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-white/70 text-sm rounded-xl transition-all whitespace-nowrap">
+            {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+            ייצוא CSV
+          </button>
           <button onClick={() => setReconcileOpen((v) => !v)}
             title="הדבק את קובץ ההזמנות מהפורטל — המערכת תגיד לך איזו הזמנה חסרה אצלה"
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white/70 text-sm rounded-xl transition-all whitespace-nowrap">
@@ -223,6 +268,14 @@ export default function OrdersPage() {
               <X size={16} />
             </button>
           </div>
+
+          <label className="mb-3 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-edge-hover bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/70 cursor-pointer transition-colors">
+            <Upload size={15} />
+            בחר את קובץ ה-CSV שהורדת מהפורטל
+            <input type="file" accept=".csv,text/csv,text/plain" className="hidden"
+              onChange={(e) => { pickCsvFile(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          <p className="text-2xs text-white/30 mb-2">או הדבק את תוכן הקובץ ידנית:</p>
 
           <textarea
             value={csvText}

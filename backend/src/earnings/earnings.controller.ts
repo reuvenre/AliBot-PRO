@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards, HttpCode } from '@nestjs/common';
-import { Request } from 'express';
+import { Body, Controller, Get, Post, Query, Req, Res, UseGuards, HttpCode } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EarningsService } from './earnings.service';
 import { SubscriptionService } from '../subscription/subscription.service';
@@ -11,6 +11,15 @@ export class EarningsController {
     private readonly svc: EarningsService,
     private readonly subscription: SubscriptionService,
   ) {}
+
+  /** The account's own orders as CSV — the file to diff against the portal's export. */
+  @Get('export.csv')
+  async exportCsv(@Req() req: Request, @Res() res: Response) {
+    const csv = await this.svc.exportCsv((req.user as any).id);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="nexlify-orders.csv"');
+    res.send(csv);
+  }
 
   /** Which sub-order from the portal's export never made it into the DB. */
   @Post('reconcile')

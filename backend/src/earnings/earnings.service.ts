@@ -78,6 +78,39 @@ export class EarningsService {
   ) {}
 
   /**
+   * The account's orders as CSV — the mirror image of the portal's own export, so the two
+   * files can be diffed directly (by the owner, by a spreadsheet, or by someone helping
+   * him). Same first column name the portal uses for the row key, so a diff lines up
+   * without renaming anything.
+   *
+   * Unfiltered and unpaged on purpose: an export that silently held only the visible 20
+   * rows would "prove" orders are missing that are merely on page 2.
+   */
+  async exportCsv(userId: string): Promise<string> {
+    const rows = await this.repo.find({
+      where: { user_id: userId },
+      order: { order_date: 'DESC' },
+    });
+    const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString().replace('T', ' ').slice(0, 19) : '');
+    const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = [
+      'SubOrderID', 'ProductId', 'Status', 'OrderAmountUSD', 'CommissionUSD',
+      'CommissionILS', 'OrderDate', 'PaidDate', 'SettlementDate', 'Keyword', 'CampaignId',
+    ];
+    const lines = [head.map(cell).join(',')];
+    for (const r of rows) {
+      lines.push([
+        r.order_id, r.product_id, r.status, r.order_amount_usd, r.commission_usd,
+        r.commission_ils, iso(r.order_date), iso(r.paid_date), iso(r.settlement_date),
+        r.keyword || '', r.campaign_id || '',
+      ].map(cell).join(','));
+    }
+    // Excel opens a UTF-8 CSV as mojibake without the BOM, and these rows carry Hebrew
+    // keywords.
+    return `﻿${lines.join('\n')}\n`;
+  }
+
+  /**
    * Compare the portal's own export against what the sync stored — which sub-order is
    * missing, and which stored row the portal no longer shows.
    *
