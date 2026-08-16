@@ -8,6 +8,8 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { MailService } from '../mail/mail.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { User } from '../users/user.entity';
+import { AiService } from '../ai/ai.service';
+import { knownPoolKeywords, parsePoolKeywords, POOL_KEYWORDS_SYSTEM, PoolSuggestion } from './pool-keywords';
 
 export interface IncentiveInput {
   name?: string;
@@ -32,6 +34,7 @@ export class IncentiveService {
     private readonly credentials: CredentialsService,
     private readonly mail: MailService,
     private readonly subscription: SubscriptionService,
+    private readonly ai: AiService,
   ) {}
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -72,6 +75,30 @@ export class IncentiveService {
     if (!row) throw new NotFoundException('קמפיין הבונוס לא נמצא');
     await this.repo.remove(row);
     return { deleted: true };
+  }
+
+  /**
+   * Suggested search keywords for a pool the owner is adding. The recurring pools answer
+   * from a table (instant, free, stable); anything else asks the model once. Never throws
+   * and never guesses wildly — an empty list just means the owner types their own.
+   */
+  async suggestKeywords(userId: string, name: string): Promise<PoolSuggestion> {
+    const known = knownPoolKeywords(name);
+    if (known) return { keywords: known, source: 'known' };
+    try {
+      const creds = await this.credentials.getRaw(userId);
+      if (!creds || !this.ai.hasAnyKey(creds)) return { keywords: [], source: 'ai' };
+      const res = await this.ai.generate(creds, {
+        system: POOL_KEYWORDS_SYSTEM,
+        prompt: `Pool name: "${String(name || '').trim().slice(0, 120)}"`,
+        maxTokens: 120,
+        temperature: 0,
+      });
+      return { keywords: parsePoolKeywords(res?.text), source: 'ai' };
+    } catch (err: any) {
+      this.logger.warn(`pool keyword suggestion failed: ${err?.message}`);
+      return { keywords: [], source: 'ai' };
+    }
   }
 
   // ── What the autopilot consumes ───────────────────────────────────────────

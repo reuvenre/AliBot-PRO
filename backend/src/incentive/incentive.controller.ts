@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards,
+  Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req, UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -16,6 +16,13 @@ export class IncentiveController {
   @Get()
   list(@Req() req: Request) {
     return this.svc.list(this.uid(req));
+  }
+
+  /** Suggested keywords for a pool name — known pools answer instantly, else one AI call. */
+  @Post('suggest-keywords')
+  @HttpCode(200)
+  suggest(@Req() req: Request, @Body('name') name: string) {
+    return this.svc.suggestKeywords(this.uid(req), name || '');
   }
 
   @Post()

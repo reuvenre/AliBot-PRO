@@ -346,6 +346,11 @@ export interface IncentiveInput {
 
 export const incentiveApi = {
   list: () => http.get<IncentiveProgram[]>('/incentive-programs').then(extract),
+  /** Keywords for a pool name — the recurring pools answer instantly, else one AI call. */
+  suggestKeywords: (name: string) =>
+    http.post<{ keywords: string[]; source: 'known' | 'ai' }>(
+      '/incentive-programs/suggest-keywords', { name }, { timeout: AI_TIMEOUT },
+    ).then(extract),
   create: (data: IncentiveInput) =>
     http.post<IncentiveProgram>('/incentive-programs', data).then(extract),
   update: (id: string, data: IncentiveInput) =>

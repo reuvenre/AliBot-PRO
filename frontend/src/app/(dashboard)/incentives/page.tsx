@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Gift, Loader2, Plus, Power, RefreshCw, Trash2, ExternalLink, AlertTriangle,
+  Gift, Loader2, Plus, Power, RefreshCw, Trash2, ExternalLink, AlertTriangle, Wand2,
 } from 'lucide-react';
 import { campaignsApi, incentiveApi, subscriptionApi } from '@/lib/api-client';
 import type { IncentiveProgram, IncentiveInput } from '@/lib/api-client';
@@ -233,6 +233,23 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
   const [targetIds, setTargetIds] = useState<string[]>(parseTargets(program?.target_campaigns || null));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestNote, setSuggestNote] = useState('');
+
+  /** Fill the keywords from the pool name — the lists are the same every month, so this
+   *  is the step that turns "what do I even type here" into one click. */
+  const suggest = async () => {
+    if (!name.trim()) { setError('כתוב קודם את שם הקמפיין כדי שאדע מה להציע'); return; }
+    setSuggesting(true); setError(''); setSuggestNote('');
+    try {
+      const r = await incentiveApi.suggestKeywords(name.trim());
+      if (!r.keywords.length) { setSuggestNote('לא הצלחתי להציע — כתוב מילים ידנית'); return; }
+      setKeywords(r.keywords.join(', '));
+      setSuggestNote(r.source === 'known' ? 'הוצע לפי הפול המוכר ✓' : 'הוצע על ידי ה-AI ✓');
+    } catch (e: any) {
+      setSuggestNote(e?.response?.data?.message || 'ההצעה נכשלה');
+    } finally { setSuggesting(false); }
+  };
 
   const save = async () => {
     const kws = keywords.split(',').map((k) => k.trim()).filter(Boolean);
@@ -274,11 +291,19 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
           </div>
 
           <div>
-            <label className={labelCls}>מילות חיפוש באנגלית — מופרדות בפסיק</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs text-white/50">מילות חיפוש באנגלית — מופרדות בפסיק</label>
+              <button type="button" onClick={suggest} disabled={suggesting}
+                className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 disabled:opacity-50">
+                {suggesting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                {suggesting ? 'מציע…' : 'הצע לי מילים'}
+              </button>
+            </div>
             <textarea value={keywords} onChange={(e) => setKeywords(e.target.value)} rows={3} dir="ltr"
               placeholder="storage box, kitchen organizer, closet organizer"
               className={`${inputCls} resize-none`} />
             <p className="text-2xs text-white/30 mt-1">אלה המילים שהטייס יחפש בהן — כדאי 3–6 ממוקדות לקטגוריה שמזכה בבונוס.</p>
+            {suggestNote && <p className="text-2xs text-amber-300/80 mt-1">{suggestNote}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
