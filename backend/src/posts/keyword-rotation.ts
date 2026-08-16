@@ -51,14 +51,25 @@ export function keywordWeight(perf?: KeywordPerformance): number {
  * original position so the result is deterministic.
  */
 export function weightedRotation(
-  keywords: string[], scores: Map<string, KeywordPerformance>,
+  keywords: string[], scores: Map<string, KeywordPerformance>, boosted?: Set<string>,
 ): string[] {
   const unique = Array.from(new Set(keywords.map((k) => k?.trim()).filter(Boolean)));
   if (!unique.length) return [];
 
+  // BOOSTED keywords (a live AliExpress bonus pool) are worth more PER SALE than anything
+  // else this campaign could publish, so they get a proven keyword's emphasis instead of an
+  // unproven one's floor — otherwise a freshly added pool sits one slot deep in a long
+  // cycle and the owner sees no change for days, which is most of a monthly pool's life.
+  // Bounded on purpose: a boost, never a takeover — a keyword that actually EARNS still
+  // outranks it, and every other keyword keeps its slot.
+  const boost = new Set(Array.from(boosted || []).map((k) => k.trim().toLowerCase()));
+
   const slots: Array<{ keyword: string; at: number; index: number }> = [];
   unique.forEach((keyword, index) => {
-    const weight = keywordWeight(scores.get(keyword));
+    const weight = Math.max(
+      keywordWeight(scores.get(keyword)),
+      boost.has(keyword.toLowerCase()) ? WEIGHT_CLICKED : 0,
+    );
     for (let j = 0; j < weight; j++) {
       slots.push({ keyword, at: (j + 0.5) / weight, index });
     }

@@ -95,3 +95,32 @@ describe('weightedRotation', () => {
     expect(weightedRotation([], new Map())).toEqual([]);
   });
 });
+
+describe('weightedRotation — bonus-pool boost', () => {
+  const perf = new Map<string, KeywordPerformance>();
+
+  it('gives a live bonus keyword a proven keyword\'s emphasis, not an unproven floor', () => {
+    // Without the boost a freshly added pool holds 1 slot in a long cycle and the owner
+    // sees nothing change for days — most of a monthly pool's life.
+    const plain = weightedRotation(['a', 'b', 'storage box'], perf);
+    const boosted = weightedRotation(['a', 'b', 'storage box'], perf, new Set(['storage box']));
+    expect(plain.filter((k) => k === 'storage box')).toHaveLength(1);
+    expect(boosted.filter((k) => k === 'storage box')).toHaveLength(2);
+    // A boost, not a takeover: every other keyword keeps its slot.
+    expect(boosted.filter((k) => k === 'a')).toHaveLength(1);
+    expect(boosted.filter((k) => k === 'b')).toHaveLength(1);
+  });
+
+  it('never demotes a keyword that actually earns', () => {
+    const earning = new Map<string, KeywordPerformance>([
+      ['storage box', { posts: 9, clicks: 30, revenue: 120 }],
+    ]);
+    const out = weightedRotation(['a', 'storage box'], earning, new Set(['storage box']));
+    expect(out.filter((k) => k === 'storage box')).toHaveLength(3);
+  });
+
+  it('matches case-insensitively, like the rest of the keyword handling', () => {
+    const out = weightedRotation(['Storage Box'], perf, new Set(['storage box']));
+    expect(out).toHaveLength(2);
+  });
+});

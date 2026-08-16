@@ -2319,7 +2319,7 @@ export class PostsService {
     const kwEffective = kwActive.length ? kwActive : kwList;
 
     const perf = await this.keywordPerformance(campaign.id).catch(() => new Map());
-    const rotation = weightedRotation(kwEffective, perf);
+    const rotation = weightedRotation(kwEffective, perf, new Set(bonus.keywords));
     const rotationList = rotation.length ? rotation : kwEffective;
 
     // One keyword per post SLOT (repeats when there are fewer keywords than posts).
