@@ -31,6 +31,7 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   paid_boost: 'קידום ממומן אוטומטי (Meta Ads)',
   landing_pages: 'דפי נחיתה (ClickLead)',
   learning_optimizer: 'מנוע אופטימיזציה לומד',
+  incentive_steering: 'הטיה לקמפייני בונוס של אלי אקספרס',
 };
 
 export interface SubscriptionStatus {

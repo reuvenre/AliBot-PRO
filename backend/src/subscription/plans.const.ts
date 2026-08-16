@@ -117,6 +117,12 @@ export const FEATURE_MIN_PLAN = {
   landing_pages: 'scale',
   /** Nightly learning optimizer: keyword scoring → retire/boost + morning digest. */
   learning_optimizer: 'autopilot',
+  /** Bonus-pool steering: the autopilot prefers categories that currently pay an
+   *  AliExpress incentive bonus. Same family as the seasonal calendar and the nightly
+   *  optimizer — the system deciding what is worth publishing — so the same tier.
+   *  (The monthly "go register" reminder is deliberately NOT gated: it costs nothing
+   *  and it is what makes a lower tier want the automation above it.) */
+  incentive_steering: 'autopilot',
 } as const;
 
 export type FeatureKey = keyof typeof FEATURE_MIN_PLAN;

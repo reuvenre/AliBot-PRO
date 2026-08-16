@@ -6,6 +6,7 @@ import axios from 'axios';
 import { IncentiveProgram } from './incentive-program.entity';
 import { CredentialsService } from '../credentials/credentials.service';
 import { MailService } from '../mail/mail.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { User } from '../users/user.entity';
 
 export interface IncentiveInput {
@@ -30,6 +31,7 @@ export class IncentiveService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly credentials: CredentialsService,
     private readonly mail: MailService,
+    private readonly subscription: SubscriptionService,
   ) {}
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -84,6 +86,12 @@ export class IncentiveService {
    */
   async keywordsFor(userId: string, campaignId: string): Promise<{ keywords: string[]; names: string[] }> {
     try {
+      // Plan gate: steering the rotation is an Autopilot-tier feature. Recording pools
+      // and getting the monthly reminder stay open to every plan — knowing the money is
+      // there is free, having the system chase it is what's paid for.
+      if (!(await this.subscription.allows(userId, 'incentive_steering'))) {
+        return { keywords: [], names: [] };
+      }
       const now = new Date();
       const rows = await this.repo.find({ where: { user_id: userId, active: true } });
       const live = rows.filter((r) => new Date(r.starts_at) <= now && new Date(r.ends_at) >= now);

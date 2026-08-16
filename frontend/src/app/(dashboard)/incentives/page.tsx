@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   Gift, Loader2, Plus, Power, RefreshCw, Trash2, ExternalLink, AlertTriangle,
 } from 'lucide-react';
-import { campaignsApi, incentiveApi } from '@/lib/api-client';
+import { campaignsApi, incentiveApi, subscriptionApi } from '@/lib/api-client';
 import type { IncentiveProgram, IncentiveInput } from '@/lib/api-client';
-import type { Campaign } from '@/types';
+import type { Campaign, PlanId } from '@/types';
 
 /**
  * The owner's registered AliExpress incentive campaigns (portal bonus pools).
@@ -47,6 +48,11 @@ function statusOf(p: IncentiveProgram): { label: string; cls: string } {
   return { label: 'פעיל — מזכה בבונוס', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' };
 }
 
+/** Steering the rotation is Autopilot+; recording pools and the monthly reminder are open
+ *  to every plan (see FEATURE_MIN_PLAN.incentive_steering). */
+const PLAN_ORDER: PlanId[] = ['starter', 'growth', 'autopilot', 'scale'];
+const steeringIncluded = (plan: PlanId) => PLAN_ORDER.indexOf(plan) >= PLAN_ORDER.indexOf('autopilot');
+
 const inputCls = 'w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-amber-500/50';
 const labelCls = 'block text-xs text-white/50 mb-1.5';
 
@@ -56,6 +62,7 @@ export default function IncentivesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
+  const [plan, setPlan] = useState<PlanId>('autopilot');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +78,7 @@ export default function IncentivesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { subscriptionApi.status().then((st) => setPlan(st.plan)).catch(() => {}); }, []);
 
   const liveCount = rows.filter((p) => statusOf(p).label.startsWith('פעיל')).length;
 
@@ -109,6 +117,16 @@ export default function IncentivesPage() {
           תזכורת להירשם מחדש נשלחת ב-1 לכל חודש.
         </p>
       </div>
+
+      {!steeringIncluded(plan) && (
+        <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl p-4 mb-5">
+          <p className="text-xs text-white/70 leading-relaxed">
+            🔒 <b>ההטיה האוטומטית של הטייס זמינה מתוכנית Autopilot.</b> אפשר לרשום כאן את הפולים
+            ולקבל את התזכורת החודשית בכל תוכנית — אבל המשיכה בפועל של מוצרים מהקטגוריות שמזכות
+            בבונוס מופעלת בשדרוג. <Link href="/settings?tab=subscription" className="text-violet-300 underline">לשדרוג</Link>
+          </p>
+        </div>
+      )}
 
       {error && (
         <p className="text-sm text-red-400 flex items-center gap-1.5 mb-4"><AlertTriangle size={14} /> {error}</p>
