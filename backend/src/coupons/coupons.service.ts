@@ -228,6 +228,43 @@ export class CouponsService {
   }
 
   /**
+   * Edit a SAVED coupon's campaign label and validity window.
+   *
+   * The import form carries these three fields, so they could only ever be set at the
+   * moment of import — an owner who pasted a batch first and named the sale afterwards was
+   * left with eight coupons reading "—" and no way to fix them but delete and re-import.
+   * The code, discount and minimum spend stay immutable here: those came from AliExpress
+   * and editing them would quietly misprice a live post.
+   */
+  async update(
+    userId: string, id: string,
+    patch: { campaign?: string | null; starts_at?: string | null; ends_at?: string | null },
+  ): Promise<Coupon> {
+    const c = await this.repo.findOne({ where: { id, user_id: userId } });
+    if (!c) throw new NotFoundException('קופון לא נמצא');
+    if (patch.campaign !== undefined) {
+      const name = String(patch.campaign ?? '').trim();
+      c.campaign = name || null; // an emptied field clears the label rather than storing ''
+    }
+    const when = (v: string | null | undefined): Date | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || !String(v).trim()) return null;
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) throw new BadRequestException('תאריך לא תקין');
+      return d;
+    };
+    const from = when(patch.starts_at);
+    const to = when(patch.ends_at);
+    if (from !== undefined) c.starts_at = from;
+    if (to !== undefined) c.ends_at = to;
+    // A window that ends before it starts would silently never match a product.
+    if (c.starts_at && c.ends_at && c.ends_at.getTime() <= c.starts_at.getTime()) {
+      throw new BadRequestException('תאריך הסיום חייב להיות אחרי תאריך ההתחלה');
+    }
+    return this.repo.save(c);
+  }
+
+  /**
    * The coupon to show for a product priced `priceUsd`.
    *
    * AliExpress coupons apply to the CART TOTAL, not to a single item — so a product below

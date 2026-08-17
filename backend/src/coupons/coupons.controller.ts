@@ -75,9 +75,16 @@ export class CouponsController {
     };
   }
 
+  /** is_active on its own keeps the old toggle contract; any other field edits the coupon. */
   @Patch(':id')
-  setActive(@Req() req: Request, @Param('id') id: string, @Body('is_active') isActive: boolean) {
-    return this.svc.setActive(this.uid(req), id, isActive !== false);
+  patch(
+    @Req() req: Request, @Param('id') id: string,
+    @Body() body: { is_active?: boolean; campaign?: string | null; starts_at?: string | null; ends_at?: string | null },
+  ) {
+    const editing = body?.campaign !== undefined
+      || body?.starts_at !== undefined || body?.ends_at !== undefined;
+    if (!editing) return this.svc.setActive(this.uid(req), id, body?.is_active !== false);
+    return this.svc.update(this.uid(req), id, body);
   }
 
   @Delete(':id')

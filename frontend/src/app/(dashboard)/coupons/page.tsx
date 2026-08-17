@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Ticket, Loader2, Trash2, RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Clock, Power, Plus, Wand2,
+  Pencil, Check, X,
 } from 'lucide-react';
 import { couponsApi } from '@/lib/api-client';
 import type { Coupon, ParsedCoupon } from '@/types';
@@ -33,6 +34,26 @@ export default function CouponsPage() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [campaign, setCampaign] = useState('');
+  // A saved coupon's campaign label had no editor at all: the import form sets it once, so
+  // pasting a batch and naming the sale afterwards left every row reading "—" with nothing
+  // to do but delete and re-import.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const startEdit = (c: Coupon) => { setEditingId(c.id); setEditingName(c.campaign || ''); };
+  const saveEdit = async (c: Coupon) => {
+    setSavingEdit(true);
+    try {
+      await couponsApi.update(c.id, { campaign: editingName.trim() });
+      setEditingId(null);
+      await load();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setError(err?.response?.data?.message || 'עדכון שם הקמפיין נכשל');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
   const [startsAt, setStartsAt] = useState(toLocalInput());
   const [endsAt, setEndsAt] = useState(toLocalInput(null, 24 * 7));
   const [parsed, setParsed] = useState<ParsedCoupon[] | null>(null);
@@ -315,7 +336,37 @@ export default function CouponsPage() {
                       <td className="px-5 py-3 font-mono font-bold text-pink-300" dir="ltr">{c.code}</td>
                       <td className="px-3 py-3 text-white/80" dir="ltr">${c.discount_usd}</td>
                       <td className="px-3 py-3 text-white/50" dir="ltr">${c.min_spend_usd}+</td>
-                      <td className="px-3 py-3 text-white/45 truncate max-w-[160px]">{c.campaign || '—'}</td>
+                      <td className="px-3 py-3 text-white/45 max-w-[200px]">
+                        {editingId === c.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              autoFocus
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveEdit(c);
+                                if (e.key === 'Escape') setEditingId(null);
+                              }}
+                              placeholder="שם הקמפיין"
+                              className="w-full bg-white/5 border border-edge-hover rounded-lg px-2 py-1 text-xs text-white/80 outline-none focus:border-pink-500/50"
+                            />
+                            <button onClick={() => saveEdit(c)} disabled={savingEdit} title="שמור"
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50 shrink-0">
+                              {savingEdit ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                            </button>
+                            <button onClick={() => setEditingId(null)} title="בטל"
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-white/40 hover:bg-white/10 shrink-0">
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => startEdit(c)} title="לחץ לעריכת שם הקמפיין"
+                            className="group flex items-center gap-1.5 text-right hover:text-white/70 transition-colors max-w-full">
+                            <span className="truncate">{c.campaign || '—'}</span>
+                            <Pencil size={10} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                          </button>
+                        )}
+                      </td>
                       <td className="px-3 py-3 text-2xs text-white/45">{fmt(c.starts_at)} ← {fmt(c.ends_at)}</td>
                       <td className="px-3 py-3">
                         <span className={`inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full border ${st.cls}`}>

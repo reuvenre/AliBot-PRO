@@ -379,6 +379,9 @@ export const couponsApi = {
     http.get<{ coupon: Coupon | null }>('/coupons/best', { params: { price_usd: priceUsd } }).then(extract),
   setActive: (id: string, isActive: boolean) =>
     http.patch<Coupon>(`/coupons/${id}`, { is_active: isActive }).then(extract),
+  /** Edit a SAVED coupon's label / validity — the import form could only set them once. */
+  update: (id: string, data: { campaign?: string | null; starts_at?: string | null; ends_at?: string | null }) =>
+    http.patch<Coupon>(`/coupons/${id}`, data).then(extract),
   remove: (id: string) => http.delete(`/coupons/${id}`).then(extract),
 };
 
