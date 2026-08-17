@@ -554,8 +554,12 @@ function PostRow({ post, channels, onRetry, onRetryFailed, onDelete, onEdit, onR
       </td>
       <td className="py-3 px-4 text-xs text-white/30">
         {post.status === 'scheduled' && post.scheduled_at ? (
+          // The zone is spelled out because a campaign's send WINDOW can live in another
+          // one — a US-audience Pinterest campaign runs 16:00-23:00 New York, and its posts
+          // rendered in the viewer's own clock read as "scheduled outside the window" when
+          // they were exactly at its start (23:01 Israel = 16:01 New York).
           <span className="text-purple-400">
-            🕐 {new Date(post.scheduled_at).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            🕐 {new Date(post.scheduled_at).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
           </span>
         ) : post.sent_at ? (
           new Date(post.sent_at).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
