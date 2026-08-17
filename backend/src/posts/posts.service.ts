@@ -17,6 +17,8 @@ import { tagShortLinks } from '../links/click-source';
 import { stripInlineLink } from './strip-inline-link';
 import { toWhatsAppText } from './whatsapp-format';
 import { AUTO_RETRY_MARK, NET_SAFE_TAG, isRetryableNetworkPartial } from './network-partial';
+import { soloCampaignSlot } from './solo-campaign-slot';
+import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
 import { occupiesCurrentInterval } from './group-pacing';
@@ -1780,6 +1782,36 @@ export class PostsService {
     return times;
   }
 
+  /** The furthest-out post this campaign still has waiting, in ms — the thing a self-paced
+   *  campaign spaces its next post off. Null when it has nothing queued. */
+  private async furthestCampaignBooking(campaignId: string): Promise<number | null> {
+    const row = await this.repo.query(
+      `SELECT MAX(COALESCE(scheduled_at, pending_at)) AS max FROM posts
+       WHERE campaign_id = $1 AND status IN ('scheduled', 'pending', 'queued')`,
+      [campaignId],
+    ).catch(() => null);
+    const max = row?.[0]?.max;
+    return max ? new Date(max).getTime() : null;
+  }
+
+  /** Walk a moment forward, hour by hour (DST-safe), until it lands inside the send window. */
+  private alignToWindow(
+    ms: number,
+    creds: DecryptedCredentials | null,
+    window?: { startHour?: number | null; endHour?: number | null; tz?: string | null },
+  ): Date {
+    const tz = window?.tz || process.env.SCHEDULER_TZ || 'Asia/Jerusalem';
+    const startHour = window?.startHour ?? creds?.schedule_start_hour ?? 9;
+    const endHour = window?.endHour ?? creds?.schedule_end_hour ?? 22;
+    let at = new Date(ms);
+    // An inverted window (e.g. 22→6) is already "always open" for this purpose.
+    if (startHour >= endHour) return at;
+    for (let i = 0; i < 24 && !this.isWithinWindow(at, tz, startHour, endHour); i++) {
+      at = new Date(at.getTime() + 60 * 60_000);
+    }
+    return at;
+  }
+
   /**
    * product_ids already posted (ANY status, ANY campaign) to ANY of these channels since
    * `since`. This is the cross-campaign, per-GROUP dedup: two campaigns that share a target
@@ -2674,6 +2706,21 @@ export class PostsService {
           );
           if (skip && opts?.fromScheduler) { skipped++; continue; }
           scheduledAt = slot;
+        } else {
+          // No group to pace against (Pinterest-only / Instagram-only). Pace the campaign
+          // against ITSELF — see solo-campaign-slot.ts: every run firing while the window
+          // is closed resolves to the same opening minute, and this campaign used to book
+          // all of them onto it.
+          const { slotMs, skip } = soloCampaignSlot({
+            baseMs: times[i].getTime(),
+            furthestBookedMs: await this.furthestCampaignBooking(campaign.id),
+            gapMs: (cronTypicalIntervalMin(campaign.schedule_cron || '') ?? 15) * 60_000,
+            cycleEndMs: cycleEnd ? cycleEnd.getTime() : null,
+            fromScheduler: !!opts?.fromScheduler,
+            alignToWindow: (ms) => this.alignToWindow(ms, creds, window || undefined).getTime(),
+          });
+          if (skip) { skipped++; continue; }
+          scheduledAt = new Date(slotMs);
         }
         // Always resolve a SHORT affiliate link via link.generate (~42 chars, per-product,
         // tracked). The promotion_link that product.query returns is a broken 1065-char
