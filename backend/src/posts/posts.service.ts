@@ -9,7 +9,7 @@ import FormData = require('form-data');
 import { Post } from './post.entity';
 import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
-import { COPY_JUDGE_SYSTEM, COPY_JUDGE_PINTEREST_NOTE, parseJudgeVerdict } from './copy-judge';
+import { COPY_JUDGE_SYSTEM, COPY_JUDGE_PINTEREST_NOTE, parseJudgeAnswer } from './copy-judge';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
@@ -5346,10 +5346,12 @@ export class PostsService {
         // The defects this judge hunts (meta-commentary, checklists, numbering) show up
         // in the opening or the flow of the text — 3000 chars covers every real post.
         prompt: candidate.slice(0, 3000),
-        maxTokens: 10,
+        // Room for "BAD <reason>" — the verdict alone left nothing to act on.
+        maxTokens: 12,
         temperature: 0,
       });
-      return parseJudgeVerdict(res?.text) === 'bad' ? 'ai judge: not clean marketing copy' : null;
+      const { verdict, reason } = parseJudgeAnswer(res?.text);
+      return verdict === 'bad' ? `שופט ה-AI פסל: ${reason}` : null;
     } catch {
       return null;
     }
@@ -5501,7 +5503,10 @@ export class PostsService {
         images: visionImages,
         // Custom templates often produce longer, structured posts → give more room
         // and lower the temperature so the model adheres to the exact structure.
-        maxTokens: hasTemplate ? 900 : 400,
+        // A pin carries a title line, 2-3 SEO sentences AND a hashtag line — 400 tokens
+        // cut some of them mid-sentence, which the judge then (correctly) rejected as
+        // truncated, and the campaign produced nothing at all.
+        maxTokens: hasTemplate ? 900 : (opts?.style === 'pinterest' ? 700 : 400),
         // The retry runs cold: rambling is a sampling failure, so a low temperature is the
         // single most effective change to get structured copy on the second try.
         temperature: attempt === 0 ? (hasTemplate ? 0.7 : 0.85) : 0.2,

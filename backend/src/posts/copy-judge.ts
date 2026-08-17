@@ -13,10 +13,13 @@
  * reason a post didn't go out.
  */
 
-/** The judge's brief. Answer shape is pinned to one word so parsing is trivial. */
+/** The judge's brief. The answer shape is pinned so parsing stays trivial — and it now
+ *  carries WHICH criterion fired, because a bare verdict left nothing to act on. */
 export const COPY_JUDGE_SYSTEM =
   'You are a publication gate for social-commerce marketing posts (Hebrew or English). '
-  + 'You receive one candidate post. Answer with EXACTLY one word: OK or BAD.\n'
+  + 'You receive one candidate post. Answer "OK", or "BAD <reason>" where <reason> is ONE '
+  + 'word from: leaked, selfreview, numbering, placeholder, truncated, meta, other. '
+  + 'Nothing else.\n'
   + 'BAD if the text contains ANYTHING that is not the marketing post itself: '
   + 'leaked instructions or template guidance, the writer talking to itself or reviewing '
   + 'its own work (reasoning, checklists, "Checked"), counters or index numbers scattered '
@@ -40,6 +43,31 @@ export const COPY_JUDGE_PINTEREST_NOTE =
   + 'or truncation, exactly as above.';
 
 export type JudgeVerdict = 'ok' | 'bad' | 'unknown';
+
+/** The reason words the judge is allowed to give, mapped to something a human reads. */
+const REASONS: Record<string, string> = {
+  leaked: 'הודלפו הוראות מהפרומפט',
+  selfreview: 'המודל סוקר את עצמו בתוך הטקסט',
+  numbering: 'מספור/מונים שזלגו לתוך הטקסט',
+  placeholder: 'נשארו מצייני מקום ([מחיר] וכד׳)',
+  truncated: 'הטקסט נקטע באמצע',
+  meta: 'הערות מטא מעורבבות בקופי',
+  other: 'פסילה כללית של השופט',
+};
+
+/**
+ * The judge's answer, split into verdict + a human-readable reason.
+ *
+ * "ai judge: not clean marketing copy" told nobody anything — when a campaign produced 0
+ * posts for hours, the error named the gate but not the defect, so there was nothing to
+ * act on. The judge now names which of its own criteria fired.
+ */
+export function parseJudgeAnswer(raw: string | null | undefined): { verdict: JudgeVerdict; reason: string } {
+  const verdict = parseJudgeVerdict(raw);
+  if (verdict !== 'bad') return { verdict, reason: '' };
+  const word = String(raw || '').trim().toUpperCase().replace(/^BAD[\s:._-]*/, '').split(/[\s.,]/)[0].toLowerCase();
+  return { verdict, reason: REASONS[word] || REASONS.other };
+}
 
 /**
  * Parse the judge's raw answer. Anything that doesn't clearly start with BAD/OK is
