@@ -18,6 +18,7 @@ import { stripInlineLink } from './strip-inline-link';
 import { toWhatsAppText } from './whatsapp-format';
 import { AUTO_RETRY_MARK, NET_SAFE_TAG, isRetryableNetworkPartial } from './network-partial';
 import { soloCampaignSlot } from './solo-campaign-slot';
+import { publishTimeoutVerdict } from './ig-container-status';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
@@ -4724,6 +4725,23 @@ export class PostsService {
           await new Promise((r) => setTimeout(r, 2500));
           continue;
         }
+        // A TIMEOUT here is the one ambiguous failure in the send path: the publish may
+        // have landed and only the reply was lost. Rather than guess — and leave a
+        // "published partially" alert nothing can clear — ASK the container. Its
+        // status_code turns PUBLISHED the moment the media goes live, so the answer is
+        // authoritative in both directions (see ig-container-status.ts).
+        const verdict = publishTimeoutVerdict(await this.igContainerStatus(creationId, token));
+        if (verdict === 'published') {
+          this.logger.log(`instagram publish timed out but the container reports PUBLISHED (${creationId}) — the post is live`);
+          post.instagram_post_id = await this.igLatestMediaId(igId, token) || '';
+          return;
+        }
+        if (verdict === 'retry') {
+          this.logger.warn('instagram publish timed out; container not published — publishing again');
+          lastErr = 'אינסטגרם לא השיבה בזמן בעת הפרסום';
+          await new Promise((r) => setTimeout(r, 2500));
+          continue;
+        }
         throw err;
       }
       if (!publish.data?.error && publish.data?.id) {
@@ -4735,6 +4753,35 @@ export class PostsService {
       await new Promise((r) => setTimeout(r, 4000));
     }
     throw new Error(lastErr);
+  }
+
+  /** A media container's status_code, or undefined when the check itself fails — the
+   *  caller treats "no answer" as unknown rather than as an outcome. */
+  private async igContainerStatus(creationId: string, token: string): Promise<string | undefined> {
+    try {
+      const res = await axios.get(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${creationId}`,
+        { params: { fields: 'status_code', access_token: token }, timeout: 8000, validateStatus: () => true },
+      );
+      return res.data?.status_code;
+    } catch (err: any) {
+      this.logger.warn(`instagram container status check failed: ${err?.message}`);
+      return undefined;
+    }
+  }
+
+  /** The account's newest media id — used only to label a post whose publish reply was
+   *  lost. Best-effort: an empty answer costs a reference, never the post. */
+  private async igLatestMediaId(igId: string, token: string): Promise<string> {
+    try {
+      const res = await axios.get(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${igId}/media`,
+        { params: { fields: 'id', limit: 1, access_token: token }, timeout: 8000, validateStatus: () => true },
+      );
+      return String(res.data?.data?.[0]?.id || '');
+    } catch {
+      return '';
+    }
   }
 
   /**

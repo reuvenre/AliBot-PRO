@@ -70,7 +70,17 @@ export function facebookError(err: any, platform: MetaPlatform = 'facebook'): Fa
   // when a post attaches a link: Graph fetches that URL to build the preview before it
   // answers, so the round trip can outlast a short client timeout.
   if (!code && /timeout|ETIMEDOUT|ECONNABORTED/i.test(String(raw))) {
-    return { code: null, message: 'פייסבוק לא השיבה בזמן. הפרסום יינסה שוב בריצה הבאה.', needsUserAction: false };
+    // Two corrections live in this sentence. It named FACEBOOK on an Instagram failure,
+    // and it promised an automatic retry that does not exist: a partially-published post
+    // is `sent`, so no scheduler picks it up, and the network auto-retry deliberately
+    // excludes timeouts (the request may have landed — see network-partial.ts). Saying
+    // "it will be retried" sent the owner to wait for something that never came.
+    const name = platform === 'instagram' ? 'אינסטגרם' : 'פייסבוק';
+    return {
+      code: null,
+      message: `${name} לא השיבה בזמן. ייתכן שהפרסום כן בוצע — בדוק בחשבון, ואם הפוסט אינו שם לחץ "נסה שוב".`,
+      needsUserAction: false,
+    };
   }
 
   // No Graph response and no usable message — the wire failed before Meta ever answered
