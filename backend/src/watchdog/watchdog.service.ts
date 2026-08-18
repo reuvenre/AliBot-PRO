@@ -20,6 +20,7 @@ import {
 import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post-capacity';
 import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
 import { pendingVerdict } from './pending-posts';
+import { driftVerdict } from './drift-verdict';
 import { isTierBlockError } from '../pinterest/pinterest-scopes';
 import { feasibleCadenceMin } from './cadence-feasible';
 
@@ -661,7 +662,22 @@ export class WatchdogService implements OnModuleInit {
       if (gaps.length < 2) continue; // not enough signal
       gaps.sort((a, b) => a - b);
       const median = gaps[Math.floor(gaps.length / 2)];
-      if (median > expected * 1.7) {
+      // Runs that produced NOTHING in the same window: each missing post merges two
+      // intervals into one, so the gap widens without anything being wrong with pacing.
+      // See drift-verdict.ts — that fault is generation, and it alerts on its own.
+      const failedRuns = await this.posts.createQueryBuilder('p')
+        .where('p.campaign_id = :cid', { cid: c.id })
+        .andWhere("p.status = 'failed'")
+        .andWhere('p.created_at > :since', { since: new Date(now - 12 * 3600_000) })
+        .getCount()
+        .catch(() => 0);
+      const verdict = driftVerdict({ medianMin: median, expectedMin: expected, failedRuns });
+      if (verdict === 'explained-by-failures') {
+        this.logger.log(`drift check: "${c.name}" gap ~${Math.round(median)}m vs ~${expected}m `
+          + `explained by ${failedRuns} failed run(s) — not reported as drift`);
+        continue;
+      }
+      if (verdict === 'drift') {
         // Say what the expectation was BUILT from. A bare "expected 60, actual 122" sent the
         // investigation hunting a scheduler bug twice; the arithmetic makes a legitimate
         // slowdown (a shared group, a queue drip) self-evident from the alert itself.
