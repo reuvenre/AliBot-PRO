@@ -34,6 +34,9 @@ export default function CouponsPage() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [campaign, setCampaign] = useState('');
+  // The owner's affiliate link to AliExpress' coupons/deals page — rides every
+  // launch-sequence post so a reader lands where ALL the offers live.
+  const [dealsUrl, setDealsUrl] = useState('');
   // A saved coupon's campaign label had no editor at all: the import form sets it once, so
   // pasting a batch and naming the sale afterwards left every row reading "—" with nothing
   // to do but delete and re-import.
@@ -95,6 +98,7 @@ export default function CouponsPage() {
         campaign: campaign.trim() || undefined,
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
+        deals_url: dealsUrl.trim() || undefined,
       });
       const seq = r.sequence?.created
         ? ` · 🚀 נבנה רצף השקה: ${r.sequence.created} פוסטים אוטומטיים ל-${r.sequence.groups} קבוצות (${r.sequence.stages.join(' ← ')}) — ניתן לעריכה במסך "פוסטים מיוחדים"`
@@ -240,11 +244,18 @@ export default function CouponsPage() {
           </button>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
           <div>
             <label className="block text-xs text-white/50 mb-1.5">שם קמפיין (אופציונלי)</label>
             <input value={campaign} onChange={(e) => setCampaign(e.target.value)} placeholder="IL [Vacation Sale]"
               className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white/80 outline-none focus:border-pink-500/50" />
+          </div>
+          <div>
+            <label className="block text-xs text-white/50 mb-1.5">קישור לעמוד המבצעים (אופציונלי)</label>
+            <input value={dealsUrl} onChange={(e) => setDealsUrl(e.target.value)} dir="ltr"
+              placeholder="https://s.click.aliexpress.com/e/..."
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2 text-sm text-white/80 outline-none focus:border-pink-500/50" />
+            <p className="text-2xs text-white/30 mt-1">קישור האפילייט שלך לעמוד הקופונים — ייכלל בפוסטים של רצף ההשקה.</p>
           </div>
           <div>
             <label className="block text-xs text-white/50 mb-1.5">בתוקף מ־</label>

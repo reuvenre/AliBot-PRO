@@ -95,3 +95,19 @@ describe('sanitizeHook', () => {
     expect(sanitizeHook('שורה ראשונה\nהסבר מיותר')).toBe('שורה ראשונה');
   });
 });
+
+describe('deals-page link', () => {
+  const URL = 'https://s.click.aliexpress.com/e/_c35ibUZZ';
+
+  it('rides EVERY stage — the reader lands where all the offers live', () => {
+    for (const post of build({ dealsUrl: URL })) {
+      expect(post.body).toContain(URL);
+    }
+  });
+
+  it('leaves no orphan label when no link was configured', () => {
+    for (const post of build()) {
+      expect(post.body).not.toContain('בעמוד אחד');
+    }
+  });
+});

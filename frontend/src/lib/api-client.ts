@@ -378,12 +378,12 @@ export const couponsApi = {
   // 45s, not the 15s default: the save also builds the launch sequence server-side
   // (anchor lookup + a time-boxed AI hook), and a client that gives up early paints a red
   // "failed" over an import that actually succeeded.
-  import: (data: { text: string; campaign?: string; starts_at?: string; ends_at?: string }) =>
+  import: (data: { text: string; campaign?: string; starts_at?: string; ends_at?: string; deals_url?: string }) =>
     http.post<{ imported: number; coupons: Coupon[]; sequence?: CouponSequenceResult }>('/coupons/import', data, { timeout: 45_000 }).then(extract),
   /** Manual add — the fallback when AliExpress wording defeats the parser. */
   add: (data: {
     code: string; discount_usd: number; min_spend_usd: number;
-    campaign?: string; starts_at?: string; ends_at?: string;
+    campaign?: string; starts_at?: string; ends_at?: string; deals_url?: string;
   }) => http.post<Coupon & { sequence?: CouponSequenceResult }>('/coupons', data, { timeout: 45_000 }).then(extract),
   /** Which coupon a product at this USD price would get. */
   best: (priceUsd: number) =>

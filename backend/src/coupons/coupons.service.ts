@@ -32,6 +32,17 @@ export class CouponsService {
     private readonly links: LinksService,
   ) {}
 
+  /** A publishable https URL or null — a typo'd link must not reach a live group. */
+  private cleanDealsUrl(raw?: string | null): string | null {
+    const url = String(raw ?? '').trim();
+    if (!url) return null;
+    try {
+      return new URL(url).protocol === 'https:' ? url : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * (Re)build the coupon LAUNCH SEQUENCE for the owner's current batch — see
    * coupon-sequence.ts for what each stage is and why the numbers are code-built.
@@ -78,6 +89,7 @@ export class CouponsService {
         tiers, startsAt, endsAt, now: new Date(),
         hook: await this.sequenceHook(creds, tiers.length),
         anchor: await this.sequenceAnchor(userId, tiers),
+        dealsUrl: batch.map((c) => c.deals_url).find(Boolean) || null,
       });
       if (!sequence.length) return none('כל שלבי הרצף כבר מאחורינו');
 
@@ -268,7 +280,7 @@ export class CouponsService {
   /** Manually add/update one coupon — the guaranteed fallback when parsing can't cope. */
   async upsertOne(userId: string, data: {
     code: string; discount_usd: number; min_spend_usd: number;
-    campaign?: string; starts_at?: string; ends_at?: string;
+    campaign?: string; starts_at?: string; ends_at?: string; deals_url?: string;
   }): Promise<Coupon> {
     const code = (data.code || '').trim().toUpperCase();
     if (!code) throw new BadRequestException('נא להזין קוד קופון');
@@ -285,6 +297,7 @@ export class CouponsService {
     row.campaign = data.campaign?.trim() || row.campaign || null;
     row.starts_at = data.starts_at ? new Date(data.starts_at) : null;
     row.ends_at = data.ends_at ? new Date(data.ends_at) : null;
+    row.deals_url = this.cleanDealsUrl(data.deals_url) ?? row.deals_url ?? null;
     row.is_active = true;
     return this.repo.save(row);
   }
@@ -357,7 +370,7 @@ export class CouponsService {
    * (re-pasting an updated campaign refreshes it instead of duplicating).
    */
   async importText(userId: string, text: string, opts: {
-    campaign?: string; starts_at?: string; ends_at?: string;
+    campaign?: string; starts_at?: string; ends_at?: string; deals_url?: string;
   }): Promise<{ imported: number; coupons: Coupon[] }> {
     const parsed = this.parse(text);
     if (!parsed.length) {
@@ -378,6 +391,7 @@ export class CouponsService {
       row.campaign = opts.campaign?.trim() || row.campaign || null;
       row.starts_at = starts_at;
       row.ends_at = ends_at;
+      row.deals_url = this.cleanDealsUrl(opts.deals_url) ?? row.deals_url ?? null;
       row.is_active = true;
       saved.push(await this.repo.save(row));
     }

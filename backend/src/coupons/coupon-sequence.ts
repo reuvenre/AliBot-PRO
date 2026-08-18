@@ -109,12 +109,17 @@ export function buildCouponSequence(input: {
   now: Date;
   hook?: string | null;
   anchor?: SequenceAnchor | null;
+  /** The owner's affiliate link to AliExpress' own coupons/deals page. */
+  dealsUrl?: string | null;
 }): SequencePost[] {
   const { tiers, startsAt, endsAt, now } = input;
   if (!tiers.length) return [];
   const ladder = ladderLines(tiers);
   const hook = sanitizeHook(input.hook);
   const validity = endsAt ? `⏳ בתוקף עד ${fmtDate(endsAt)}` : '';
+  // One tap to where ALL the offers live — the reader shouldn't have to hunt for the
+  // deals page the codes came from.
+  const dealsLine = input.dealsUrl ? `🎁 כל הקופונים והמבצעים בעמוד אחד:\n${input.dealsUrl}` : '';
   const out: SequencePost[] = [];
   const push = (stage: SequenceStage, sendAt: Date, body: string) => {
     // Never schedule into the past, and never after the codes have already died.
@@ -130,6 +135,7 @@ export function buildCouponSequence(input: {
     ladder,
     '',
     '💡 טיפ: תתחילו למלא את העגלה כבר הערב — מחר פשוט מדביקים את הקוד בקופה, וההנחה יורדת מיד.',
+    dealsLine,
     validity,
   ].filter(Boolean).join('\n'));
 
@@ -142,6 +148,7 @@ export function buildCouponSequence(input: {
     ladder,
     '',
     '📋 מעתיקים את הקוד, מדביקים בקופה — וההנחה יורדת מיד. הקודים מצטברים עם מבצעי האתר.',
+    dealsLine,
   ].filter(Boolean).join('\n'));
 
   // Mid-window only when there is a real middle: a short window jumps straight from
@@ -151,20 +158,23 @@ export function buildCouponSequence(input: {
     const midAt = atLocalTime(startsAt, 12, 0, TZ, midDays);
     const anchor = input.anchor;
     push('mid', midAt, (anchor ? [
-      '🛒 ככה זה עובד בפועל:',
+      '💸 אל תשלמו מחיר מלא — ככה זה עובד בפועל:',
       `"${anchor.title}" עולה $${anchor.priceUsd} — מעל $${anchor.tierMin} הקוד <code>${anchor.code}</code> מוריד $${anchor.saveUsd} במקום.`,
       anchor.link,
       '',
       'כל הסולם:',
       ladder,
       '',
+      dealsLine,
       validity,
     ] : [
-      '🎟️ תזכורת: הקופונים עדיין פעילים —',
+      // "תזכורת: הקופונים פעילים" is an announcement; loss-framing is a reason to act NOW.
+      '💸 יש לכם כסף שמחכה בקופה — אל תשלמו מחיר מלא:',
       '',
       ladder,
       '',
       '💡 כמה שהעגלה גדולה יותר, הקוד הבא בסולם משתלם יותר.',
+      dealsLine,
       validity,
     ]).filter(Boolean).join('\n'));
   }
@@ -176,7 +186,8 @@ export function buildCouponSequence(input: {
       ladder,
       '',
       'מי שדחה את הקנייה — זה הרגע. אחרי זה הקודים פשוט לא יעבדו.',
-    ].join('\n'));
+      dealsLine,
+    ].filter(Boolean).join('\n'));
   }
 
   return out.sort((a, b) => a.sendAt.getTime() - b.sendAt.getTime());

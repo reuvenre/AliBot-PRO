@@ -42,6 +42,15 @@ export class Coupon {
   @Column({ type: 'timestamp', nullable: true })
   starts_at: Date | null;
 
+  /**
+   * The owner's affiliate link to AliExpress' own coupons/deals page — included in the
+   * launch-sequence posts so a reader lands where ALL the offers live, not just one code.
+   * Batch-level in practice (every row of an import carries the same value).
+   */
+  @Column({ type: 'text', nullable: true })
+  deals_url: string | null;
+
+
   @Column({ type: 'timestamp', nullable: true })
   ends_at: Date | null;
 

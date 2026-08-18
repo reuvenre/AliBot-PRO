@@ -49,8 +49,9 @@ export class CouponsController {
     @Body('campaign') campaign?: string,
     @Body('starts_at') startsAt?: string,
     @Body('ends_at') endsAt?: string,
+    @Body('deals_url') dealsUrl?: string,
   ) {
-    const result = await this.svc.importText(this.uid(req), text || '', { campaign, starts_at: startsAt, ends_at: endsAt });
+    const result = await this.svc.importText(this.uid(req), text || '', { campaign, starts_at: startsAt, ends_at: endsAt, deals_url: dealsUrl });
     // Saving the batch also (re)builds its launch sequence — teaser, launch, mid-window
     // anchor, last-hours urgency (coupon-sequence.ts). Best-effort by contract: the
     // import itself already succeeded.
@@ -64,7 +65,7 @@ export class CouponsController {
   @HttpCode(201)
   async addOne(@Req() req: Request, @Body() dto: {
     code: string; discount_usd: number; min_spend_usd: number;
-    campaign?: string; starts_at?: string; ends_at?: string;
+    campaign?: string; starts_at?: string; ends_at?: string; deals_url?: string;
   }) {
     const coupon = await this.svc.upsertOne(this.uid(req), dto);
     const creds = await this.credentials.getRaw(this.uid(req)).catch(() => null);
