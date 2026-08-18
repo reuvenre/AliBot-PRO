@@ -110,9 +110,28 @@ export class CouponsService {
     }
   }
 
-  /** One AI hook line for the teaser — color only, sanitizeHook guarantees no digits. */
+  /**
+   * One AI hook line for the teaser — color only, sanitizeHook guarantees no digits.
+   *
+   * TIME-BOXED to 4s: this runs INSIDE the save request, and the browser gives up at 15s —
+   * a slow model turned "save coupons" into a spinner that ended in a red "הייבוא נכשל"
+   * while the server actually finished the work. A late answer is simply dropped; the
+   * stock hook is a fine teaser opener.
+   */
   private async sequenceHook(creds: DecryptedCredentials | null, tierCount: number): Promise<string | null> {
     if (!creds) return null;
+    try {
+      const res = await Promise.race([
+        this.hookCall(creds, tierCount),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
+      return res;
+    } catch {
+      return null;
+    }
+  }
+
+  private async hookCall(creds: DecryptedCredentials, tierCount: number): Promise<string | null> {
     try {
       const res = await this.ai.generate(creds, {
         system: 'כתוב שורת פתיחה אחת בעברית לפוסט טלגרם שמבשר על קופוני הנחה חדשים באלי אקספרס. '
