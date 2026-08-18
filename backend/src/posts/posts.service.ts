@@ -9,7 +9,7 @@ import FormData = require('form-data');
 import { Post } from './post.entity';
 import { PostedProduct } from './posted-product.entity';
 import { copyDefect } from './copy-guard';
-import { COPY_JUDGE_SYSTEM, COPY_JUDGE_PINTEREST_NOTE, parseJudgeAnswer } from './copy-judge';
+import { COPY_JUDGE_SYSTEM, COPY_JUDGE_PINTEREST_NOTE, parseJudgeAnswer, trimForJudge } from './copy-judge';
 import { mentionsPrice, priceProofBlock } from './price-block';
 import { KeywordPerformance, weightedRotation } from './keyword-rotation';
 import { isTelegramConnectionError, telegramErrorText } from './telegram-retry';
@@ -5390,9 +5390,9 @@ export class PostsService {
         // Pinterest pins have their own valid shape — without the style note the judge
         // rejected every pin draft as "not a marketing post" (issue #51).
         system: style === 'pinterest' ? COPY_JUDGE_SYSTEM + COPY_JUDGE_PINTEREST_NOTE : COPY_JUDGE_SYSTEM,
-        // The defects this judge hunts (meta-commentary, checklists, numbering) show up
-        // in the opening or the flow of the text — 3000 chars covers every real post.
-        prompt: candidate.slice(0, 3000),
+        // NEVER a raw slice: cutting mid-word made the judge see a text that really does
+        // stop mid-sentence and answer BAD — our own trim, read back as the draft's defect.
+        prompt: trimForJudge(candidate),
         // Room for "BAD <reason>" — the verdict alone left nothing to act on.
         maxTokens: 12,
         temperature: 0,

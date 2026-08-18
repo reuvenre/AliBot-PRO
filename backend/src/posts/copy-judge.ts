@@ -26,7 +26,9 @@ export const COPY_JUDGE_SYSTEM =
   + 'between words, unfilled placeholders like [price] or [שם], text cut off mid-sentence, '
   + 'or meta-commentary mixed into the copy.\n'
   + 'OK if it reads as one clean, coherent marketing post — emojis, bullet lines, prices, '
-  + 'discount percentages, coupon codes and links are all normal and expected.';
+  + 'discount percentages, coupon codes and links are all normal and expected.\n'
+  + `If the candidate ends with "${'\u2026'}" on its own, it was shortened by the system before you saw `
+  + 'it — that ending is NOT truncation and must not be judged as one.';
 
 /**
  * Style note appended for PINTEREST-style drafts. The pin format is deliberately
@@ -79,4 +81,31 @@ export function parseJudgeVerdict(raw: string | null | undefined): JudgeVerdict 
   if (answer.startsWith('BAD')) return 'bad';
   if (answer.startsWith('OK')) return 'ok';
   return 'unknown';
+}
+
+/** How much of a draft the judge is shown. Real posts sit far below this; the cap only
+ *  exists so a runaway generation cannot bloat a tiny verdict call. */
+export const JUDGE_MAX_CHARS = 6000;
+
+/** The marker the judge is told to ignore — see COPY_JUDGE_SYSTEM. */
+const TRIM_MARK = '\n\u2026';
+
+/**
+ * Cut a draft down to what the judge is shown — WITHOUT inventing a defect.
+ *
+ * The old call sliced at a fixed 3000 chars mid-word. The judge, asked whether the text
+ * runs out mid-sentence, saw a text that literally did and answered BAD — so the longer
+ * a good draft got, the more certainly it was rejected, and the campaign published nothing
+ * (issue #56, once the judge started naming its reason: "הטקסט נקטע באמצע", twice).
+ *
+ * So: cut only when genuinely over the cap, cut at the last line or sentence boundary, and
+ * mark the cut with the character the judge is instructed to ignore.
+ */
+export function trimForJudge(text: string, max = JUDGE_MAX_CHARS): string {
+  const body = String(text || '');
+  if (body.length <= max) return body;
+  const head = body.slice(0, max);
+  const boundary = Math.max(head.lastIndexOf('\n'), head.lastIndexOf('. '), head.lastIndexOf('! '));
+  // A boundary too near the start would throw away most of the draft — take the raw cut.
+  return (boundary > max * 0.5 ? head.slice(0, boundary) : head).trimEnd() + TRIM_MARK;
 }

@@ -1,4 +1,4 @@
-import { parseJudgeVerdict, parseJudgeAnswer } from './copy-judge';
+import { parseJudgeVerdict, parseJudgeAnswer, trimForJudge } from './copy-judge';
 
 describe('parseJudgeVerdict', () => {
   it('reads a clean verdict either way', () => {
@@ -39,5 +39,34 @@ describe('parseJudgeAnswer', () => {
   it('carries no reason when the draft passed', () => {
     expect(parseJudgeAnswer('OK')).toEqual({ verdict: 'ok', reason: '' });
     expect(parseJudgeAnswer('')).toEqual({ verdict: 'unknown', reason: '' });
+  });
+});
+
+describe('trimForJudge', () => {
+  it('hands a normal draft through untouched', () => {
+    const pin = 'Kitchen Sponge Holder\n\nKeeps the sink tidy. Only $5.61.\n\n#kitchen #home';
+    expect(trimForJudge(pin)).toBe(pin);
+  });
+
+  it('cuts at a line boundary, never mid-word', () => {
+    // The bug: a raw slice made the judge see a text that genuinely stops mid-sentence,
+    // and it answered "truncated" — our own trim read back as the draft's defect (#56).
+    const text = `${'a'.repeat(40)}\n${'b'.repeat(40)}\n${'c'.repeat(40)}`;
+    const out = trimForJudge(text, 90);
+    expect(out.endsWith('…')).toBe(true);
+    expect(out.split('\n').filter((l) => l.startsWith('b'))[0]).toHaveLength(40);
+  });
+
+  it('marks the cut with the character the judge is told to ignore', () => {
+    expect(trimForJudge('x'.repeat(200), 100)).toMatch(/…$/);
+  });
+
+  it('keeps most of the draft when no boundary is near the cap', () => {
+    const out = trimForJudge(`start.\n${'x'.repeat(300)}`, 100);
+    expect(out.length).toBeGreaterThan(90);
+  });
+
+  it('survives an empty draft', () => {
+    expect(trimForJudge('')).toBe('');
   });
 });
