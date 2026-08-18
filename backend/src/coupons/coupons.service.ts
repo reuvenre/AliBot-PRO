@@ -3,6 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Coupon } from './coupon.entity';
 import { AiService } from '../ai/ai.service';
+import { CustomPost } from '../custom-posts/custom-post.entity';
+import { Campaign } from '../campaigns/campaign.entity';
+import { Post } from '../posts/post.entity';
+import { LinksService } from '../links/links.service';
+import {
+  CouponTier, SEQUENCE_NAME_PREFIX, SequenceAnchor, buildCouponSequence,
+} from './coupon-sequence';
 import { DecryptedCredentials } from '../credentials/credentials.service';
 
 export interface ParsedCoupon {
@@ -16,7 +23,156 @@ export class CouponsService {
   constructor(
     @InjectRepository(Coupon) private readonly repo: Repository<Coupon>,
     private readonly ai: AiService,
+    // The launch sequence writes custom_posts rows DIRECTLY (their dispatcher picks them
+    // up regardless of author) — importing CustomPostsService would close a module cycle:
+    // Posts → Coupons → CustomPosts → Posts.
+    @InjectRepository(CustomPost) private readonly customPosts: Repository<CustomPost>,
+    @InjectRepository(Campaign) private readonly campaigns: Repository<Campaign>,
+    @InjectRepository(Post) private readonly posts: Repository<Post>,
+    private readonly links: LinksService,
   ) {}
+
+  /**
+   * (Re)build the coupon LAUNCH SEQUENCE for the owner's current batch — see
+   * coupon-sequence.ts for what each stage is and why the numbers are code-built.
+   *
+   * Called after every import/add. Replace-semantics: previous sequence rows that have
+   * not yet been sent are deleted first (only rows carrying OUR name prefix — never the
+   * owner's hand-written custom posts), so editing dates or re-importing reshapes the
+   * sequence instead of doubling it. Best-effort end to end: a failure here must never
+   * fail the import that triggered it.
+   */
+  async syncLaunchSequence(
+    userId: string, creds: DecryptedCredentials | null,
+  ): Promise<{ created: number; groups: number; stages: string[]; reason?: string }> {
+    const none = (reason: string) => ({ created: 0, groups: 0, stages: [] as string[], reason });
+    try {
+      // The batch = active coupons sharing the LATEST start date. Older windows are
+      // yesterday's campaign; mixing them would advertise codes about to die.
+      const all = await this.repo.find({ where: { user_id: userId, is_active: true } });
+      const dated = all.filter((c) => c.starts_at);
+      if (!dated.length) return none('לקופונים אין תאריך התחלה — אין ממה לבנות רצף');
+      const latestStart = Math.max(...dated.map((c) => new Date(c.starts_at!).getTime()));
+      const batch = dated.filter((c) => new Date(c.starts_at!).getTime() === latestStart);
+      const startsAt = new Date(latestStart);
+      const endsAt = batch[0].ends_at ? new Date(batch[0].ends_at) : null;
+      if (endsAt && endsAt.getTime() <= Date.now()) return none('חלון הקופונים כבר הסתיים');
+
+      // Target groups: what the owner's active AliExpress autopilots publish to. FLYLINK
+      // groups are excluded by construction — the codes redeem only at AliExpress checkout.
+      const active = await this.campaigns.find({ where: { user_id: userId, status: 'active', source: 'aliexpress' } });
+      const groups = new Set<string>();
+      for (const c of active) {
+        let platforms: string[] | null = null;
+        try { platforms = c.target_platforms ? JSON.parse(c.target_platforms) : null; } catch { platforms = null; }
+        if (platforms && !platforms.map((x) => String(x).toLowerCase()).includes('telegram')) continue;
+        try { for (const g of JSON.parse(c.target_channels || '[]')) if (g) groups.add(String(g)); } catch { /* ignore */ }
+      }
+      if (!groups.size) return none('אין קבוצות טלגרם שמקבלות מוצרי אלי אקספרס');
+
+      const tiers: CouponTier[] = batch.map((c) => ({
+        code: c.code, discount_usd: c.discount_usd, min_spend_usd: c.min_spend_usd,
+      }));
+
+      const sequence = buildCouponSequence({
+        tiers, startsAt, endsAt, now: new Date(),
+        hook: await this.sequenceHook(creds, tiers.length),
+        anchor: await this.sequenceAnchor(userId, tiers),
+      });
+      if (!sequence.length) return none('כל שלבי הרצף כבר מאחורינו');
+
+      // Replace, never stack: drop OUR unsent rows only.
+      await this.customPosts.createQueryBuilder()
+        .delete()
+        .where('user_id = :userId', { userId })
+        .andWhere('name LIKE :prefix', { prefix: `${SEQUENCE_NAME_PREFIX}%` })
+        .andWhere('(last_sent_at IS NULL AND (next_send_at IS NULL OR next_send_at > now()))')
+        .execute()
+        .catch(() => {});
+
+      const channels = [...groups];
+      for (const post of sequence) {
+        await this.customPosts.save(this.customPosts.create({
+          user_id: userId,
+          name: post.name,
+          body: post.body,
+          image_urls: null,
+          target_channels: channels,
+          send_at: post.sendAt,
+          repeat: 'none',
+          enabled: true,
+          next_send_at: post.sendAt,
+        }));
+      }
+      return { created: sequence.length, groups: groups.size, stages: sequence.map((s) => s.stage) };
+    } catch (err: any) {
+      return none(err?.message || 'בניית הרצף נכשלה');
+    }
+  }
+
+  /** One AI hook line for the teaser — color only, sanitizeHook guarantees no digits. */
+  private async sequenceHook(creds: DecryptedCredentials | null, tierCount: number): Promise<string | null> {
+    if (!creds) return null;
+    try {
+      const res = await this.ai.generate(creds, {
+        system: 'כתוב שורת פתיחה אחת בעברית לפוסט טלגרם שמבשר על קופוני הנחה חדשים באלי אקספרס. '
+          + 'נלהבת אך לא צעקנית, עד 90 תווים, בלי מספרים ובלי אחוזים (הם מוצגים בנפרד), אימוג׳י אחד לכל היותר. '
+          + `יש ${tierCount} קופונים. ענה בשורה בלבד, ללא הסברים.`,
+        prompt: 'שורת הפתיחה:',
+        maxTokens: 60,
+        temperature: 0.9,
+      });
+      return res?.text || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A real, recently-posted product priced just above a tier minimum — the mid-post's
+   * worked example. "This item is $38; over $35 the code takes $5 off" converts where an
+   * abstract ladder doesn't. Best-effort: no candidate simply means the generic mid body.
+   */
+  private async sequenceAnchor(userId: string, tiers: CouponTier[]): Promise<SequenceAnchor | null> {
+    try {
+      const sorted = [...tiers].sort((a, b) => a.min_spend_usd - b.min_spend_usd);
+      const recent = await this.posts.createQueryBuilder('p')
+        .where('p.user_id = :userId', { userId })
+        .andWhere("p.status = 'sent'")
+        .andWhere('p.sale_price_usd > 0')
+        .andWhere('p.affiliate_url IS NOT NULL')
+        // The example must itself be an AliExpress item — a FLYLINK product can't redeem.
+        .andWhere("p.affiliate_url LIKE '%aliexpress%'")
+        .orderBy('p.sent_at', 'DESC')
+        .take(50)
+        .getMany();
+      for (const tier of sorted) {
+        const hit = recent.find((p) =>
+          p.sale_price_usd >= tier.min_spend_usd && p.sale_price_usd <= tier.min_spend_usd * 1.3);
+        if (hit) {
+          let link = hit.affiliate_url;
+          try {
+            const code = await this.links.ensureCode(hit);
+            if (code) {
+              void this.links.recordTarget(code, hit.affiliate_url, userId);
+              link = this.links.shortUrl(code);
+            }
+          } catch { /* raw affiliate link is an acceptable fallback */ }
+          return {
+            title: String(hit.product_title || '').slice(0, 60),
+            priceUsd: +hit.sale_price_usd.toFixed(2),
+            tierMin: tier.min_spend_usd,
+            code: tier.code,
+            saveUsd: tier.discount_usd,
+            link,
+          };
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Words that look like a coupon code but aren't — AliExpress wording changes between

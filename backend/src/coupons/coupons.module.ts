@@ -5,9 +5,15 @@ import { CouponsService } from './coupons.service';
 import { CouponsController } from './coupons.controller';
 import { AiModule } from '../ai/ai.module';
 import { CredentialsModule } from '../credentials/credentials.module';
+import { LinksModule } from '../links/links.module';
+import { CustomPost } from '../custom-posts/custom-post.entity';
+import { Campaign } from '../campaigns/campaign.entity';
+import { Post } from '../posts/post.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Coupon]), AiModule, CredentialsModule],
+  // CustomPost/Campaign/Post are repo-only registrations (no service imports) — pulling
+  // CustomPostsModule in here would close the Posts → Coupons → CustomPosts → Posts cycle.
+  imports: [TypeOrmModule.forFeature([Coupon, CustomPost, Campaign, Post]), AiModule, CredentialsModule, LinksModule],
   providers: [CouponsService],
   controllers: [CouponsController],
   exports: [CouponsService],

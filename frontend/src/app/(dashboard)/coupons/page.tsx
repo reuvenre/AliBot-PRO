@@ -96,7 +96,10 @@ export default function CouponsPage() {
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
       });
-      setDone(`✓ נשמרו ${r.imported} קופונים`);
+      const seq = r.sequence?.created
+        ? ` · 🚀 נבנה רצף השקה: ${r.sequence.created} פוסטים אוטומטיים ל-${r.sequence.groups} קבוצות (${r.sequence.stages.join(' ← ')}) — ניתן לעריכה במסך "פוסטים מיוחדים"`
+        : r.sequence?.reason ? ` · רצף השקה לא נבנה: ${r.sequence.reason}` : '';
+      setDone(`✓ נשמרו ${r.imported} קופונים${seq}`);
       setText(''); setParsed(null);
       load();
     } catch (e: any) {

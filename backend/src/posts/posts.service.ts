@@ -19,6 +19,7 @@ import { toWhatsAppText } from './whatsapp-format';
 import { AUTO_RETRY_MARK, NET_SAFE_TAG, isRetryableNetworkPartial } from './network-partial';
 import { soloCampaignSlot } from './solo-campaign-slot';
 import { publishTimeoutVerdict } from './ig-container-status';
+import { bonusCopyHint } from './bonus-copy';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
@@ -2331,6 +2332,8 @@ export class PostsService {
       for (const kw of bonus.keywords) if (!kwList.includes(kw)) kwList.push(kw);
       this.logger.log(`campaign ${campaign.id}: ${bonus.keywords.length} bonus keywords in rotation (${bonus.names.join(', ')})`);
     }
+    // Which keywords are bonus-pool ones, for the per-post copy angle below.
+    const bonusKeywordSet = new Set(bonus.keywords.map((k) => k.trim().toLowerCase()));
 
     const perPost = Math.max(1, campaign.posts_per_run);
     const baseCursor = campaign.keyword_cursor ?? 0;
@@ -2732,12 +2735,22 @@ export class PostsService {
         // The copy angle this post is written in. Picked per post, not per run, so the
         // explore share is spread across the campaign instead of landing in one burst.
         const variant = pickVariant(variantStats, Math.random());
+        // A bonus-pool product gets an HONEST angle on top of the copy variant: a real
+        // discount is leaned on hard; without one it is "the week's pick" — never a
+        // whispered "special price", because the bonus commission is the owner's, not
+        // the shopper's (see bonus-copy.ts).
+        const hints = [variantHint(variant, campaign.language)];
+        if (bonusKeywordSet.has(slotKeyword.trim().toLowerCase())) {
+          const pct = parts.origUsd > parts.saleUsd && parts.origUsd > 0
+            ? Math.round((1 - parts.saleUsd / parts.origUsd) * 100) : 0;
+          hints.push(bonusCopyHint(pct, campaign.language));
+        }
         const text = await this.generateText(
           product, campaign.language, rate, creds, template || undefined, parts.localOverride,
           undefined, undefined, false,
           {
             currencyPair, style: pinterestOnly ? 'pinterest' : undefined, seasonHint,
-            copyHint: variantHint(variant, campaign.language),
+            copyHint: hints.filter(Boolean).join('\n'),
           },
         );
 

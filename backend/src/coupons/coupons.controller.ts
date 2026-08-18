@@ -43,24 +43,33 @@ export class CouponsController {
   /** Import a pasted coupon block. Re-importing the same code refreshes it. */
   @Post('import')
   @HttpCode(201)
-  import(
+  async import(
     @Req() req: Request,
     @Body('text') text: string,
     @Body('campaign') campaign?: string,
     @Body('starts_at') startsAt?: string,
     @Body('ends_at') endsAt?: string,
   ) {
-    return this.svc.importText(this.uid(req), text || '', { campaign, starts_at: startsAt, ends_at: endsAt });
+    const result = await this.svc.importText(this.uid(req), text || '', { campaign, starts_at: startsAt, ends_at: endsAt });
+    // Saving the batch also (re)builds its launch sequence — teaser, launch, mid-window
+    // anchor, last-hours urgency (coupon-sequence.ts). Best-effort by contract: the
+    // import itself already succeeded.
+    const creds = await this.credentials.getRaw(this.uid(req)).catch(() => null);
+    const sequence = await this.svc.syncLaunchSequence(this.uid(req), creds);
+    return { ...result, sequence };
   }
 
   /** Manually add/update one coupon — the fallback when AliExpress changes its wording. */
   @Post()
   @HttpCode(201)
-  addOne(@Req() req: Request, @Body() dto: {
+  async addOne(@Req() req: Request, @Body() dto: {
     code: string; discount_usd: number; min_spend_usd: number;
     campaign?: string; starts_at?: string; ends_at?: string;
   }) {
-    return this.svc.upsertOne(this.uid(req), dto);
+    const coupon = await this.svc.upsertOne(this.uid(req), dto);
+    const creds = await this.credentials.getRaw(this.uid(req)).catch(() => null);
+    const sequence = await this.svc.syncLaunchSequence(this.uid(req), creds);
+    return { ...coupon, sequence };
   }
 
   /** Which coupon a given product price would get — used for the live preview. */

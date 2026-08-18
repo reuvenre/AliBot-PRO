@@ -359,6 +359,14 @@ export const incentiveApi = {
     http.delete<{ deleted: boolean }>(`/incentive-programs/${id}`).then(extract),
 };
 
+/** What saving a coupon batch built around it — the launch-sequence posts. */
+export interface CouponSequenceResult {
+  created: number;
+  groups: number;
+  stages: string[];
+  reason?: string;
+}
+
 export const couponsApi = {
   list: () => http.get<Coupon[]>('/coupons').then(extract),
   /** Parse a pasted block without saving — for the import preview. */
@@ -368,12 +376,12 @@ export const couponsApi = {
   previewAi: (text: string) =>
     http.post<{ coupons: ParsedCoupon[] }>('/coupons/preview-ai', { text }, { timeout: AI_TIMEOUT }).then(extract),
   import: (data: { text: string; campaign?: string; starts_at?: string; ends_at?: string }) =>
-    http.post<{ imported: number; coupons: Coupon[] }>('/coupons/import', data).then(extract),
+    http.post<{ imported: number; coupons: Coupon[]; sequence?: CouponSequenceResult }>('/coupons/import', data).then(extract),
   /** Manual add — the fallback when AliExpress wording defeats the parser. */
   add: (data: {
     code: string; discount_usd: number; min_spend_usd: number;
     campaign?: string; starts_at?: string; ends_at?: string;
-  }) => http.post<Coupon>('/coupons', data).then(extract),
+  }) => http.post<Coupon & { sequence?: CouponSequenceResult }>('/coupons', data).then(extract),
   /** Which coupon a product at this USD price would get. */
   best: (priceUsd: number) =>
     http.get<{ coupon: Coupon | null }>('/coupons/best', { params: { price_usd: priceUsd } }).then(extract),
