@@ -7,8 +7,9 @@ import { CustomPost } from '../custom-posts/custom-post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { Post } from '../posts/post.entity';
 import { LinksService } from '../links/links.service';
+import { RatesService } from '../rates/rates.service';
 import {
-  CouponTier, SEQUENCE_NAME_PREFIX, SequenceAnchor, buildCouponSequence,
+  CouponTier, SEQUENCE_NAME_PREFIX, SequenceAnchor, SequenceMoney, buildCouponSequence,
 } from './coupon-sequence';
 import { DecryptedCredentials } from '../credentials/credentials.service';
 
@@ -30,7 +31,23 @@ export class CouponsService {
     @InjectRepository(Campaign) private readonly campaigns: Repository<Campaign>,
     @InjectRepository(Post) private readonly posts: Repository<Post>,
     private readonly links: LinksService,
+    private readonly rates: RatesService,
   ) {}
+
+  /**
+   * The account's display currency with a live rate — the sequence ladder must read in the
+   * same currency as every price the group already sees. Best-effort: a rates failure
+   * returns null and the ladder falls back to honest USD.
+   */
+  private async sequenceMoney(creds: DecryptedCredentials | null): Promise<SequenceMoney | null> {
+    try {
+      const pair = creds?.currency_pair || 'USD_ILS';
+      const rate = await this.rates.getRate(pair);
+      return { rate, symbol: currencySymbol(pair) };
+    } catch {
+      return null;
+    }
+  }
 
   /** A publishable https URL or null — a typo'd link must not reach a live group. */
   private cleanDealsUrl(raw?: string | null): string | null {
@@ -90,15 +107,18 @@ export class CouponsService {
         hook: await this.sequenceHook(creds, tiers.length),
         anchor: await this.sequenceAnchor(userId, tiers),
         dealsUrl: batch.map((c) => c.deals_url).find(Boolean) || null,
+        money: await this.sequenceMoney(creds),
       });
       if (!sequence.length) return none('כל שלבי הרצף כבר מאחורינו');
 
-      // Replace, never stack: drop OUR unsent rows only.
+      // Replace, never stack: drop OUR rows that are still headed for the future — unsent
+      // ones AND fired ones the owner re-armed to a future time (leaving those would double
+      // the stage next to its rebuilt copy). Fully-done rows stay as history.
       await this.customPosts.createQueryBuilder()
         .delete()
         .where('user_id = :userId', { userId })
         .andWhere('name LIKE :prefix', { prefix: `${SEQUENCE_NAME_PREFIX}%` })
-        .andWhere('(last_sent_at IS NULL AND (next_send_at IS NULL OR next_send_at > now()))')
+        .andWhere('((last_sent_at IS NULL AND next_send_at IS NULL) OR next_send_at > now())')
         .execute()
         .catch(() => {});
 

@@ -8,6 +8,7 @@ import { CustomPost } from '../custom-posts/custom-post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { Post } from '../posts/post.entity';
 import { LinksService } from '../links/links.service';
+import { RatesService } from '../rates/rates.service';
 
 const coupon = (over: Partial<Coupon> = {}): Coupon =>
   ({ code: 'ILAFF3', discount_usd: 7, min_spend_usd: 55, ...over } as Coupon);
@@ -27,6 +28,7 @@ describe('couponLine', () => {
         { provide: getRepositoryToken(Campaign), useValue: {} },
         { provide: getRepositoryToken(Post), useValue: {} },
         { provide: LinksService, useValue: {} },
+        { provide: RatesService, useValue: {} },
       ],
     }).compile();
     svc = mod.get(CouponsService);

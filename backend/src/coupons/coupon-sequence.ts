@@ -41,6 +41,12 @@ export interface SequenceAnchor {
 
 export type SequenceStage = 'teaser' | 'launch' | 'mid' | 'urgency';
 
+/** Live conversion for display — same shape the product-post coupon line uses. */
+export interface SequenceMoney {
+  rate: number;
+  symbol: string;
+}
+
 export interface SequencePost {
   stage: SequenceStage;
   sendAt: Date;
@@ -83,11 +89,29 @@ const fmtDate = (d: Date) =>
 const fmtTime = (d: Date) =>
   new Intl.DateTimeFormat('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: TZ }).format(d);
 
+/**
+ * Amounts as the shopper should read them, in their own currency — same rounding contract
+ * as the product-post coupon line: AliExpress enforces the tier in USD at its own rate, so
+ * the converted numbers are a guide, never the rule. The minimum spend rounds UP and the
+ * discount rounds DOWN — the worst case is a shopper who adds slightly more than strictly
+ * needed, never one whose coupon is rejected at checkout. No usable rate → honest USD.
+ */
+function toMoney(discountUsd: number, minUsd: number, money?: SequenceMoney | null) {
+  const rate = Number(money?.rate);
+  if (!money || !Number.isFinite(rate) || rate <= 0 || money.symbol === '$') {
+    return { discount: discountUsd, min: minUsd, symbol: '$' };
+  }
+  return { discount: Math.floor(discountUsd * rate), min: Math.ceil(minUsd * rate), symbol: money.symbol };
+}
+
 /** The ladder, one line per tier, cheapest first — the message itself. */
-export function ladderLines(tiers: CouponTier[]): string {
+export function ladderLines(tiers: CouponTier[], money?: SequenceMoney | null): string {
   return [...tiers]
     .sort((a, b) => a.min_spend_usd - b.min_spend_usd)
-    .map((t) => `💵 קנייה מעל $${t.min_spend_usd} → הנחה של $${t.discount_usd} · קוד: <code>${t.code}</code>`)
+    .map((t) => {
+      const m = toMoney(t.discount_usd, t.min_spend_usd, money);
+      return `💵 קנייה מעל ${m.symbol}${m.min} → הנחה של ${m.symbol}${m.discount} · קוד: <code>${t.code}</code>`;
+    })
     .join('\n');
 }
 
@@ -111,10 +135,12 @@ export function buildCouponSequence(input: {
   anchor?: SequenceAnchor | null;
   /** The owner's affiliate link to AliExpress' own coupons/deals page. */
   dealsUrl?: string | null;
+  /** Account currency conversion — the group already reads prices in shekels. */
+  money?: SequenceMoney | null;
 }): SequencePost[] {
   const { tiers, startsAt, endsAt, now } = input;
   if (!tiers.length) return [];
-  const ladder = ladderLines(tiers);
+  const ladder = ladderLines(tiers, input.money);
   const hook = sanitizeHook(input.hook);
   const validity = endsAt ? `⏳ בתוקף עד ${fmtDate(endsAt)}` : '';
   // One tap to where ALL the offers live — the reader shouldn't have to hunt for the
@@ -157,9 +183,15 @@ export function buildCouponSequence(input: {
     const midDays = Math.floor((endsAt.getTime() - startsAt.getTime()) / DAY_MS / 2);
     const midAt = atLocalTime(startsAt, 12, 0, TZ, midDays);
     const anchor = input.anchor;
-    push('mid', midAt, (anchor ? [
+    // The example speaks the group's currency too. Price rounds UP like the tier minimum,
+    // so "עולה X — מעל Y" can never invert after conversion (price ≥ tier stays true).
+    const am = anchor ? toMoney(anchor.saveUsd, anchor.tierMin, input.money) : null;
+    const anchorPrice = anchor && am
+      ? (am.symbol === '$' ? anchor.priceUsd : Math.ceil(anchor.priceUsd * Number(input.money!.rate)))
+      : 0;
+    push('mid', midAt, (anchor && am ? [
       '💸 אל תשלמו מחיר מלא — ככה זה עובד בפועל:',
-      `"${anchor.title}" עולה $${anchor.priceUsd} — מעל $${anchor.tierMin} הקוד <code>${anchor.code}</code> מוריד $${anchor.saveUsd} במקום.`,
+      `"${anchor.title}" עולה ${am.symbol}${anchorPrice} — מעל ${am.symbol}${am.min} הקוד <code>${anchor.code}</code> מוריד ${am.symbol}${am.discount} במקום.`,
       anchor.link,
       '',
       'כל הסולם:',
