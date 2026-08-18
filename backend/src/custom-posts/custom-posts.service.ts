@@ -64,6 +64,10 @@ export class CustomPostsService {
       if (dto.image_urls !== undefined) cp.image_urls = images;
     }
     if (dto.send_at !== undefined) {
+      // Editing the time of a one-off that already fired means "send it again then". Dispatch
+      // left it enabled=false with a cleared cursor, so without this the edit silently never
+      // fires. A user-paused post keeps its cursor, so it stays paused through a time edit.
+      if (!cp.enabled && cp.next_send_at === null && dto.enabled === undefined) cp.enabled = true;
       cp.send_at = new Date(dto.send_at);
       // Re-arm the cursor from the new time (so editing the time reschedules the next send).
       cp.next_send_at = cp.send_at;
