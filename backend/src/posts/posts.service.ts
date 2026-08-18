@@ -5603,17 +5603,23 @@ export class PostsService {
     // deterministic template copy takes over.
     let text = '';
     const reasons: string[] = [];
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // Custom templates often produce longer, structured posts → give more room
+    // and lower the temperature so the model adheres to the exact structure.
+    // A pin carries a title line, 2-3 SEO sentences AND a hashtag line — 400 tokens
+    // cut some of them mid-sentence, which the judge then (correctly) rejected as
+    // truncated, and the campaign produced nothing at all.
+    let tokenCap = hasTemplate ? 900 : (opts?.style === 'pinterest' ? 700 : 400);
+    // Two JUDGED attempts. A draft the provider cut at the token budget is decided before
+    // the judge ever sees it — it doesn't consume an attempt; it doubles the budget and
+    // re-rolls (issue #59: a capped pin burned attempt 1 on "נקטע באמצע", leaving one shot).
+    // `calls` bounds the loop so repeated truncations can't spin it forever.
+    let attempt = 0;
+    for (let calls = 0; calls < 4 && attempt < 2; calls++) {
       const result = await this.ai.generate(creds, {
         system: systemPrompt,
         prompt: userPrompt,
         images: visionImages,
-        // Custom templates often produce longer, structured posts → give more room
-        // and lower the temperature so the model adheres to the exact structure.
-        // A pin carries a title line, 2-3 SEO sentences AND a hashtag line — 400 tokens
-        // cut some of them mid-sentence, which the judge then (correctly) rejected as
-        // truncated, and the campaign produced nothing at all.
-        maxTokens: hasTemplate ? 900 : (opts?.style === 'pinterest' ? 700 : 400),
+        maxTokens: tokenCap,
         // The retry runs cold: rambling is a sampling failure, so a low temperature is the
         // single most effective change to get structured copy on the second try.
         temperature: attempt === 0 ? (hasTemplate ? 0.7 : 0.85) : 0.2,
@@ -5624,6 +5630,14 @@ export class PostsService {
         // All keyed providers errored or answered empty — nothing to judge.
         reasons.push('ספקי ה-AI לא החזירו טקסט');
         this.logger.warn(`generateText: empty AI result for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
+        attempt++;
+        continue;
+      }
+      if (result?.truncated) {
+        reasons.push('הפלט נחתך במגבלת האורך — נוסה שוב עם תקציב כפול');
+        tokenCap = Math.min(tokenCap * 2, 1600);
+        this.logger.warn(`generateText: ${result.provider} draft hit the token cap for `
+          + `"${String(product?.title || '').slice(0, 60)}" — retrying at ${tokenCap} tokens`);
         continue;
       }
       // Two gates, in order: the deterministic patterns (free, catches every KNOWN defect
@@ -5641,6 +5655,7 @@ export class PostsService {
       reasons.push(defect);
       this.logger.warn(`generateText rejected ${result?.provider || 'ai'} draft (${defect}) `
         + `for "${String(product?.title || '').slice(0, 60)}" — attempt ${attempt + 1}/2`);
+      attempt++;
     }
 
     if (!text) {

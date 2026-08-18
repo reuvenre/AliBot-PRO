@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { DecryptedCredentials } from '../credentials/credentials.service';
 import { AiUsageService } from './ai-usage.service';
+import { finishReasonTruncated } from './finish-reason';
 
 export type AiProvider = 'anthropic' | 'openai' | 'gemini';
 
@@ -25,6 +26,8 @@ export interface GenerateResult {
   tokens: number;
   promptTokens?: number;
   outputTokens?: number;
+  /** The provider stopped at the token budget — the text is cut, not finished. */
+  truncated?: boolean;
 }
 
 /**
@@ -240,7 +243,10 @@ export class AiService {
     const usage = res.data?.usage || {};
     const promptTokens = usage.input_tokens || 0;
     const outputTokens = usage.output_tokens || 0;
-    return { text, provider: 'anthropic', tokens: promptTokens + outputTokens, promptTokens, outputTokens };
+    return {
+      text, provider: 'anthropic', tokens: promptTokens + outputTokens, promptTokens, outputTokens,
+      truncated: finishReasonTruncated(res.data?.stop_reason),
+    };
   }
 
   // ── OpenAI ────────────────────────────────────────────────────────────────
@@ -278,7 +284,10 @@ export class AiService {
     const u = res.data?.usage || {};
     const promptTokens = u.prompt_tokens || 0;
     const outputTokens = u.completion_tokens || 0;
-    return { text, provider: 'openai', tokens: u.total_tokens || promptTokens + outputTokens, promptTokens, outputTokens };
+    return {
+      text, provider: 'openai', tokens: u.total_tokens || promptTokens + outputTokens, promptTokens, outputTokens,
+      truncated: finishReasonTruncated(res.data?.choices?.[0]?.finish_reason),
+    };
   }
 
   // ── Google Gemini ─────────────────────────────────────────────────────────
@@ -338,6 +347,7 @@ export class AiService {
       text, provider: 'gemini',
       tokens: usage.totalTokenCount || promptTokens + outputTokens,
       promptTokens, outputTokens,
+      truncated: finishReasonTruncated(res.data?.candidates?.[0]?.finishReason),
     };
   }
 
