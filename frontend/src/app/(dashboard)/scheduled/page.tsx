@@ -178,7 +178,12 @@ export default function ScheduledPostsPage() {
       {/* ── List ── */}
       <section className="bg-surface-secondary border border-edge rounded-2xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-edge">
-          <h3 className="text-sm font-semibold text-white">הפוסטים המתוזמנים שלי ({posts.length})</h3>
+          <div>
+            <h3 className="text-sm font-semibold text-white">הפוסטים המתוזמנים שלי ({posts.length})</h3>
+            <p className="text-2xs text-white/30 mt-0.5">
+              רשימה זו מציגה פוסטים של טקסט חופשי בלבד. מבצעי מוצר מתוזמנים ממתינים ב<a href="/posts" className="text-blue-400 hover:underline">מסך הפוסטים</a> תחת &quot;מתוזמן&quot;.
+            </p>
+          </div>
         </div>
         {loading ? (
           <div className="py-12 flex justify-center"><Loader2 size={20} className="animate-spin text-blue-400" /></div>

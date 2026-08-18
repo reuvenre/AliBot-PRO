@@ -284,7 +284,10 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
         promo: { is_promo: true, ends_at: new Date(endsAt).toISOString(), discount: discount ? Number(discount) : null },
       });
       setDone(true);
-      setTimeout(() => { setDone(false); reset(); onScheduled(); }, 2500);
+      // Long enough to actually READ — 2.5s vanished together with the form, and since a
+      // product promo lands in the POSTS queue (not this screen's list), the owner watched
+      // his post "disappear" on confirm.
+      setTimeout(() => { setDone(false); reset(); onScheduled(); }, 7000);
     } catch (e: any) {
       setError(e?.response?.data?.message || 'התזמון נכשל — נסה שוב');
     } finally {
@@ -304,7 +307,7 @@ export function PromoComposer({ channels, onScheduled }: { channels: GroupOption
 
         {done && (
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm text-emerald-400 text-center">
-            ✅ מבצע תוזמן! הפוסט יתפרסם ויוסר אוטומטית בסיום.
+            ✅ המבצע תוזמן! הוא ממתין ב<a href="/posts" className="underline font-semibold">מסך הפוסטים</a> (סטטוס: מתוזמן) — לא ברשימה שכאן, שמציגה רק פוסטים של טקסט חופשי. הפוסט יתפרסם ויוסר אוטומטית בסיום המבצע.
           </div>
         )}
 
