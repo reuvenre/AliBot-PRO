@@ -6,6 +6,7 @@ import axios from 'axios';
 import { Campaign } from '../campaigns/campaign.entity';
 import { Channel } from '../channels/channel.entity';
 import { OptimizerRun } from './optimizer-run.entity';
+import { ChannelResult, DeliveryOutcome, deliveryOutcome } from './digest-delivery';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { MailService } from '../mail/mail.service';
@@ -155,6 +156,11 @@ export class OptimizerService {
 
     for (const uid of due) {
       try {
+        // Built today but never arrived? Only the transport failed — repeat just that.
+        if (await this.redeliverPending(uid)) {
+          await this.notifications.markInsightsSent(uid);
+          continue;
+        }
         // Pinterest clicks live in Pinterest's analytics, not in link_clicks (a Pin carries
         // the direct affiliate URL). Pull them in BEFORE scoring, or every Pinterest
         // keyword reads as zero-click and the engine can never judge one.
@@ -174,14 +180,17 @@ export class OptimizerService {
   }
 
   /**
-   * Did this user's report already run today (local day)? Read from optimizer_runs, which
-   * is written on every completed pass — so it is true whatever wrote it, including a
-   * pass whose stamp write failed afterwards.
+   * Did this user's report already reach them today (local day)?
+   *
+   * DELIVERED, not merely run. The row is written before the send, so counting a bare row
+   * as "done" let one failed transport cost the whole report: the guard saw the run, every
+   * later tick skipped, and nothing retried. An undelivered row is unfinished work.
    */
   private async ranToday(userId: string): Promise<boolean> {
     const [row] = await this.campaigns.query(
       `SELECT 1 FROM optimizer_runs
        WHERE user_id = $1
+         AND delivered_at IS NOT NULL
          AND (created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem'
              >= date_trunc('day', (now() AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')
        LIMIT 1`,
@@ -255,13 +264,22 @@ export class OptimizerService {
       digest += `\n\n🤖 סוכן-המנהל — מה שיניתי היום:\n${managerLines.map((l) => `  • ${l}`).join('\n')}`;
     }
 
-    await this.runs.save(this.runs.create({
+    // The digest TEXT rides along, so a failed delivery can be re-sent tomorrow morning's
+    // tick without recomputing the day — and without re-applying the manager's actions.
+    const run = await this.runs.save(this.runs.create({
       user_id: userId,
-      summary_json: JSON.stringify({ scores: allScores, actions: allActions, stats, soldCategories }),
-    })).catch(() => {});
+      summary_json: JSON.stringify({ scores: allScores, actions: allActions, stats, soldCategories, digest }),
+      delivered_at: null,
+    })).catch(() => null);
 
-    await this.deliverDigest(userId, digest);
-    return { ok: true, digest };
+    const outcome = await this.deliverDigest(userId, digest);
+    if (outcome.delivered) {
+      if (run) await this.runs.update({ id: run.id }, { delivered_at: new Date() }).catch(() => {});
+      return { ok: true, digest };
+    }
+    // Not delivered: leave delivered_at NULL so the next hourly tick re-sends, and fail
+    // loudly so markInsightsSent is not called for a report nobody got.
+    throw new Error(`הדו"ח לא נמסר — ${outcome.reason}`);
   }
 
   /**
@@ -870,7 +888,8 @@ export class OptimizerService {
    * is the owner's, so routing a customer's keyword and revenue report there would leak
    * their business data into someone else's inbox.
    */
-  private async deliverDigest(userId: string, text: string): Promise<void> {
+  private async deliverDigest(userId: string, text: string): Promise<DeliveryOutcome> {
+    const results: ChannelResult[] = [];
     const { email, isAdmin } = await this.credentials.userContact(userId).catch(
       () => ({ email: null as string | null, isAdmin: false }),
     );
@@ -883,9 +902,11 @@ export class OptimizerService {
         if (chatId && token) {
           await axios.post(`https://api.telegram.org/bot${token}/sendMessage`,
             { chat_id: chatId, text }, { timeout: 10_000 });
+          results.push({ channel: 'telegram', attempted: true, ok: true });
         }
       } catch (err: any) {
         this.logger.warn(`digest telegram failed: ${err?.message}`);
+        results.push({ channel: 'telegram', attempted: true, ok: false, error: err?.message });
       }
     }
 
@@ -893,9 +914,44 @@ export class OptimizerService {
       if (email && this.mail.isConfigured()) {
         await this.mail.sendHtml(email, '🧠 Nexlify — דו"ח הבוקר של המנוע הלומד',
           `<div dir="rtl" style="font-family:Arial,sans-serif;white-space:pre-line;padding:16px">${text}</div>`);
+        results.push({ channel: 'email', attempted: true, ok: true });
       }
     } catch (err: any) {
       this.logger.warn(`digest email failed: ${err?.message}`);
+      results.push({ channel: 'email', attempted: true, ok: false, error: err?.message });
     }
+    return deliveryOutcome(results);
+  }
+
+  /**
+   * Re-send a digest that was BUILT today but never arrived, without recomputing anything.
+   *
+   * Recomputing would re-apply the manager's actions (retiring keywords, pausing
+   * campaigns) for a day they were already applied to. The text is already on the run row;
+   * only the transport failed, so only the transport is repeated.
+   */
+  private async redeliverPending(userId: string): Promise<boolean> {
+    const [row] = await this.runs.query(
+      `SELECT id, summary_json FROM optimizer_runs
+       WHERE user_id = $1 AND delivered_at IS NULL
+         AND (created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem'
+             >= date_trunc('day', (now() AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jerusalem')
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId],
+    ).catch(() => []);
+    if (!row) return false;
+    let digest = '';
+    try { digest = JSON.parse(row.summary_json)?.digest || ''; } catch { digest = ''; }
+    // A row from before the digest text was stored has nothing to re-send; let the normal
+    // path rebuild it rather than delivering an empty report.
+    if (!digest) return false;
+    const outcome = await this.deliverDigest(userId, digest);
+    if (!outcome.delivered) {
+      this.logger.warn(`digest re-delivery still failing for ${userId} — ${outcome.reason}`);
+      return false;
+    }
+    await this.runs.update({ id: row.id }, { delivered_at: new Date() }).catch(() => {});
+    this.logger.log(`digest re-delivered for ${userId} (built earlier today, transport had failed)`);
+    return true;
   }
 }
