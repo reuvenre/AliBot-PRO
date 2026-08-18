@@ -1119,8 +1119,8 @@ function PushModal({ post, channels, onClose, onDone }: {
   // No platform pre-checked. The dialog began life as a Facebook back-fill tool and
   // pre-checked Facebook; once it offered five platforms that leftover became a trap —
   // a quick "דחוף עכשיו" published to Facebook whether or not that was the intent.
-  // The submit button stays disabled until something is chosen, so an explicit pick
-  // is the only way anything gets sent.
+  // An explicit pick is still the only way anything gets sent, but submit() enforces it
+  // with a message rather than a disabled button, which on a phone just looks broken.
   const [platforms, setPlatforms] = useState<(PushPlatform)[]>([]);
   const [groupIds, setGroupIds] = useState<string[]>(() => postTargetIds(post));
   const [busy, setBusy] = useState(false);
@@ -1132,10 +1132,18 @@ function PushModal({ post, channels, onClose, onDone }: {
   // the note below states the credit cost so it is never a silent charge.
   const [pinRewrite, setPinRewrite] = useState(true);
 
-  const togglePlatform = (p: PushPlatform) =>
+  const togglePlatform = (p: PushPlatform) => {
     setPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+    setError('');
+  };
 
   const submit = async () => {
+    // The nothing-selected tap answers with words instead of a disabled button — on a
+    // phone a greyed-out button is indistinguishable from a broken one.
+    if (!platforms.length) {
+      setError('לא סומנה אף פלטפורמה — סמן למעלה לאן לדחוף (טלגרם, פייסבוק וכו׳) ואז לחץ שוב.');
+      return;
+    }
     setBusy(true); setError('');
     try {
       await postsApi.push(post.id, platforms, groupIds.length ? groupIds : undefined,
@@ -1219,8 +1227,10 @@ function PushModal({ post, channels, onClose, onDone }: {
           {error && <p className="text-xs text-red-400">{error}</p>}
 
           <div className="flex gap-2">
-            <button onClick={submit} disabled={busy || !!done || !platforms.length}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-medium transition-all">
+            <button onClick={submit} disabled={busy || !!done}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg disabled:opacity-60 text-white text-sm font-medium transition-all ${
+                platforms.length ? 'bg-teal-600 hover:bg-teal-500' : 'bg-teal-600/40'
+              }`}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Megaphone size={14} />} דחוף עכשיו
             </button>
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm">ביטול</button>
