@@ -138,6 +138,15 @@ export class Campaign {
   @Column({ nullable: true, type: 'text' })
   last_run_note: string | null;
 
+  /**
+   * Rolling log (ISO timestamps, 24h retention) of runs that produced NOTHING because
+   * every product failed. Failed generation deliberately leaves no post row, so this is
+   * the only countable evidence the drift check has that a widened gap is a generation
+   * hole rather than a pacing fault — see run-failure-log.ts.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  failed_run_log: string[] | null;
+
   @Column({ nullable: true })
   next_run_at: Date;
 

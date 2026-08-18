@@ -21,6 +21,7 @@ import { soloCampaignSlot } from './solo-campaign-slot';
 import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
+import { pruneRunLog, recordFailedRun } from '../campaigns/run-failure-log';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
 import { occupiesCurrentInterval } from './group-pacing';
@@ -2812,7 +2813,16 @@ export class PostsService {
       result.failed ? `${result.failed} נכשלו` : null,
       ...result.errors.slice(0, 3),
     ].filter(Boolean).join(' · ').slice(0, 400);
-    await this.campaignRepo.update({ id: campaign.id }, { last_run_note: note }).catch(() => {});
+    // A run that produced NOTHING because of failures leaves no post row (fail-loudly
+    // path) — log it as data, or the drift check reads the hole it leaves as a pacing
+    // fault (issue #60). Healthy runs just prune the log so old entries age out.
+    const ranButFailed = !result.queued && result.failed > 0;
+    const failedRunLog = ranButFailed
+      ? recordFailedRun(campaign.failed_run_log, new Date())
+      : pruneRunLog(campaign.failed_run_log, new Date());
+    await this.campaignRepo.update(
+      { id: campaign.id }, { last_run_note: note, failed_run_log: failedRunLog },
+    ).catch(() => {});
 
     // Skipping because the group is already booked this interval is a legitimate no-op, not
     // a failure — only throw when nothing was queued AND nothing was intentionally skipped.

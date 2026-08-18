@@ -21,6 +21,7 @@ import { CampaignCadence, detectCapacityShortfalls, shortfallLine } from './post
 import { cronBaseIntervalMin, cronTypicalIntervalMin } from './cron-interval';
 import { pendingVerdict } from './pending-posts';
 import { driftVerdict } from './drift-verdict';
+import { countRecentFailedRuns } from '../campaigns/run-failure-log';
 import { isTierBlockError } from '../pinterest/pinterest-scopes';
 import { feasibleCadenceMin } from './cadence-feasible';
 
@@ -665,12 +666,17 @@ export class WatchdogService implements OnModuleInit {
       // Runs that produced NOTHING in the same window: each missing post merges two
       // intervals into one, so the gap widens without anything being wrong with pacing.
       // See drift-verdict.ts — that fault is generation, and it alerts on its own.
-      const failedRuns = await this.posts.createQueryBuilder('p')
+      const failedPostRows = await this.posts.createQueryBuilder('p')
         .where('p.campaign_id = :cid', { cid: c.id })
         .andWhere("p.status = 'failed'")
         .andWhere('p.created_at > :since', { since: new Date(now - 12 * 3600_000) })
         .getCount()
         .catch(() => 0);
+      // Generation failures leave NO post row at all (the fail-loudly path) — they are
+      // counted from the campaign's own failed-run log instead. Without this the holes
+      // issue #59's judge failures left were reported as pacing drift (issue #60).
+      const failedRuns = failedPostRows
+        + countRecentFailedRuns(c.failed_run_log, new Date(now), 12 * 3600_000);
       const verdict = driftVerdict({ medianMin: median, expectedMin: expected, failedRuns });
       if (verdict === 'explained-by-failures') {
         this.logger.log(`drift check: "${c.name}" gap ~${Math.round(median)}m vs ~${expected}m `
