@@ -135,7 +135,10 @@ export class IncentiveService {
       if (end <= start) continue;
       const p = await this.posts.createQueryBuilder('p')
         .select('COUNT(*)', 'posts')
-        .addSelect('COALESCE(SUM(p.clicks_count), 0)', 'clicks')
+        // Short-link clicks PLUS Pinterest outbound clicks: a pin's click never passes
+        // through /r/<code> — it arrives via the Pinterest analytics sync into
+        // posts.pinterest_clicks. clicks_count alone showed a bonus-pool pin as 0 clicks.
+        .addSelect('COALESCE(SUM(p.clicks_count + COALESCE(p.pinterest_clicks, 0)), 0)', 'clicks')
         .where('p.user_id = :u', { u: userId })
         .andWhere("p.status = 'sent'")
         .andWhere('LOWER(p.keyword) IN (:...kws)', { kws: lower })
