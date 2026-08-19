@@ -409,6 +409,9 @@ function ClickSourcesPanel() {
 function PinterestPanel() {
   const [data, setData] = useState<PinterestAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  // The list defaults to the top pins so the money metric leads — but the cut must be
+  // visible and reversible, or 25 active pins showing as 8 reads as missing data.
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     pinterestApi.analytics()
@@ -467,8 +470,13 @@ function PinterestPanel() {
           </div>
 
           {/* Top pins by outbound clicks — the money metric */}
+          <p className="text-2xs text-white/30 mb-2">
+            {showAll || data.pins.length <= 8
+              ? `כל ${data.pins.length} הפינים, לפי קליקים החוצה:`
+              : `שמונת הפינים המובילים לפי קליקים החוצה (מתוך ${data.pins.length}):`}
+          </p>
           <div className="space-y-2">
-            {data.pins.slice(0, 8).map((p) => (
+            {(showAll ? data.pins : data.pins.slice(0, 8)).map((p) => (
               <div key={p.pin_id} className="flex items-center gap-3 py-2 px-3 bg-white/3 rounded-lg">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {p.image && <img src={p.image} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />}
@@ -485,6 +493,12 @@ function PinterestPanel() {
               </div>
             ))}
           </div>
+          {data.pins.length > 8 && (
+            <button onClick={() => setShowAll((v) => !v)}
+              className="mt-3 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/60 transition-all">
+              {showAll ? 'הצג רק את המובילים' : `הצג את כל ${data.pins.length} הפינים`}
+            </button>
+          )}
         </>
       )}
     </div>
