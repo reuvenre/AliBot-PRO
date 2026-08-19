@@ -20,9 +20,24 @@ const SIZE_RANK: Record<string, number> = {
 };
 const UNKNOWN_RANK = 60;
 
+/**
+ * Unwrap our own hotlink proxy (`…/suppliers/image?url=<encoded photo url>`) — the UI works
+ * in proxied URLs, so they are what a manual selection sends back. Identity and rank must
+ * see the PHOTO underneath: splitting a proxied URL on '?' throws the photo away, which
+ * collapsed every image of an album to ONE key — so whatever the owner picked, the saved
+ * gallery came out as a single (arbitrary) image ("התמונות שבחרתי לא נשמרו").
+ */
+export function unwrapImageProxy(url: string): string {
+  const raw = String(url || '').trim();
+  if (!/\/suppliers\/image\?/i.test(raw)) return raw;
+  const m = raw.match(/[?&]url=([^&#]+)/i);
+  if (!m) return raw;
+  try { return decodeURIComponent(m[1]); } catch { return raw; }
+}
+
 /** `https://photo.yupoo.com/store/abc123/big.jpg?x=1` → `photo.yupoo.com/store/abc123`. */
 export function yupooPhotoKey(url: string): string {
-  const raw = String(url || '').trim();
+  const raw = unwrapImageProxy(url);
   if (!raw) return '';
   if (!/photo\.yupoo\.com/i.test(raw)) return raw; // non-Yupoo → identity is the URL itself
   const noQuery = raw.split(/[?#]/)[0];
@@ -33,7 +48,7 @@ export function yupooPhotoKey(url: string): string {
 
 /** How sharp this rendition is — higher wins. Non-Yupoo URLs all rank equal. */
 export function yupooSizeRank(url: string): number {
-  const file = String(url || '').split(/[?#]/)[0].split('/').pop() || '';
+  const file = unwrapImageProxy(url).split(/[?#]/)[0].split('/').pop() || '';
   const name = file.replace(/\.[a-z0-9]+$/i, '').toLowerCase();
   return SIZE_RANK[name] ?? UNKNOWN_RANK;
 }
