@@ -8,6 +8,8 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { MailService } from '../mail/mail.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { User } from '../users/user.entity';
+import { Post } from '../posts/post.entity';
+import { Earning } from '../earnings/earning.entity';
 import { AiService } from '../ai/ai.service';
 import { knownPoolKeywords, parsePoolKeywords, POOL_KEYWORDS_SYSTEM, PoolSuggestion } from './pool-keywords';
 
@@ -31,6 +33,8 @@ export class IncentiveService {
   constructor(
     @InjectRepository(IncentiveProgram) private readonly repo: Repository<IncentiveProgram>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Post) private readonly posts: Repository<Post>,
+    @InjectRepository(Earning) private readonly earnings: Repository<Earning>,
     private readonly credentials: CredentialsService,
     private readonly mail: MailService,
     private readonly subscription: SubscriptionService,
@@ -99,6 +103,62 @@ export class IncentiveService {
       this.logger.warn(`pool keyword suggestion failed: ${err?.message}`);
       return { keywords: [], source: 'ai' };
     }
+  }
+
+  // ── Per-pool performance ──────────────────────────────────────────────────
+
+  /**
+   * What each pool actually PRODUCED, measured inside its own window: sent posts whose
+   * keyword belongs to the pool, their clicks, and the base commissions attributed to
+   * those keywords. This answers "which pool is worth my registrations" — the screen
+   * otherwise showed six identical-looking cards with no way to tell.
+   *
+   * Honesty note carried to the UI: revenue here is the NORMAL commission the pool's
+   * keywords earned — the bonus itself is paid by AliExpress on top and never appears
+   * in our data. A pool with orders is a pool whose bonus is accruing.
+   */
+  async stats(userId: string): Promise<Record<string, {
+    posts: number; clicks: number; orders: number; revenue_ils: number;
+  }>> {
+    const out: Record<string, { posts: number; clicks: number; orders: number; revenue_ils: number }> = {};
+    const rows = await this.list(userId);
+    for (const r of rows) {
+      let kws: string[] = [];
+      try { kws = JSON.parse(r.keywords_json || '[]'); } catch { kws = []; }
+      const lower = kws.map((k) => String(k).trim().toLowerCase()).filter(Boolean);
+      out[r.id] = { posts: 0, clicks: 0, orders: 0, revenue_ils: 0 };
+      if (!lower.length) continue;
+      // Measure only inside the pool window — the bonus accrues only there, so posts
+      // published before registration must not flatter the pool's numbers.
+      const start = new Date(r.starts_at);
+      const end = new Date(Math.min(new Date(r.ends_at).getTime(), Date.now()));
+      if (end <= start) continue;
+      const p = await this.posts.createQueryBuilder('p')
+        .select('COUNT(*)', 'posts')
+        .addSelect('COALESCE(SUM(p.clicks_count), 0)', 'clicks')
+        .where('p.user_id = :u', { u: userId })
+        .andWhere("p.status = 'sent'")
+        .andWhere('LOWER(p.keyword) IN (:...kws)', { kws: lower })
+        .andWhere('p.sent_at BETWEEN :s AND :e', { s: start, e: end })
+        .getRawOne()
+        .catch(() => null);
+      const e = await this.earnings.createQueryBuilder('e')
+        .select('COUNT(*)', 'orders')
+        .addSelect('COALESCE(SUM(e.commission_ils), 0)', 'revenue')
+        .where('e.user_id = :u', { u: userId })
+        .andWhere("e.status != 'cancelled'")
+        .andWhere('LOWER(e.keyword) IN (:...kws)', { kws: lower })
+        .andWhere('e.order_date BETWEEN :s AND :e', { s: start, e: end })
+        .getRawOne()
+        .catch(() => null);
+      out[r.id] = {
+        posts: Number(p?.posts) || 0,
+        clicks: Number(p?.clicks) || 0,
+        orders: Number(e?.orders) || 0,
+        revenue_ils: +(Number(e?.revenue) || 0).toFixed(2),
+      };
+    }
+    return out;
   }
 
   // ── What the autopilot consumes ───────────────────────────────────────────

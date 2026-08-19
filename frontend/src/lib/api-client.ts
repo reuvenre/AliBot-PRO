@@ -344,8 +344,18 @@ export interface IncentiveInput {
   active?: boolean;
 }
 
+/** What one pool produced inside its window — see incentive.service.stats(). */
+export interface IncentivePoolStats {
+  posts: number;
+  clicks: number;
+  orders: number;
+  revenue_ils: number;
+}
+
 export const incentiveApi = {
   list: () => http.get<IncentiveProgram[]>('/incentive-programs').then(extract),
+  /** Per-pool performance, keyed by program id. */
+  stats: () => http.get<Record<string, IncentivePoolStats>>('/incentive-programs/stats').then(extract),
   /** Keywords for a pool name — the recurring pools answer instantly, else one AI call. */
   suggestKeywords: (name: string) =>
     http.post<{ keywords: string[]; source: 'known' | 'ai' }>(

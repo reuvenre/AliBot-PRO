@@ -18,6 +18,12 @@ export class IncentiveController {
     return this.svc.list(this.uid(req));
   }
 
+  /** Per-pool performance inside its window — posts/clicks/orders/base commission. */
+  @Get('stats')
+  stats(@Req() req: Request) {
+    return this.svc.stats(this.uid(req));
+  }
+
   /** Suggested keywords for a pool name — known pools answer instantly, else one AI call. */
   @Post('suggest-keywords')
   @HttpCode(200)

@@ -6,7 +6,7 @@ import {
   Gift, Loader2, Plus, Power, RefreshCw, Trash2, ExternalLink, AlertTriangle, Wand2,
 } from 'lucide-react';
 import { campaignsApi, incentiveApi, subscriptionApi } from '@/lib/api-client';
-import type { IncentiveProgram, IncentiveInput } from '@/lib/api-client';
+import type { IncentiveProgram, IncentiveInput, IncentivePoolStats } from '@/lib/api-client';
 import type { Campaign, PlanId } from '@/types';
 
 /**
@@ -64,14 +64,17 @@ export default function IncentivesPage() {
   const [adding, setAdding] = useState(false);
   const [plan, setPlan] = useState<PlanId>('autopilot');
 
+  const [stats, setStats] = useState<Record<string, IncentivePoolStats>>({});
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, camps] = await Promise.all([
+      const [list, camps, st] = await Promise.all([
         incentiveApi.list(),
         campaignsApi.list({ limit: 100 }).then((r) => r.data).catch(() => [] as Campaign[]),
+        incentiveApi.stats().catch(() => ({} as Record<string, IncentivePoolStats>)),
       ]);
-      setRows(list); setCampaigns(camps); setError('');
+      setRows(list); setCampaigns(camps); setStats(st); setError('');
     } catch (e: any) {
       setError(e?.response?.data?.message || 'טעינת קמפייני הבונוס נכשלה');
     } finally { setLoading(false); }
@@ -147,7 +150,7 @@ export default function IncentivesPage() {
           )}
           <div className="space-y-3">
             {rows.map((p) => (
-              <ProgramCard key={p.id} program={p} campaigns={campaigns} onChanged={load} />
+              <ProgramCard key={p.id} program={p} campaigns={campaigns} stats={stats[p.id]} onChanged={load} />
             ))}
           </div>
         </>
@@ -161,8 +164,8 @@ export default function IncentivesPage() {
   );
 }
 
-function ProgramCard({ program, campaigns, onChanged }: {
-  program: IncentiveProgram; campaigns: Campaign[]; onChanged: () => void;
+function ProgramCard({ program, campaigns, stats, onChanged }: {
+  program: IncentiveProgram; campaigns: Campaign[]; stats?: IncentivePoolStats; onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -195,6 +198,17 @@ function ProgramCard({ program, campaigns, onChanged }: {
           <p className="text-2xs text-white/40 mt-1.5">
             {new Date(program.starts_at).toLocaleDateString('he-IL')} — {new Date(program.ends_at).toLocaleDateString('he-IL')} · יעד: {targetNames}
           </p>
+          {stats && (
+            <p className="text-2xs text-white/50 mt-1.5">
+              📊 בחלון הקמפיין: <b className="text-white/75">{stats.posts}</b> פוסטים
+              {' · '}<b className="text-white/75">{stats.clicks}</b> קליקים
+              {' · '}<b className={stats.orders > 0 ? 'text-emerald-300' : 'text-white/75'}>{stats.orders}</b> הזמנות
+              {stats.revenue_ils > 0 && (
+                <> {' · '}<span className="text-emerald-300 font-semibold">₪{stats.revenue_ils.toLocaleString()}</span>
+                  <span className="text-white/30"> עמלות בסיס — הבונוס משולם מעל זה</span></>
+              )}
+            </p>
+          )}
           {keywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {keywords.map((k) => (

@@ -28,7 +28,9 @@ describe('IncentiveService.keywordsFor', () => {
   function serviceWith(rows: any[], allowed = true) {
     const repo: any = { find: async () => rows };
     const subscription: any = { allows: async () => allowed };
-    return new IncentiveService(repo, null as any, null as any, null as any, subscription, null as any);
+    return new IncentiveService(
+      repo, null as any, null as any, null as any, null as any, null as any, subscription, null as any,
+    );
   }
 
   it('gives a targeted campaign the pool keywords while the window is open', async () => {
