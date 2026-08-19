@@ -324,15 +324,19 @@ export class PinterestService {
    * (posts.pinterest_post_id). Degrades gracefully: no token / Trial-tier rejections
    * come back as { available: false, reason } instead of a 500 — the UI explains.
    */
-  async analytics(userId: string): Promise<PinterestAnalyticsResult> {
+  async analytics(userId: string, refresh = false): Promise<PinterestAnalyticsResult> {
     const token = await this.liveToken(userId).catch(() => null);
     if (!token) {
       return { available: false, reason: 'פינטרסט אינו מחובר — התחבר בהגדרות ← אינטגרציות.', totals: null, pins: [] };
     }
 
     const cacheKey = `pinterest_analytics_${userId}`;
-    const cached = await cacheGet<PinterestAnalyticsResult>(this.cache, cacheKey);
-    if (cached) return cached;
+    // refresh skips the READ only — the fresh result still lands in the cache below, so
+    // one press resets the hour for everyone instead of opening a rate-limit bypass.
+    if (!refresh) {
+      const cached = await cacheGet<PinterestAnalyticsResult>(this.cache, cacheKey);
+      if (cached) return cached;
+    }
 
     const rows = await this.posts.find({
       where: { user_id: userId, pinterest_post_id: Not(IsNull()) },

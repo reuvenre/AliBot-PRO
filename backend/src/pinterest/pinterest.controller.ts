@@ -15,11 +15,12 @@ function settingsUrl(ok: boolean, message?: string): string {
 export class PinterestController {
   constructor(private readonly svc: PinterestService) {}
 
-  /** Per-pin performance (30 days) + totals for the reports screen. */
+  /** Per-pin performance (30 days) + totals for the reports screen.
+   *  ?refresh=1 bypasses the hourly cache — a pin published a minute ago appears now. */
   @Get('analytics')
   @UseGuards(JwtAuthGuard)
-  analytics(@Req() req: Request) {
-    return this.svc.analytics((req.user as any).id);
+  analytics(@Req() req: Request, @Query('refresh') refresh?: string) {
+    return this.svc.analytics((req.user as any).id, refresh === '1' || refresh === 'true');
   }
 
   /** The account's boards → the settings picker. The numeric board id the publish API

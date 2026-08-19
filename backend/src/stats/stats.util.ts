@@ -3,31 +3,59 @@
  * bucketing and delta rules — the parts that quietly go wrong — are testable without a DB.
  */
 
-/** Monday 00:00 UTC of the week containing `d`. Matches Postgres `date_trunc('week', …)`. */
-export function startOfWeekUtc(d: Date): Date {
-  const out = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const dow = (out.getUTCDay() + 6) % 7; // Mon → 0 … Sun → 6
-  out.setUTCDate(out.getUTCDate() - dow);
-  return out;
+/**
+ * "Now" on `tz`'s wall clock, formatted 'YYYY-MM-DD HH:mm:ss' — a NAIVE local timestamp,
+ * directly comparable in SQL against `col AT TIME ZONE '<tz>'`. sv-SE is the locale whose
+ * output IS that shape; Postgres parses it as a timestamp-without-tz literal as-is.
+ */
+export function localNowString(tz: string, now = new Date()): string {
+  return now.toLocaleString('sv-SE', { timeZone: tz, hour12: false });
 }
 
-/** `count` consecutive week-start keys (YYYY-MM-DD) ending with the week containing `end`. */
-export function weekKeys(end: Date, count: number): string[] {
-  const last = startOfWeekUtc(end);
+/** `count` consecutive 'YYYY-MM' keys ending with the month containing `localNow`. */
+export function monthKeys(localNow: string, count: number): string[] {
+  const [y, m] = localNow.slice(0, 7).split('-').map(Number);
   const keys: string[] = [];
   for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(last);
-    d.setUTCDate(d.getUTCDate() - i * 7);
-    keys.push(d.toISOString().slice(0, 10));
+    keys.push(new Date(Date.UTC(y, m - 1 - i, 1)).toISOString().slice(0, 7));
   }
   return keys;
 }
 
 /**
+ * The calendar-month comparison windows around `localNow`, as naive local timestamps.
+ *
+ * The delta compares the current month against the SAME ELAPSED STRETCH of the previous
+ * one, not the whole of it: on the 3rd, three days measured against a full month would
+ * print a catastrophic drop every single month. When the previous month is shorter than
+ * the elapsed stretch (March 30th vs February), the window clamps to the whole previous
+ * month rather than spilling into the current one.
+ */
+export function monthWindows(localNow: string): {
+  key: string; prev_key: string;
+  prev_from: string; prev_to: string;
+} {
+  // Naive local → fake-UTC Date, so calendar arithmetic works without a tz library.
+  const now = new Date(localNow.replace(' ', 'T') + 'Z');
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const curFrom = Date.UTC(y, m, 1);
+  const prevFrom = Date.UTC(y, m - 1, 1);
+  const prevTo = Math.min(prevFrom + (now.getTime() - curFrom), curFrom);
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  return {
+    key: new Date(curFrom).toISOString().slice(0, 7),
+    prev_key: new Date(prevFrom).toISOString().slice(0, 7),
+    prev_from: fmt(prevFrom),
+    prev_to: fmt(prevTo),
+  };
+}
+
+/**
  * Expand sparse SQL output into one value per key, zero-filling gaps.
  *
- * Grouped queries only return buckets that have rows, so a quiet week is simply absent.
- * Charting that directly draws a 12-week trend from 5 bars and silently misplaces them —
+ * Grouped queries only return buckets that have rows, so a quiet month is simply absent.
+ * Charting that directly draws a 12-month trend from 5 bars and silently misplaces them —
  * the gaps have to become explicit zeros before the series means anything.
  */
 export function densify(rows: Array<{ bucket: string; value: number }>, keys: string[]): number[] {
@@ -36,9 +64,9 @@ export function densify(rows: Array<{ bucket: string; value: number }>, keys: st
 }
 
 /**
- * Percentage change against the preceding period, or null when there's no baseline.
+ * Percentage change against the previous period, or null when there's no baseline.
  *
- * Returning null rather than 0 or 100 matters: a first-week account has nothing to compare
+ * Returning null rather than 0 or 100 matters: a first-month account has nothing to compare
  * against, and "+100%" on the dashboard would be an invented claim. The UI omits the badge
  * when this is null.
  */

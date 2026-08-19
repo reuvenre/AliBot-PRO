@@ -739,8 +739,14 @@ export interface PinterestAnalytics {
 }
 
 export const pinterestApi = {
-  /** Per-pin performance (30 days) + totals for the reports screen. */
-  analytics: () => http.get<PinterestAnalytics>('/pinterest/analytics').then(extract),
+  /** Per-pin performance (30 days) + totals for the reports screen.
+   *  refresh bypasses the server's hourly cache — it re-reads every pin from Pinterest
+   *  (dozens of sequential API calls), hence the long timeout. */
+  analytics: (refresh = false) =>
+    http.get<PinterestAnalytics>('/pinterest/analytics', {
+      params: refresh ? { refresh: 1 } : undefined,
+      timeout: 60_000,
+    }).then(extract),
   /** The account's boards — the numeric board id is invisible in Pinterest's own UI. */
   boards: () => http.get<{ boards: Array<{ id: string; name: string }>; reason?: string }>(
     '/pinterest/boards', { timeout: 20_000 },
@@ -752,9 +758,10 @@ export const pinterestApi = {
 // ─── Earnings API ────────────────────────────────────────────────────────────
 
 export const statsApi = {
-  /** Dashboard headline — commissions, clicks and posts as weekly series with trends. */
-  overview: (weeks = 12) =>
-    http.get<OverviewStats>('/stats/overview', { params: { weeks } }).then(extract),
+  /** Dashboard headline — commissions, clicks and posts by calendar month: current month,
+   *  full previous month, elapsed-stretch delta and a monthly trend series. */
+  overview: (months = 12) =>
+    http.get<OverviewStats>('/stats/overview', { params: { months } }).then(extract),
   /** Clicks per platform (tg/fb/ig/wa; 'other' = untagged history) over the last N days. */
   clickSources: (days = 30) =>
     http.get<{ days: number; total: number; sources: Array<{ source: string; clicks: number }> }>(

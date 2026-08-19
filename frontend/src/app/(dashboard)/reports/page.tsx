@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart3, TrendingUp, TrendingDown, Loader2,
-  DollarSign, FileText, Award, Calendar,
+  DollarSign, FileText, Award, Calendar, RefreshCw,
 } from 'lucide-react';
 import { earningsApi, postsApi, pinterestApi, statsApi, type PinterestAnalytics, type AttributionSummary } from '@/lib/api-client';
 import type { EarningsSummary } from '@/types';
@@ -409,6 +409,9 @@ function ClickSourcesPanel() {
 function PinterestPanel() {
   const [data, setData] = useState<PinterestAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  // A forced refresh re-reads every pin from Pinterest (up to ~a minute) — the panel keeps
+  // showing the current numbers with a spinning icon instead of collapsing to a skeleton.
+  const [refreshing, setRefreshing] = useState(false);
   // The list defaults to the top pins so the money metric leads — but the cut must be
   // visible and reversible, or 25 active pins showing as 8 reads as missing data.
   const [showAll, setShowAll] = useState(false);
@@ -419,6 +422,15 @@ function PinterestPanel() {
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, []);
+
+  const refresh = () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    pinterestApi.analytics(true)
+      .then(setData)
+      .catch(() => {}) // keep the numbers already on screen — stale beats empty
+      .finally(() => setRefreshing(false));
+  };
 
   if (loading) {
     return (
@@ -438,6 +450,15 @@ function PinterestPanel() {
       <div className="flex items-center gap-2 mb-1">
         <span className="text-lg">📌</span>
         <h2 className="text-sm font-semibold text-white">ביצועי Pinterest — 30 יום</h2>
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          title="עוקף את המטמון וקורא את הנתונים מחדש מפינטרסט (עד דקה)"
+          className="mr-auto flex items-center gap-1.5 text-xs text-white/35 hover:text-white/70 disabled:text-white/25 transition-colors"
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'קורא מפינטרסט…' : 'רענן עכשיו'}
+        </button>
       </div>
 
       {!data.available ? (

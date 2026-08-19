@@ -9,13 +9,14 @@ export class StatsController {
   constructor(private readonly svc: StatsService) {}
 
   /**
-   * One round trip for the whole dashboard header — three metrics, each with its weekly
-   * series and period-over-period change. Deliberately ungated: these are the user's own
-   * headline numbers, and a dashboard that hides them behind a plan tier is a bad first run.
+   * One round trip for the whole dashboard header — three metrics, each cut by CALENDAR
+   * month: current month, full previous month, elapsed-stretch delta and a monthly trend.
+   * Deliberately ungated: these are the user's own headline numbers, and a dashboard that
+   * hides them behind a plan tier is a bad first run.
    */
   @Get('overview')
-  overview(@Req() req: Request, @Query('weeks') weeks?: string) {
-    return this.svc.overview((req.user as any).id, weeks ? +weeks : 12);
+  overview(@Req() req: Request, @Query('months') months?: string) {
+    return this.svc.overview((req.user as any).id, months ? +months : 12);
   }
 
   /** Clicks per platform (tg/fb/ig/wa, 'other' = untagged history) over the last N days. */

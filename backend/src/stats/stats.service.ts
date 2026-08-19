@@ -5,41 +5,55 @@ import { Earning } from '../earnings/earning.entity';
 import { LinkClick } from '../links/link-click.entity';
 import { Post } from '../posts/post.entity';
 import { RatesService } from '../rates/rates.service';
-import { portalRangeStart } from '../earnings/portal-time';
-import { densify, deltaPct, sum, weekKeys } from './stats.util';
+import { deltaPct, densify, localNowString, monthKeys, monthWindows } from './stats.util';
 
-export interface MetricSeries {
-  total: number;
+export interface MonthMetric {
+  /** The current calendar month so far. */
+  current: { key: string; total: number };
+  /** The FULL previous calendar month. */
+  previous: { key: string; total: number };
+  /** Current month vs the SAME elapsed stretch of the previous one — comparing a
+   *  half-finished month against a whole one would print a fake collapse every month. */
   delta_pct: number | null;
+  /** Monthly totals, oldest → newest, aligned 1:1 with OverviewStats.month_keys. */
   series: number[];
 }
 
 export interface OverviewStats {
   /** Commissions are reported in the currency the affiliate network actually pays. */
   currency: 'USD';
-  weeks: number;
-  week_starts: string[];
-  /** Today's rate and the converted headline total — a convenience for a shekel-thinking
-   *  reader, explicitly approximate. Null when no rate is available. */
+  months: number;
+  /** 'YYYY-MM' keys for every metric's `series`, oldest → newest; last = current month. */
+  month_keys: string[];
+  /** Today's rate and the converted current-month commissions — a convenience for a
+   *  shekel-thinking reader, explicitly approximate. Null when no rate is available. */
   ils_approx: { rate: number; total: number } | null;
   metrics: {
-    commissions: MetricSeries;
-    clicks: MetricSeries;
-    posts: MetricSeries;
-  };
-  /** Commissions for the CURRENT calendar month on the portal's clock — the number the
-   *  owner compares against the AliExpress portal, next to the 12-week trend. */
-  month: {
-    /** 'YYYY-MM' in portal time. */
-    key: string;
-    total: number;
-    /** vs the SAME elapsed stretch of the previous month — comparing a half-finished
-     *  month against a whole one would print a fake collapse every month. */
-    delta_pct: number | null;
+    commissions: MonthMetric;
+    clicks: MonthMetric;
+    posts: MonthMetric;
   };
 }
 
-const MAX_WEEKS = 52;
+const MAX_MONTHS = 24;
+
+/** AliExpress reports by its platform clock — the commissions figure must match the
+ *  portal the owner holds it against, so its months are cut on this timezone. */
+const PORTAL_TZ = 'Asia/Shanghai';
+/** Clicks and posts are the owner's own activity — their months are cut on his calendar. */
+const LOCAL_TZ = 'Asia/Jerusalem';
+
+/**
+ * A column rendered as the wall clock of `tz`, for month bucketing and range filters.
+ *
+ * Two storage shapes exist here and they convert DIFFERENTLY: paid_date is a real
+ * timestamptz (one AT TIME ZONE renders it local), while order_date / sent_at /
+ * clicked_at are naive timestamps holding UTC wall time — those must first be DECLARED
+ * as UTC (AT TIME ZONE 'UTC') and only then rendered. Skipping the declaration step
+ * would re-interpret the naive value as already-local and shift every bucket boundary.
+ */
+const naiveUtcAsLocal = (col: string, tz: string) => `(${col} AT TIME ZONE 'UTC') AT TIME ZONE '${tz}'`;
+const tstzAsLocal = (col: string, tz: string) => `(${col} AT TIME ZONE '${tz}')`;
 
 @Injectable()
 export class StatsService {
@@ -53,41 +67,62 @@ export class StatsService {
   ) {}
 
   /**
-   * Headline numbers for the dashboard: commissions, clicks and posts over the last N weeks,
-   * each with a weekly series and the change against the preceding N weeks.
+   * Headline numbers for the dashboard, by CALENDAR month: commissions, clicks and posts —
+   * each with the current month so far, the full previous month, an elapsed-stretch delta,
+   * and a monthly series for the trend chart.
    *
    * Aggregation happens in SQL rather than by loading rows and summing in JS. This endpoint
    * runs on every dashboard visit, and the accounts that matter most are exactly the ones
    * with the most rows — the naive version gets slowest where it can least afford to.
    */
-  async overview(userId: string, weeks = 12): Promise<OverviewStats> {
-    const n = Math.min(MAX_WEEKS, Math.max(1, Math.floor(weeks) || 12));
-    const now = new Date();
+  async overview(userId: string, months = 12): Promise<OverviewStats> {
+    const n = Math.min(MAX_MONTHS, Math.max(2, Math.floor(months) || 12));
 
-    // Fetch 2N weeks in one pass per metric: the recent N are the series, the older N are
-    // the baseline the delta is measured against.
-    const allKeys = weekKeys(now, n * 2);
-    const from = new Date(`${allKeys[0]}T00:00:00.000Z`);
+    // Commissions live on the portal's clock; the owner's activity lives on his. Each
+    // metric gets its own key ring — in the hours where the two calendars disagree about
+    // what month it is (portal midnight ≠ Israel midnight), sharing keys would misfile
+    // the newest bucket of one of them.
+    const portalNow = localNowString(PORTAL_TZ);
+    const localNow = localNowString(LOCAL_TZ);
+    const portalKeys = monthKeys(portalNow, n);
+    const localKeys = monthKeys(localNow, n);
+    const portalWin = monthWindows(portalNow);
+    const localWin = monthWindows(localNow);
 
-    const [commissionRows, clickRows, postRows, month] = await Promise.all([
-      this.commissionsByWeek(userId, from),
-      this.clicksByWeek(userId, from),
-      this.postsByWeek(userId, from),
-      this.commissionsThisMonth(userId),
-    ]);
+    // The portal pays on payment time; paid_date is null only on rows synced before the
+    // column existed, where the order date is the best available stand-in.
+    const commissionCol = `COALESCE(${tstzAsLocal('e.paid_date', PORTAL_TZ)}, ${naiveUtcAsLocal('e.order_date', PORTAL_TZ)})`;
+    const clickCol = naiveUtcAsLocal('c.clicked_at', LOCAL_TZ);
+    const postCol = naiveUtcAsLocal('p.sent_at', LOCAL_TZ);
 
-    const build = (rows: Array<{ bucket: string; value: number }>): MetricSeries => {
-      const dense = densify(rows, allKeys);
-      const previous = dense.slice(0, n);
-      const current = dense.slice(n);
+    const [commissionRows, clickRows, postRows, commissionPrevElapsed, clickPrevElapsed, postPrevElapsed] =
+      await Promise.all([
+        this.monthlySeries(this.earnings, 'e', commissionCol, 'COALESCE(SUM(e.commission_usd), 0)', userId, portalKeys, "e.status IN ('estimated', 'settled')"),
+        this.monthlySeries(this.clicks, 'c', clickCol, 'COUNT(*)', userId, localKeys),
+        this.monthlySeries(this.posts, 'p', postCol, 'COUNT(*)', userId, localKeys, "p.status = 'sent'"),
+        this.windowTotal(this.earnings, 'e', commissionCol, 'COALESCE(SUM(e.commission_usd), 0)', userId, portalWin.prev_from, portalWin.prev_to, "e.status IN ('estimated', 'settled')"),
+        this.windowTotal(this.clicks, 'c', clickCol, 'COUNT(*)', userId, localWin.prev_from, localWin.prev_to),
+        this.windowTotal(this.posts, 'p', postCol, 'COUNT(*)', userId, localWin.prev_from, localWin.prev_to, "p.status = 'sent'"),
+      ]);
+
+    const build = (
+      rows: Array<{ bucket: string; value: number }>,
+      keys: string[],
+      win: { key: string; prev_key: string },
+      prevElapsed: number,
+    ): MonthMetric => {
+      const series = densify(rows, keys).map((v) => Math.round(v * 100) / 100);
+      // The series is cut on the same clock and filters as the tiles, so the current and
+      // previous totals ARE its last two buckets — no second query that could disagree.
       return {
-        total: sum(current),
-        delta_pct: deltaPct(sum(current), sum(previous)),
-        series: current,
+        current: { key: win.key, total: series[series.length - 1] ?? 0 },
+        previous: { key: win.prev_key, total: series[series.length - 2] ?? 0 },
+        delta_pct: deltaPct(series[series.length - 1] ?? 0, prevElapsed),
+        series,
       };
     };
 
-    const commissions = build(commissionRows);
+    const commissions = build(commissionRows, portalKeys, portalWin, commissionPrevElapsed);
 
     // Best-effort only: a missing rate must not fail the dashboard, it just drops the
     // secondary line. RatesService already caches and falls back to the last good value.
@@ -95,88 +130,53 @@ export class StatsService {
 
     return {
       currency: 'USD',
-      weeks: n,
-      week_starts: allKeys.slice(n),
+      months: n,
+      month_keys: portalKeys,
       ils_approx: rate > 0
-        ? { rate, total: Math.round(commissions.total * rate * 100) / 100 }
+        ? { rate, total: Math.round(commissions.current.total * rate * 100) / 100 }
         : null,
       metrics: {
         commissions,
-        clicks: build(clickRows),
-        posts: build(postRows),
+        clicks: build(clickRows, localKeys, localWin, clickPrevElapsed),
+        posts: build(postRows, localKeys, localWin, postPrevElapsed),
       },
-      month,
     };
   }
 
   /**
-   * Commissions inside the current CALENDAR month, counted on AliExpress platform time —
-   * the same clock the portal reports by and the orders screen filters on, so the figure
-   * the dashboard shows is the figure the owner sees in the portal.
+   * One 'YYYY-MM' bucket per month with rows, over the chart window.
    *
-   * The comparison is against the same ELAPSED stretch of the previous month, not the
-   * whole of it: on the 3rd, three days of this month against a full previous month would
-   * print a catastrophic drop every single month.
+   * Summed in USD, not ILS, and that choice is load-bearing for commissions:
+   * `commission_usd` is what AliExpress reported and never changes, while `commission_ils`
+   * is re-derived at each sync's rate — a trend chart built on it silently rewrites its own
+   * history between page loads. Cancelled commissions are excluded — revenue that
+   * evaporated is not revenue.
    */
-  private async commissionsThisMonth(userId: string) {
-    // 'en-CA' formats as YYYY-MM-DD, which is exactly the shape the range helpers parse.
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-    const [y, mth] = today.split('-').map(Number);
-    const start = portalRangeStart(`${today.slice(0, 7)}-01`)!;
-    const prevMonth = mth === 1 ? `${y - 1}-12` : `${y}-${String(mth - 1).padStart(2, '0')}`;
-    const prevStart = portalRangeStart(`${prevMonth}-01`)!;
-    const elapsed = Date.now() - start.getTime();
-    const prevEnd = new Date(prevStart.getTime() + elapsed);
-
-    const total = (from: Date, to: Date) => this.earnings.createQueryBuilder('e')
-      .select('COALESCE(SUM(e.commission_usd), 0)', 'value')
-      .where('e.user_id = :userId', { userId })
-      // Payment time is the portal's own basis; paid_date is null only on rows synced
-      // before the column existed, where the order date is the best available stand-in.
-      .andWhere('COALESCE(e.paid_date, e.order_date) >= :from', { from })
-      .andWhere('COALESCE(e.paid_date, e.order_date) <= :to', { to })
-      .andWhere("e.status IN ('estimated', 'settled')")
-      .getRawOne()
-      .then((r) => Number(r?.value) || 0)
-      .catch(() => 0);
-
-    const [current, previous] = await Promise.all([
-      total(start, new Date()),
-      total(prevStart, prevEnd),
-    ]);
-    return { key: today.slice(0, 7), total: Math.round(current * 100) / 100, delta_pct: deltaPct(current, previous) };
+  private monthlySeries(
+    repo: Repository<any>, alias: string, localCol: string, valueExpr: string,
+    userId: string, keys: string[], extraWhere?: string,
+  ): Promise<Array<{ bucket: string; value: number }>> {
+    const qb = repo.createQueryBuilder(alias)
+      .select(`to_char(${localCol}, 'YYYY-MM')`, 'bucket')
+      .addSelect(valueExpr, 'value')
+      .where(`${alias}.user_id = :userId`, { userId })
+      .andWhere(`${localCol} >= :fromLocal`, { fromLocal: `${keys[0]}-01 00:00:00` });
+    if (extraWhere) qb.andWhere(extraWhere);
+    return qb.groupBy('bucket').getRawMany();
   }
 
-  /**
-   * Summed in USD, not ILS, and that choice is load-bearing.
-   *
-   * `commission_usd` is what AliExpress reported and never changes. `commission_ils` is
-   * derived at SYNC time — the sync fetches one rate per run and recomputes the shekel value
-   * of every row it touches, so an order from February that settles today is re-valued at
-   * today's rate. A trend chart built on that column silently rewrites its own history
-   * between page loads. USD is the only reproducible basis here.
-   *
-   * Cancelled commissions are excluded — they are revenue that evaporated, not revenue.
-   */
-  private commissionsByWeek(userId: string, from: Date) {
-    return this.earnings.createQueryBuilder('e')
-      .select("to_char(date_trunc('week', e.order_date), 'YYYY-MM-DD')", 'bucket')
-      .addSelect('COALESCE(SUM(e.commission_usd), 0)', 'value')
-      .where('e.user_id = :userId', { userId })
-      .andWhere('e.order_date >= :from', { from })
-      .andWhere("e.status IN ('estimated', 'settled')")
-      .groupBy('bucket')
-      .getRawMany();
-  }
-
-  private clicksByWeek(userId: string, from: Date) {
-    return this.clicks.createQueryBuilder('c')
-      .select("to_char(date_trunc('week', c.clicked_at), 'YYYY-MM-DD')", 'bucket')
-      .addSelect('COUNT(*)', 'value')
-      .where('c.user_id = :userId', { userId })
-      .andWhere('c.clicked_at >= :from', { from })
-      .groupBy('bucket')
-      .getRawMany();
+  /** A single scalar over one local-time window — the elapsed-stretch delta baseline. */
+  private windowTotal(
+    repo: Repository<any>, alias: string, localCol: string, valueExpr: string,
+    userId: string, fromLocal: string, toLocal: string, extraWhere?: string,
+  ): Promise<number> {
+    const qb = repo.createQueryBuilder(alias)
+      .select(valueExpr, 'value')
+      .where(`${alias}.user_id = :userId`, { userId })
+      .andWhere(`${localCol} >= :fromLocal`, { fromLocal })
+      .andWhere(`${localCol} < :toLocal`, { toLocal });
+    if (extraWhere) qb.andWhere(extraWhere);
+    return qb.getRawOne().then((r) => Number(r?.value) || 0).catch(() => 0);
   }
 
   /**
@@ -199,17 +199,5 @@ export class StatsService {
       .map((r) => ({ source: r.source || 'other', clicks: Number(r.n) || 0 }))
       .sort((a, b) => b.clicks - a.clicks);
     return { days: d, total: sources.reduce((s, r) => s + r.clicks, 0), sources };
-  }
-
-  /** Only posts that actually went out — a draft or a failure is not throughput. */
-  private postsByWeek(userId: string, from: Date) {
-    return this.posts.createQueryBuilder('p')
-      .select("to_char(date_trunc('week', p.sent_at), 'YYYY-MM-DD')", 'bucket')
-      .addSelect('COUNT(*)', 'value')
-      .where('p.user_id = :userId', { userId })
-      .andWhere("p.status = 'sent'")
-      .andWhere('p.sent_at >= :from', { from })
-      .groupBy('bucket')
-      .getRawMany();
   }
 }

@@ -687,11 +687,15 @@ export interface Earning {
   settlement_date?: string;
 }
 
-/** One dashboard metric: the period total, its change vs the preceding period, and the
- *  weekly series. `delta_pct` is null when there is no previous period to compare against. */
-export interface MetricSeries {
-  total: number;
+/** One dashboard metric, cut by CALENDAR month: the current month so far, the full
+ *  previous month, the elapsed-stretch delta and the monthly trend series. */
+export interface MonthMetric {
+  current: { key: string; total: number };
+  previous: { key: string; total: number };
+  /** Current month vs the SAME elapsed stretch of the previous one — a half-finished
+   *  month is never compared against a whole one. Null with no baseline. */
   delta_pct: number | null;
+  /** Monthly totals, oldest → newest, aligned 1:1 with OverviewStats.month_keys. */
   series: number[];
 }
 
@@ -699,25 +703,18 @@ export interface OverviewStats {
   /** Commissions are reported in USD — the currency AliExpress actually pays, and the only
    *  one whose history is stable (commission_ils is recomputed at each sync's rate). */
   currency: 'USD';
-  weeks: number;
-  /** Week-start dates (YYYY-MM-DD, Monday) aligned 1:1 with each metric's `series`. */
-  week_starts: string[];
-  /** Today's rate + converted total, for readers who think in shekels. Explicitly approximate. */
+  months: number;
+  /** 'YYYY-MM' keys aligned 1:1 with each metric's `series`; last = current month.
+   *  Commissions months are cut on AliExpress platform time (matches the portal);
+   *  clicks/posts on Israel time. */
+  month_keys: string[];
+  /** Today's rate + converted current-month commissions, for readers who think in
+   *  shekels. Explicitly approximate. */
   ils_approx: { rate: number; total: number } | null;
   metrics: {
-    commissions: MetricSeries;
-    clicks: MetricSeries;
-    posts: MetricSeries;
-  };
-  /** Commissions for the CURRENT calendar month on AliExpress platform time — the figure
-   *  that matches the portal, shown beside the 12-week trend. */
-  month: {
-    /** 'YYYY-MM' in portal time. */
-    key: string;
-    total: number;
-    /** vs the same ELAPSED stretch of the previous month, so a half-finished month is
-     *  not compared against a whole one. */
-    delta_pct: number | null;
+    commissions: MonthMetric;
+    clicks: MonthMetric;
+    posts: MonthMetric;
   };
 }
 

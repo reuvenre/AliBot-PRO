@@ -1,48 +1,71 @@
-import { densify, deltaPct, startOfWeekUtc, sum, weekKeys } from './stats.util';
+import { deltaPct, densify, localNowString, monthKeys, monthWindows, sum } from './stats.util';
 
 describe('stats.util', () => {
-  describe('startOfWeekUtc', () => {
-    it('snaps to Monday, matching Postgres date_trunc', () => {
-      // 2026-07-29 is a Wednesday → Monday 2026-07-27.
-      expect(startOfWeekUtc(new Date('2026-07-29T13:45:00Z')).toISOString().slice(0, 10))
-        .toBe('2026-07-27');
+  describe('localNowString', () => {
+    it("renders the tz's wall clock in Postgres timestamp shape", () => {
+      // 2026-08-19T21:30Z = 2026-08-20 05:30 in Shanghai (+08, no DST).
+      expect(localNowString('Asia/Shanghai', new Date('2026-08-19T21:30:00Z')))
+        .toBe('2026-08-20 05:30:00');
     });
 
-    it('treats Sunday as the END of its week, not the start', () => {
-      // The off-by-one that silently shifts every bucket: Sunday is day 0 in JS.
-      expect(startOfWeekUtc(new Date('2026-08-02T23:59:00Z')).toISOString().slice(0, 10))
-        .toBe('2026-07-27');
+    it('crosses the month boundary the calendar way, not the UTC way', () => {
+      // 2026-08-31 23:00 IL is already September on the portal clock (+08 vs +03).
+      expect(localNowString('Asia/Shanghai', new Date('2026-08-31T20:00:00Z')).slice(0, 7))
+        .toBe('2026-09');
+      expect(localNowString('Asia/Jerusalem', new Date('2026-08-31T20:00:00Z')).slice(0, 7))
+        .toBe('2026-08');
     });
   });
 
-  describe('weekKeys', () => {
-    it('returns consecutive Mondays ending with the current week', () => {
-      expect(weekKeys(new Date('2026-07-29T00:00:00Z'), 4))
-        .toEqual(['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27']);
+  describe('monthKeys', () => {
+    it('returns consecutive months ending with the current one', () => {
+      expect(monthKeys('2026-08-19 22:00:00', 4))
+        .toEqual(['2026-05', '2026-06', '2026-07', '2026-08']);
     });
 
-    it('crosses a month boundary without drifting', () => {
-      expect(weekKeys(new Date('2026-03-03T00:00:00Z'), 3))
-        .toEqual(['2026-02-16', '2026-02-23', '2026-03-02']);
+    it('crosses a year boundary without drifting', () => {
+      expect(monthKeys('2026-02-01 00:00:00', 3))
+        .toEqual(['2025-12', '2026-01', '2026-02']);
+    });
+  });
+
+  describe('monthWindows', () => {
+    it('compares against the SAME elapsed stretch of the previous month', () => {
+      const w = monthWindows('2026-08-19 21:45:30');
+      expect(w.key).toBe('2026-08');
+      expect(w.prev_key).toBe('2026-07');
+      expect(w.prev_from).toBe('2026-07-01 00:00:00');
+      // 18d 21:45:30 into August ↔ 18d 21:45:30 into July.
+      expect(w.prev_to).toBe('2026-07-19 21:45:30');
+    });
+
+    it('clamps to the whole previous month when it is the shorter one', () => {
+      // March 30th is deeper into March than February is long — without the clamp the
+      // baseline window would spill into March and count current-month rows as baseline.
+      const w = monthWindows('2026-03-30 12:00:00');
+      expect(w.prev_from).toBe('2026-02-01 00:00:00');
+      expect(w.prev_to).toBe('2026-03-01 00:00:00');
+    });
+
+    it('crosses a year boundary in January', () => {
+      const w = monthWindows('2026-01-10 08:00:00');
+      expect(w.prev_key).toBe('2025-12');
+      expect(w.prev_from).toBe('2025-12-01 00:00:00');
+      expect(w.prev_to).toBe('2025-12-10 08:00:00');
     });
   });
 
   describe('densify', () => {
-    it('zero-fills weeks the query returned no rows for', () => {
-      const keys = ['2026-07-06', '2026-07-13', '2026-07-20'];
-      const rows = [{ bucket: '2026-07-20', value: 5 }, { bucket: '2026-07-06', value: 2 }];
-      // Order comes from keys, not from the query — a quiet middle week must not collapse.
+    it('zero-fills months the query returned no rows for', () => {
+      const keys = ['2026-06', '2026-07', '2026-08'];
+      const rows = [{ bucket: '2026-08', value: 5 }, { bucket: '2026-06', value: 2 }];
+      // Order comes from keys, not from the query — a quiet middle month must not collapse.
       expect(densify(rows, keys)).toEqual([2, 0, 5]);
     });
 
-    it('accepts full timestamps from the driver, not just dates', () => {
-      const rows = [{ bucket: '2026-07-06T00:00:00.000Z', value: 3 }];
-      expect(densify(rows, ['2026-07-06'])).toEqual([3]);
-    });
-
     it('coerces string counts, which is what COUNT(*) returns', () => {
-      const rows = [{ bucket: '2026-07-06', value: '42' as any }];
-      expect(densify(rows, ['2026-07-06'])).toEqual([42]);
+      const rows = [{ bucket: '2026-07', value: '42' as any }];
+      expect(densify(rows, ['2026-07'])).toEqual([42]);
     });
   });
 
@@ -56,7 +79,7 @@ describe('stats.util', () => {
     });
 
     it('returns null with no baseline instead of inventing +100%', () => {
-      // A first-week account has nothing to compare against; the UI hides the badge.
+      // A first-month account has nothing to compare against; the UI hides the badge.
       expect(deltaPct(500, 0)).toBeNull();
     });
   });
