@@ -20,6 +20,7 @@ import { AUTO_RETRY_MARK, NET_SAFE_TAG, isRetryableNetworkPartial } from './netw
 import { soloCampaignSlot } from './solo-campaign-slot';
 import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
+import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost } from './flylink-trust';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { pruneRunLog, recordFailedRun } from '../campaigns/run-failure-log';
 import { waDelayMs } from './whatsapp-pacing';
@@ -444,7 +445,7 @@ export class PostsService {
 
   // ── Preview ───────────────────────────────────────────────────────────────
 
-  async preview(userId: string, productId: string, language = 'he', customProduct?: any, template?: string, images?: GenerateImage[], hint?: string, forceVision = false, promo?: { discount?: number | null; ends_at?: string | null }) {
+  async preview(userId: string, productId: string, language = 'he', customProduct?: any, template?: string, images?: GenerateImage[], hint?: string, forceVision = false, promo?: { discount?: number | null; ends_at?: string | null }, copyHint?: string) {
     const creds = await this.credentials.getRaw(userId);
     const rate = await this.rates.getRate(creds?.currency_pair || 'USD_ILS');
     const product = customProduct || await this.searchProduct(productId, creds);
@@ -459,6 +460,8 @@ export class PostsService {
     const promoOpt = promo
       ? { promo: { discount: promo.discount ?? null, endsLabel: this.promoEndsLabel(promo.ends_at) } }
       : undefined;
+    // A copy-angle nudge (the bandit's pick) rides the same opts channel the promo does.
+    const genOpts = copyHint ? { ...(promoOpt || {}), copyHint } : promoOpt;
 
     const text = await this.generateText(
       product, language, rate, creds,
@@ -467,7 +470,7 @@ export class PostsService {
       images,
       hint,
       forceVision,
-      promoOpt,
+      genOpts,
     );
 
     // The coupon line the send path WOULD append, so the composer shows what actually
@@ -901,7 +904,7 @@ export class PostsService {
      * by campaigns, whose own cron is the cadence — see runCampaign / runFlylinkCampaign.
      * `campaignId` links the post back to its campaign.
      */
-    opts?: { scheduledAt?: Date; campaignId?: string; keyword?: string },
+    opts?: { scheduledAt?: Date; campaignId?: string; keyword?: string; copyVariant?: string },
   ): Promise<Post> {
     const creds = await this.credentials.getRaw(userId);
 
@@ -966,6 +969,9 @@ export class PostsService {
       user_id: userId,
       campaign_id: opts?.campaignId,
       keyword: opts?.keyword || null,
+      // The angle the copy was written in (FLYLINK runner) — clicks per angle are how the
+      // bandit learns; without recording it here those posts were invisible to it.
+      copy_variant: opts?.copyVariant || null,
       product_id: product.product_id,
       product_title: product.title,
       product_image: product.image_url,
@@ -3157,7 +3163,8 @@ export class PostsService {
    * counting it would punish its angle for a delivery failure. Best-effort — an empty
    * result simply means the run explores the angles evenly.
    */
-  private async variantStats(campaignId: string): Promise<VariantStat[]> {
+  // Public: the FLYLINK runner (supplier-products.service) draws from the same stats.
+  async variantStats(campaignId: string): Promise<VariantStat[]> {
     const rows: any[] = await this.repo.query(
       `SELECT copy_variant                          AS variant,
               count(*)::int                         AS posts,
@@ -3323,6 +3330,14 @@ export class PostsService {
       // Priced in the same currency as the rest of this post, so a shopper can tell at a
       // glance whether they qualify instead of converting the tier themselves.
       body = `${body}\n\n${this.coupons.couponLine(match.coupon, match.qualifies, await this.postMoney(post, creds))}`;
+    }
+
+    // FLYLINK trust trailer — the hesitation on hidden products is trust, not interest.
+    // Code-built like the price block (fixed wording, can never over-promise), attached at
+    // send time so verbatim re-posts and already-queued posts get it too. Mirrors the
+    // coupon rule above: source inferred from the link.
+    if (isFlylinkPost(post.affiliate_url) && !body.includes(FLYLINK_TRUST_MARK)) {
+      body = `${body}\n\n${flylinkTrustBlock()}`;
     }
 
     const footer = await this.resolveFooterText(post.user_id, creds, channelOverride);

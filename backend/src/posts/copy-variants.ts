@@ -70,6 +70,28 @@ export const COPY_VARIANTS: CopyVariant[] = [
   },
 ];
 
+/**
+ * FLYLINK-only angle: speak straight to the replica-fear instead of around it.
+ *
+ * Hidden-product followers hesitate for trust reasons, not interest reasons — and copy
+ * that pretends there is nothing to address amplifies the suspicion. This angle answers
+ * it with confidence and WITHOUT crossing the honesty line: never claim the product is
+ * original, never promise "identical to the original", never name a brand as the source.
+ * Kept out of the AliExpress pool where "כן, זו גרסה" would be flatly wrong.
+ */
+export const TRUST_VARIANT: CopyVariant = {
+  id: 'trust',
+  label: 'ביטחון',
+  hint: {
+    he: 'זווית כתיבה: פנה/י בביטחון ובלי התנצלות לשאלה שהקורא שואל בלב — "מה באמת יגיע לי?". הדגש/י את איכות הגרסה, את זה שהתמונות הן של הפריט עצמו, ואת הפער האדיר מול מחיר המקור. אסור לטעון שהמוצר מקורי, אסור להבטיח "זהה למקור", ואסור להציג מותג כמקור המוצר.',
+    en: 'Copy angle: address the reader\'s unspoken question — "what will I actually get?" — with confidence, not apology. Stress the version\'s quality, that the photos show the actual item, and the gap versus the original\'s price. Never claim it is original, never promise "identical to the original", never present a brand as the source.',
+    ar: 'زاوية الكتابة: أجب بثقة وبلا اعتذار عن سؤال القارئ الصامت — "ماذا سيصلني فعلاً؟". أبرز جودة النسخة وأن الصور للقطعة نفسها والفارق مقابل سعر الأصلي. لا تدّعِ أبداً أن المنتج أصلي ولا تعد بأنه "مطابق للأصل".',
+  },
+};
+
+/** The pool a FLYLINK campaign draws from — the shared angles plus the trust angle. */
+export const FLYLINK_VARIANTS: CopyVariant[] = [...COPY_VARIANTS, TRUST_VARIANT];
+
 /** Clicks and posts recorded for one angle, in one campaign. */
 export interface VariantStat {
   variant: string;
@@ -133,9 +155,8 @@ export function bestVariant(stats: VariantStat[]): VariantScore | null {
  *
  * `roll` is the caller's random draw, passed in so this stays a pure function.
  */
-export function pickVariant(stats: VariantStat[], roll: number): CopyVariant {
+export function pickVariant(stats: VariantStat[], roll: number, pool: CopyVariant[] = COPY_VARIANTS): CopyVariant {
   const byId = new Map((stats || []).map((s) => [s.variant, s]));
-  const pool = COPY_VARIANTS;
 
   // Anything under-sampled goes first, so every angle gets a real trial before any
   // comparison between them is allowed to mean something.
@@ -158,5 +179,6 @@ export function variantHint(variant: CopyVariant, language: string): string {
 /** An angle by id — for turning a stored post value back into something displayable. */
 export function variantById(id: string | null | undefined): CopyVariant | null {
   if (!id) return null;
-  return COPY_VARIANTS.find((v) => v.id === id) || null;
+  // Search every pool — a stored 'trust' post must still resolve to its label in digests.
+  return FLYLINK_VARIANTS.find((v) => v.id === id) || null;
 }

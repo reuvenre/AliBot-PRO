@@ -10,6 +10,7 @@ import { openPostClash } from './flylink-dedup';
 import { coverFirst } from './gallery-order';
 import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
+import { FLYLINK_VARIANTS, pickVariant, variantHint } from '../posts/copy-variants';
 import { Campaign } from '../campaigns/campaign.entity';
 import { AiService, GenerateImage } from '../ai/ai.service';
 import { CredentialsService } from '../credentials/credentials.service';
@@ -316,7 +317,7 @@ export class SupplierProductsService {
    * Credit for ai_generate is consumed inside generateText, exactly like AliExpress
    * (no extra supplier-level charge).
    */
-  async preview(userId: string, id: string, opts?: { language?: string; template?: string; vision?: boolean; hint?: string }) {
+  async preview(userId: string, id: string, opts?: { language?: string; template?: string; vision?: boolean; hint?: string; copyHint?: string }) {
     const p = await this.get(userId, id);
     const gallery = this.proxiedGallery(p);
     const image = this.proxyImage(p.image_url) || gallery[0] || '';
@@ -341,6 +342,8 @@ export class SupplierProductsService {
     const result = await this.posts.preview(
       userId, p.sku || p.id, opts?.language || 'he', product, opts?.template, images, opts?.hint,
       !!opts?.vision, // forceVision: keep vision on even under a template (code-only titles)
+      undefined,
+      opts?.copyHint, // the bandit's angle nudge (campaign runs) — suppressed under a template
     );
     return { ...result, gallery, vision_used: visionUsed };
   }
@@ -701,10 +704,19 @@ export class SupplierProductsService {
           const image = gallery[0] || this.proxyImage(p.image_url) || '';
           const { price, currency } = await this.pricing(userId, p.price);
           const product = this.toPostProduct(p, image, price, currency);
-          const preview = await this.preview(userId, p.id, { language: 'he', template: template || undefined, vision: true });
+          // The copy angle, from the FLYLINK pool — which adds 'trust' (speak straight to
+          // the replica-fear) on top of the shared angles. Recorded on the post either way
+          // so clicks per angle teach the bandit; the hint itself is suppressed under a
+          // group template, whose wording is the owner's (same contract as AliExpress).
+          const stats = await this.posts.variantStats(campaign.id).catch(() => []);
+          const variant = pickVariant(stats, Math.random(), FLYLINK_VARIANTS);
+          const preview = await this.preview(userId, p.id, {
+            language: 'he', template: template || undefined, vision: true,
+            copyHint: variantHint(variant, 'he'),
+          });
           const text = preview?.generated_text || p.description || undefined;
           await this.posts.createQueuedPost(userId, product, undefined, text, targets[0], gallery, undefined, targets,
-            { scheduledAt: slot, campaignId: campaign.id });
+            { scheduledAt: slot, campaignId: campaign.id, copyVariant: variant.id });
         }
 
         p.has_post = true;

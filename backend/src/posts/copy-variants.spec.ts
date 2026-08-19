@@ -1,5 +1,6 @@
 import {
-  COPY_VARIANTS, EXPLORE_RATE, MIN_CLICKS_TO_PICK_WINNER, MIN_POSTS_PER_VARIANT, VariantStat,
+  COPY_VARIANTS, EXPLORE_RATE, FLYLINK_VARIANTS, MIN_CLICKS_TO_PICK_WINNER,
+  MIN_POSTS_PER_VARIANT, TRUST_VARIANT, VariantStat,
   bestVariant, pickVariant, scoreVariants, variantById, variantHint,
 } from './copy-variants';
 
@@ -137,6 +138,28 @@ describe('variantById', () => {
     // Posts written before the bandit existed carry null, and an angle could be retired.
     expect(variantById(null)).toBeNull();
     expect(variantById('retired-angle')).toBeNull();
+  });
+});
+
+describe('the trust angle (FLYLINK pool)', () => {
+  it('is reachable from the FLYLINK pool but NEVER from the default one', () => {
+    // "כן, זו גרסה" on an AliExpress post would be flatly wrong — the pools must not mix.
+    const fullSample = COPY_VARIANTS.map((v) => ({ variant: v.id, posts: 40, clicks: 1 }));
+    for (const roll of [0, 0.3, 0.7, 0.99]) {
+      expect(pickVariant(fullSample, roll).id).not.toBe('trust');
+    }
+    // With every shared angle sampled and trust untried, the FLYLINK pool tries it first.
+    expect(pickVariant(fullSample, 0.5, FLYLINK_VARIANTS).id).toBe('trust');
+  });
+
+  it('holds the honesty line in its own instructions', () => {
+    // The hint must carry the prohibition, not rely on the model's judgement.
+    expect(TRUST_VARIANT.hint.he).toContain('אסור');
+    expect(TRUST_VARIANT.hint.en).toContain('Never claim');
+  });
+
+  it('resolves from a stored post id, so digests can label it', () => {
+    expect(variantById('trust')?.label).toBe('ביטחון');
   });
 });
 
