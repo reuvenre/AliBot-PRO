@@ -18,6 +18,7 @@ import { stripInlineLink } from './strip-inline-link';
 import { toWhatsAppText } from './whatsapp-format';
 import { AUTO_RETRY_MARK, NET_SAFE_TAG, isRetryableNetworkPartial } from './network-partial';
 import { soloCampaignSlot } from './solo-campaign-slot';
+import { manualQueueTurn } from './queue-fairness';
 import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
 import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost } from './flylink-trust';
@@ -1635,6 +1636,7 @@ export class PostsService {
     const backlog = new Map<string, Post[]>();
     const windowOpen = new Map<string, boolean>();
     const tgCache = new Map<string, boolean>(); // campaign_id → publishes to Telegram
+    const queueTurn = new Map<string, boolean>(); // group key → this slot belongs to the manual queue
 
     // Does this post actually publish to the group's Telegram channel? A campaign
     // filtered to Instagram/Pinterest carries channel_override only for targeting —
@@ -1666,6 +1668,21 @@ export class PostsService {
       }
       if (!windowOpen.get(key)) continue; // window closed → hold everything for this group
       if (!headTaken.has(key)) {
+        // FAIRNESS vs the manual queue: queued posts are time-less, so they occupy nothing
+        // in the group's calendar — campaigns booked EVERY interval and seven queued posts
+        // slid "~14:00 → ~15:00" forever. While the queue has posts waiting, the group's
+        // slots alternate: a slot after a campaign send is the queue's — the campaign head
+        // yields it (re-spaced +interval below) and processQueue's drip takes it instead.
+        if (!queueTurn.has(key)) {
+          queueTurn.set(key, await this.manualQueueOwnsSlot(p.user_id, p.channel_override || null).catch(() => false));
+        }
+        if (queueTurn.get(key)) {
+          headTaken.add(key); // consume the head marker without picking — the queue sends this slot
+          const arr = backlog.get(key) || [];
+          arr.push(p);
+          backlog.set(key, arr);
+          continue;
+        }
         headTaken.add(key);
         picked.push(p);
       } else {
@@ -1686,6 +1703,45 @@ export class PostsService {
     }
 
     return picked;
+  }
+
+  /**
+   * Does the manual queue own this group's current slot? True only when posts are actually
+   * waiting in the group's bucket, the drip that would send them is enabled (user + group
+   * toggles), and the group's last sent post was a CAMPAIGN's — see queue-fairness.ts.
+   */
+  private async manualQueueOwnsSlot(userId: string, groupId: string | null): Promise<boolean> {
+    const waitQb = this.repo.createQueryBuilder('p')
+      .where('p.user_id = :u', { u: userId })
+      .andWhere("p.status = 'queued'");
+    if (groupId) waitQb.andWhere('p.channel_override = :g', { g: groupId });
+    else waitQb.andWhere('p.channel_override IS NULL');
+    const waiting = await waitQb.getCount();
+    if (!waiting) return false;
+
+    // The drip must actually be able to take the yielded slot — a paused queue must not
+    // silence the group's campaigns.
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    if (creds?.schedule_enabled !== true) return false;
+    let dripEnabled = true;
+    if (groupId) {
+      const chs: any[] = await this.channels.listForSchedule(userId).catch(() => []);
+      const ch = chs.find((c) => c.channel_id === groupId);
+      dripEnabled = (ch?.schedule_enabled ?? true) !== false;
+    }
+
+    const lastQb = this.repo.createQueryBuilder('p')
+      .where('p.user_id = :u', { u: userId })
+      .andWhere("p.status = 'sent'")
+      .orderBy('p.sent_at', 'DESC');
+    if (groupId) lastQb.andWhere('(p.channel_override = :g OR p.channel_overrides LIKE :like)', { g: groupId, like: `%"${groupId}"%` });
+    else lastQb.andWhere('p.channel_override IS NULL');
+    const last = await lastQb.getOne();
+
+    return manualQueueTurn({
+      waiting, dripEnabled,
+      lastSentCampaignId: last?.campaign_id, hasSentAny: !!last,
+    });
   }
 
   async sendScheduled(post: Post) {
