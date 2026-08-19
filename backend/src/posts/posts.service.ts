@@ -5701,6 +5701,9 @@ export class PostsService {
         prompt: userPrompt,
         images: visionImages,
         maxTokens: tokenCap,
+        // A model whose reasoning eats the budget truncates the same way on every retry —
+        // let a second keyed provider finish the copy instead (issue #62).
+        truncationFailover: true,
         // The retry runs cold: rambling is a sampling failure, so a low temperature is the
         // single most effective change to get structured copy on the second try.
         temperature: attempt === 0 ? (hasTemplate ? 0.7 : 0.85) : 0.2,

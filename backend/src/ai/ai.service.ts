@@ -3,6 +3,7 @@ import axios from 'axios';
 import { DecryptedCredentials } from '../credentials/credentials.service';
 import { AiUsageService } from './ai-usage.service';
 import { finishReasonTruncated } from './finish-reason';
+import { geminiOutputBudget } from './gemini-budget';
 
 export type AiProvider = 'anthropic' | 'openai' | 'gemini';
 
@@ -18,6 +19,15 @@ export interface GenerateOptions {
   temperature?: number;
   /** Optional images for vision — the model describes what it actually sees. */
   images?: GenerateImage[];
+  /**
+   * A non-empty draft the provider cut at the token budget fails over to the next keyed
+   * provider instead of being returned as-is (the same model retried at a similar budget
+   * usually truncates identically — issue #62). The first truncated draft is kept as a
+   * last resort so the caller's own truncation handling still has something to act on.
+   * Opt-in: tiny fixed-budget calls (the copy judge answers in ≤24 tokens) hit the cap
+   * by design and must NOT burn a second provider on it.
+   */
+  truncationFailover?: boolean;
 }
 
 export interface GenerateResult {
@@ -169,6 +179,7 @@ export class AiService {
     // Try each keyed provider in order; move on when one errors OR returns empty text, so a
     // single provider hiccup (bad key, quota, retired model, safety-block) doesn't dump the
     // post to generic default copy while another usable provider sits idle.
+    let truncatedFallback: GenerateResult | null = null;
     for (let i = 0; i < order.length; i++) {
       const provider = order[i];
       try {
@@ -184,11 +195,17 @@ export class AiService {
           continue;
         }
         // Meter token consumption per user/day/provider (best-effort, never blocks).
+        // Metered BEFORE the truncation check — a truncated draft consumed real tokens too.
         if (creds.user_id && result.tokens > 0) {
           void this.usage.record(
             creds.user_id, result.provider,
             result.promptTokens ?? 0, result.outputTokens ?? 0, result.tokens,
           );
+        }
+        if (opts.truncationFailover && result.truncated && i < order.length - 1) {
+          truncatedFallback ??= result;
+          this.logger.warn(`[AI:${provider}] draft truncated at the token budget — failing over to next provider`);
+          continue;
         }
         return result;
       } catch (err: any) {
@@ -196,7 +213,9 @@ export class AiService {
         this.logger.error(`[AI:${provider}] generation failed: ${msg}${i < order.length - 1 ? ' — failing over to next provider' : ''}`);
       }
     }
-    return null;
+    // Every other provider errored, answered empty, or truncated too — hand the caller the
+    // first truncated draft (still flagged) rather than nothing at all.
+    return truncatedFallback;
   }
 
   // ── Anthropic Claude ──────────────────────────────────────────────────────
@@ -306,9 +325,9 @@ export class AiService {
     const legacy25 = /2\.5/.test(model);
     const generationConfig: Record<string, unknown> = {
       temperature,
-      // Give headroom so the full post is never cut off mid-sentence (thinking models
-      // also spend part of the budget on reasoning, so allow more).
-      maxOutputTokens: Math.max(maxTokens, legacy25 ? (isPro ? 2048 : 1024) : 2048),
+      // Thinking allowance ON TOP of the caller's text budget — a flat floor swallowed
+      // the caller's truncation-retry escalation (see gemini-budget.ts, issue #62).
+      maxOutputTokens: geminiOutputBudget(model, maxTokens),
     };
     if (legacy25) generationConfig.thinkingConfig = { thinkingBudget: isPro ? 128 : 0 };
     const doCall = (cfg: Record<string, unknown>) =>

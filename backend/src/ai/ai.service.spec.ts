@@ -45,3 +45,49 @@ describe('AiService provider failover', () => {
     expect(await svc.generate(creds, { system: 's', prompt: 'p' })).toBeNull();
   });
 });
+
+describe('AiService truncation failover (issue #62)', () => {
+  const truncated = { text: 'half a pin', provider: 'gemini', tokens: 9, promptTokens: 3, outputTokens: 6, truncated: true };
+  const full = { text: 'a whole finished pin', provider: 'anthropic', tokens: 12, promptTokens: 5, outputTokens: 7 };
+
+  it('a truncated draft fails over to the next keyed provider when opted in', async () => {
+    const svc = makeService();
+    jest.spyOn(svc as any, 'callGemini').mockResolvedValue(truncated);
+    jest.spyOn(svc as any, 'callAnthropic').mockResolvedValue(full);
+    const res = await svc.generate(creds, { system: 's', prompt: 'p', truncationFailover: true });
+    expect(res?.provider).toBe('anthropic');
+    expect(res?.truncated).toBeFalsy();
+  });
+
+  it('without the opt-in a truncated draft is returned as-is — judge calls hit their tiny cap by design', async () => {
+    const svc = makeService();
+    jest.spyOn(svc as any, 'callGemini').mockResolvedValue(truncated);
+    const anthropic = jest.spyOn(svc as any, 'callAnthropic').mockResolvedValue(full);
+    const res = await svc.generate(creds, { system: 's', prompt: 'p' });
+    expect(res?.provider).toBe('gemini');
+    expect(res?.truncated).toBe(true);
+    expect(anthropic).not.toHaveBeenCalled();
+  });
+
+  it('when EVERY provider truncates, the first truncated draft comes back still flagged', async () => {
+    // The caller's own truncation handling (budget doubling) must get something to act on.
+    const svc = makeService();
+    jest.spyOn(svc as any, 'callGemini').mockResolvedValue(truncated);
+    jest.spyOn(svc as any, 'callAnthropic').mockResolvedValue({ ...full, truncated: true });
+    const res = await svc.generate(creds, { system: 's', prompt: 'p', truncationFailover: true });
+    // The LAST provider's truncated result is returned directly (no failover left);
+    // significant: it is non-null and still carries the truncated flag.
+    expect(res?.truncated).toBe(true);
+    expect(res?.text?.length).toBeGreaterThan(0);
+  });
+
+  it('a truncated draft that failed over is still metered — its tokens were consumed', async () => {
+    const usage: any = { record: jest.fn() };
+    const svc = new AiService(usage);
+    jest.spyOn(svc as any, 'callGemini').mockResolvedValue(truncated);
+    jest.spyOn(svc as any, 'callAnthropic').mockResolvedValue(full);
+    await svc.generate(creds, { system: 's', prompt: 'p', truncationFailover: true });
+    expect(usage.record).toHaveBeenCalledWith('u1', 'gemini', 3, 6, 9);
+    expect(usage.record).toHaveBeenCalledWith('u1', 'anthropic', 5, 7, 12);
+  });
+});
