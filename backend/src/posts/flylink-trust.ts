@@ -24,12 +24,13 @@ export function isFlylinkPost(affiliateUrl: string | null | undefined): boolean 
 }
 
 /** First line doubles as the dedup marker in buildPostBody — keep it stable. */
-export const FLYLINK_TRUST_MARK = '📸 התמונות צולמו במחסן';
+export const FLYLINK_TRUST_MARK = '📸 מהמפעל ישירות לצרכן';
 
+/** The owner's wording (19.08) — questions go to DM; support runs directly with the supplier. */
 export function flylinkTrustBlock(): string {
   return [
     `${FLYLINK_TRUST_MARK} — מה שרואים בתמונות זה מה שמגיע`,
-    '📦 כל הזמנה מקבלת מספר מעקב עד הבית',
-    '💬 מתלבטים? שאלו בקבוצה לפני ההזמנה — עונים לכולם',
+    '📦 כל הזמנה מקבלת מספר מעקב ישירות למייל והמשלוחים מהירים',
+    '💬 מתלבטים? שלחו הודעה לפרטי לפני ההזמנה ונסייע בשמחה ישירות מול הספק',
   ].join('\n');
 }
