@@ -185,6 +185,12 @@ export class Post {
   @Column({ nullable: true, type: 'text' })
   gallery_json: string;
 
+  /** JSON array of channel_ids this post ACTUALLY published to — written when a manual
+   *  push sends it somewhere other than its targeting field. DISPLAY ONLY: nothing that
+   *  routes a send reads it (see delivered-channels.ts). */
+  @Column({ nullable: true, type: 'text' })
+  delivered_channels: string | null;
+
   /** The product's own video (AliExpress product_video_url). Published instead of the
    *  image on Telegram/WhatsApp when the account opted in (prefer_product_video); any
    *  video failure falls back to the image, and image platforms never use it. */

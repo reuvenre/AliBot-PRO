@@ -403,8 +403,21 @@ function postTargetIds(post: Post): string[] {
   return ids;
 }
 
+/**
+ * The group(s) a row is LABELLED with: where the post actually published when we know it
+ * (a manual push records that), otherwise where it is aimed. Without this a product pushed
+ * by hand to one group kept displaying the group it was created for.
+ */
+function postDisplayIds(post: Post): string[] {
+  try {
+    const delivered = post.delivered_channels ? JSON.parse(post.delivered_channels) : [];
+    if (Array.isArray(delivered) && delivered.filter(Boolean).length) return delivered.filter(Boolean);
+  } catch { /* unreadable → fall back to targeting */ }
+  return postTargetIds(post);
+}
+
 function postTargets(post: Post, channels: Channel[]): string[] {
-  return postTargetIds(post).map((id) => channels.find((c) => c.channel_id === id)?.name || id);
+  return postDisplayIds(post).map((id) => channels.find((c) => c.channel_id === id)?.name || id);
 }
 
 /** Platform + target-group chips shown under a post's title. */

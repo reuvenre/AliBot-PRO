@@ -23,6 +23,7 @@ import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
 import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost } from './flylink-trust';
 import { BRAND_PLUS_MARK, brandPlusLine } from './brand-plus';
+import { mergeDeliveredChannels } from './delivered-channels';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { pruneRunLog, recordFailedRun } from '../campaigns/run-failure-log';
 import { waDelayMs } from './whatsapp-pacing';
@@ -3641,6 +3642,11 @@ export class PostsService {
     const errors: string[] = [];
     const tasks: Promise<void>[] = [];
     let anySuccess = false;
+    // Groups this push CONFIRMED delivery to — the record the posts list labels the row
+    // with. Only successes land here, and only real group ids (a default-channel send
+    // has no group to name).
+    const delivered = new Set<string>();
+    const markDelivered = (target?: string) => { if (target) delivered.add(target); };
 
     // Media up front (see the main send path): the designed frame must be registered
     // before Facebook/Instagram build their image URLs.
@@ -3654,8 +3660,11 @@ export class PostsService {
         for (const target of targetList) {
           const body = await this.buildPostBody(post, creds, target);
           const label = await this.targetLabel(userId, target, multi);
-          try { await this.sendToTelegramChannel(post, creds, body, target, media); anySuccess = true; }
-          catch (err: any) { errors.push(`Telegram: ${label}${telegramErrorText(err)}`); }
+          try {
+            await this.sendToTelegramChannel(post, creds, body, target, media);
+            anySuccess = true;
+            markDelivered(target);
+          } catch (err: any) { errors.push(`Telegram: ${label}${telegramErrorText(err)}`); }
         }
       })());
     }
@@ -3674,6 +3683,7 @@ export class PostsService {
             if (wantMake) await this.sendToMakeWebhook(post, creds, body, pageId);
             else await this.sendToFacebook(post, creds, body, pageId, await this.resolveFacebookPageToken(userId, target, creds));
             anySuccess = true;
+            markDelivered(target);
           } catch (err: any) {
             errors.push(`${wantMake ? 'Make' : 'Facebook'}: ${label}${wantMake ? (err?.response?.data?.message || err?.message) : facebookErrorText(err)}`);
           }
@@ -3685,7 +3695,7 @@ export class PostsService {
       if (ig) {
         const body = await this.buildPostBody(post, creds, ig.target);
         tasks.push(this.sendToInstagram(post, creds, body, userId, ig.target)
-          .then(() => { anySuccess = true; })
+          .then(() => { anySuccess = true; markDelivered(ig.target); })
           .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
       } else {
         errors.push('Instagram: לקבוצות שנבחרו אין חשבון אינסטגרם משלהן — הגדר חשבון לקבוצה במסך הקבוצות');
@@ -3736,6 +3746,24 @@ export class PostsService {
     // unconditionally, and the row was saved before the failure was thrown — so a push where
     // every platform failed still left the post reading 'נשלח' in the list forever, with the
     // real error buried in error_message. The caller saw an error once; the record lied after.
+    // Record where this push ACTUALLY landed, so the list stops labelling the row with the
+    // group the post was merely aimed at (a hand-push to another group used to keep showing
+    // the original). Display only — targeting is untouched, so nothing is re-routed.
+    if (anySuccess) {
+      let existing: string[] = [];
+      try {
+        const parsed = post.delivered_channels ? JSON.parse(post.delivered_channels) : [];
+        if (Array.isArray(parsed)) existing = parsed;
+      } catch { /* unreadable record — rebuilt from scratch below */ }
+      const record = mergeDeliveredChannels({
+        wasSent: post.status === 'sent',
+        existing,
+        intended: this.resolveTargets(post).filter((t): t is string => !!t),
+        pushed: Array.from(delivered),
+      });
+      if (record) post.delivered_channels = JSON.stringify(record);
+    }
+
     if (anySuccess) {
       if (post.status !== 'sent') post.status = 'sent';
       if (!post.sent_at) post.sent_at = new Date();
