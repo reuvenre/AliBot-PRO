@@ -186,6 +186,7 @@ export interface CredentialSet {
   publish_via_make: boolean;
   image_enhance_enabled: boolean;
   image_enhance_mode?: 'studio' | 'ai';
+  prefer_product_video?: boolean;
   facebook_min_interval_minutes: number;
   // Discovery
   apify_api_token: string;        // masked
@@ -275,6 +276,7 @@ export interface CredentialSetInput {
   publish_via_make?: boolean;
   image_enhance_enabled?: boolean;
   image_enhance_mode?: 'studio' | 'ai';
+  prefer_product_video?: boolean;
   facebook_min_interval_minutes?: number;
   // Discovery
   apify_api_token?: string;

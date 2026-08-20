@@ -185,6 +185,18 @@ export class Post {
   @Column({ nullable: true, type: 'text' })
   gallery_json: string;
 
+  /** The product's own video (AliExpress product_video_url). Published instead of the
+   *  image on Telegram/WhatsApp when the account opted in (prefer_product_video); any
+   *  video failure falls back to the image, and image platforms never use it. */
+  @Column({ nullable: true, type: 'text' })
+  product_video: string | null;
+
+  /** AliExpress Brand+ ("Certified Original") listing — an official brand-store product.
+   *  Detected from the affiliate API's platform_product_type; buildPostBody turns it into
+   *  an emphasized authenticity line in the post. */
+  @Column({ default: false })
+  is_brand_plus: boolean;
+
   /** When set, gallery_json images are composed into collage sheets (this many per sheet) → one album. */
   @Column({ nullable: true, type: 'int' })
   collage_cells: number | null;

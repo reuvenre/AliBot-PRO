@@ -106,6 +106,10 @@ export class CredentialSetDto {
   image_enhance_mode?: string;
 
   @IsOptional()
+  @IsBoolean()
+  prefer_product_video?: boolean;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   facebook_min_interval_minutes?: number;

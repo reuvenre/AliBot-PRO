@@ -36,6 +36,7 @@ export function IntegrationsForm() {
   // Auto image enhancement (local sharp pass, applied on the Telegram album)
   const [imageEnhance, setImageEnhance] = useState(false);
   const [imageEnhanceMode, setImageEnhanceMode] = useState<'studio' | 'ai'>('studio');
+  const [preferVideo, setPreferVideo] = useState(false);
   // AI-redesign preview (before/after) — lets the owner SEE the style before enabling.
   const [enhancePreviewLoading, setEnhancePreviewLoading] = useState(false);
   const [enhancePreview, setEnhancePreview] = useState<{ before: string; after: string } | null>(null);
@@ -108,6 +109,7 @@ export function IntegrationsForm() {
         setPubInstagram(c.publish_instagram ?? false);
         setImageEnhance(c.image_enhance_enabled ?? false);
         setImageEnhanceMode((c.image_enhance_mode as 'studio' | 'ai') || 'studio');
+        setPreferVideo(c.prefer_product_video ?? false);
         setFbMinInterval(String(c.facebook_min_interval_minutes ?? 0));
         setMakeUrl(c.make_webhook_url || '');
         setPubViaMake(c.publish_via_make ?? false);
@@ -155,6 +157,7 @@ export function IntegrationsForm() {
         publish_instagram: pubInstagram,
         image_enhance_enabled: imageEnhance,
         image_enhance_mode: imageEnhanceMode,
+        prefer_product_video: preferVideo,
         facebook_min_interval_minutes: Math.max(0, parseInt(fbMinInterval, 10) || 0),
         make_webhook_url: makeUrl,
         publish_via_make: pubViaMake,
@@ -846,6 +849,23 @@ export function IntegrationsForm() {
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${imageEnhance ? 'right-0.5' : 'right-4'}`} />
           </span>
         </button>
+
+        {/* Product video instead of image (Telegram + WhatsApp) */}
+        <button
+          type="button"
+          onClick={() => setPreferVideo((v) => !v)}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all mt-2
+            ${preferVideo ? 'bg-violet-600/10 border-violet-500/30' : 'bg-white/3 border-edge-hover'}`}
+        >
+          <span className="flex items-center gap-2 text-sm text-white/80"><span>🎬</span>העדף סרטון מוצר כשקיים</span>
+          <span className={`relative w-9 h-5 rounded-full transition-colors ${preferVideo ? 'bg-violet-500' : 'bg-white/15'}`}>
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${preferVideo ? 'right-0.5' : 'right-4'}`} />
+          </span>
+        </button>
+        <p className="text-2xs text-white/30 mt-1.5">
+          כשלמוצר יש סרטון באלי אקספרס — הפוסט בטלגרם ובוואטסאפ ישלח את הסרטון במקום התמונה (מתנגן אוטומטית ללא סאונד בפיד).
+          אין סרטון או שהשליחה נכשלה — נשלחת התמונה כרגיל. אינסטגרם ופינטרסט תמיד מקבלות את התמונה.
+        </p>
 
         {imageEnhance && (
           <div className="mt-3 space-y-2">

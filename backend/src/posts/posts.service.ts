@@ -22,6 +22,7 @@ import { manualQueueTurn } from './queue-fairness';
 import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
 import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost } from './flylink-trust';
+import { BRAND_PLUS_MARK, brandPlusLine } from './brand-plus';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { pruneRunLog, recordFailedRun } from '../campaigns/run-failure-log';
 import { waDelayMs } from './whatsapp-pacing';
@@ -892,6 +893,10 @@ export class PostsService {
       discount_percent: number;
       orders_count: number;
       rating: number;
+      /** The product's own promo video (AliExpress product_video_url), when it has one. */
+      video_url?: string;
+      /** AliExpress Brand+ ("Certified Original") official brand-store listing. */
+      brand_plus?: boolean;
     },
     catalogProductId?: string,
     textOverride?: string,
@@ -976,6 +981,8 @@ export class PostsService {
       product_id: product.product_id,
       product_title: product.title,
       product_image: product.image_url,
+      product_video: product.video_url || null,
+      is_brand_plus: !!product.brand_plus,
       affiliate_url: product.affiliate_url,
       original_price_usd: origUsd,
       sale_price_usd: saleUsd,
@@ -1281,7 +1288,7 @@ export class PostsService {
    * instead of silently dropping into the default queue. The follow-up call carries the
    * owner's pick in `campaignId` (or `toQueue` for an explicit default-queue choice).
    */
-  async smartIntake(userId: string, url: string, opts?: { campaignId?: string; toQueue?: boolean }): Promise<
+  async smartIntake(userId: string, url: string, opts?: { campaignId?: string; campaignIds?: string[]; toQueue?: boolean }): Promise<
     | {
       needs_choice: true; product_title: string; keyword: string;
       campaigns: Array<{ id: string; name: string; status: string }>;
@@ -1289,6 +1296,7 @@ export class PostsService {
     | {
       post_id: string; keyword: string; campaign_name: string | null;
       keyword_added: boolean; scheduled_at: Date | null; note: string;
+      posts?: Array<{ post_id: string; campaign_name: string | null; scheduled_at: Date | null }>;
     }
   > {
     const creds = await this.credentials.getRaw(userId);
@@ -1339,19 +1347,31 @@ export class PostsService {
     }
 
     const keyword = verdict?.keyword || fallbackKeyword(String(product.title || '')) || 'product';
-    let campaign = verdict && verdict.campaign >= 0 ? campaigns[verdict.campaign] : null;
+    const campaign = verdict && verdict.campaign >= 0 ? campaigns[verdict.campaign] : null;
 
-    // The OWNER's explicit pick outranks the judge (the follow-up call after needs_choice,
-    // or a deliberate override) — validated against their own campaign list.
-    if (opts?.campaignId) {
-      campaign = campaigns.find((c) => c.id === opts.campaignId) || null;
-      if (!campaign) throw new BadRequestException('הקמפיין שנבחר לא נמצא');
+    // The OWNER's explicit pick(s) outrank the judge (the follow-up call after
+    // needs_choice, or a deliberate override) — validated against their own campaign
+    // list. More than one pick publishes the product through EACH chosen campaign's own
+    // routing (groups, platforms, language, currency); same-group posts chain on the
+    // group's pacing so they never stack onto one minute.
+    const pickedIds = Array.from(new Set(
+      opts?.campaignIds?.length ? opts.campaignIds : (opts?.campaignId ? [opts.campaignId] : []),
+    ));
+    let chosen: Campaign[] = [];
+    if (pickedIds.length) {
+      chosen = pickedIds.map((id) => {
+        const c = campaigns.find((x) => x.id === id);
+        if (!c) throw new BadRequestException('הקמפיין שנבחר לא נמצא');
+        return c;
+      });
+    } else if (campaign) {
+      chosen = [campaign];
     }
 
     // Judge came up empty and the owner has campaigns to choose from → return the list
     // instead of creating anything. Explicit toQueue (the owner confirmed "default
     // queue") or an account with no campaigns at all proceeds as before.
-    if (!campaign && !opts?.toQueue && campaigns.length) {
+    if (!chosen.length && !opts?.toQueue && campaigns.length) {
       return {
         needs_choice: true as const,
         product_title: String(product.title || ''),
@@ -1360,91 +1380,114 @@ export class PostsService {
       };
     }
 
-    const currencyPair = campaign?.currency_pair?.trim() || creds.currency_pair || 'USD_ILS';
-    const rate = await this.rates.getRate(currencyPair);
-    const parts = this.priceParts(product, rate);
-    const affiliateUrl = await this.getAffiliateLink(product.product_id, creds);
+    // One post per chosen campaign, SEQUENTIALLY: the group-slot query must see the
+    // previous iteration's save to chain same-group bookings, and serial AI calls avoid
+    // a provider burst. `null` = the no-campaign default-queue path.
+    const createFor = async (target: Campaign | null) => {
+      const currencyPair = target?.currency_pair?.trim() || creds.currency_pair || 'USD_ILS';
+      const rate = await this.rates.getRate(currencyPair);
+      const parts = this.priceParts(product, rate);
+      const affiliateUrl = await this.getAffiliateLink(product.product_id, creds);
 
-    const platforms = this.parseTargetPlatforms(campaign?.target_platforms);
-    const pinterestOnly = !!platforms && platforms.size === 1 && platforms.has('pinterest');
-    const template = campaign?.post_template?.trim()
-      || (pinterestOnly ? '' : await this.getBodyText(userId, creds));
-    const text = await this.generateText(
-      product, campaign?.language || 'he', rate, creds, template || undefined, parts.localOverride,
-      undefined, undefined, false,
-      { currencyPair, style: pinterestOnly ? 'pinterest' : undefined },
-    );
+      const platforms = this.parseTargetPlatforms(target?.target_platforms);
+      const pinterestOnly = !!platforms && platforms.size === 1 && platforms.has('pinterest');
+      const template = target?.post_template?.trim()
+        || (pinterestOnly ? '' : await this.getBodyText(userId, creds));
+      const text = await this.generateText(
+        product, target?.language || 'he', rate, creds, template || undefined, parts.localOverride,
+        undefined, undefined, false,
+        { currencyPair, style: pinterestOnly ? 'pinterest' : undefined },
+      );
 
-    const targets = campaign ? this.parseTargetChannels(campaign.target_channels) : [];
-    // Slot the post into the target group's pacing (manual intake takes the next free
-    // slot — never dropped); no campaign → the standard queue drip on the default channel.
-    let scheduledAt: Date | null = null;
-    if (campaign && targets.length && (!platforms || platforms.has('telegram'))) {
-      // Chain behind the group's FURTHEST existing booking. The pacing horizon (rightly)
-      // ignores bookings beyond one interval — but the slot query also sees only the MAX
-      // pending per campaign, so once intake #2 booked an hour out, intake #1's nearer slot
-      // was shadowed, the group looked free, and every further pasted product stacked onto
-      // the same minute (observed: eight links, one 15:04). Intake posts are deliberate
-      // queue additions — each starts looking one interval after the last one booked.
-      const intervalMin = (await this.channels.getIntervalMinutes(userId, targets[0]).catch(() => null)) ?? 60;
-      const furthest = await this.furthestGroupBooking(userId, targets[0]);
-      const notBefore = PostsService.intakeNotBefore(furthest, intervalMin, Date.now());
-      const { slot } = await this.nextGroupSlot(userId, targets[0], notBefore, campaign.id, null);
-      scheduledAt = slot;
-    } else if (campaign) {
-      scheduledAt = new Date();
-    }
+      const targets = target ? this.parseTargetChannels(target.target_channels) : [];
+      // Slot the post into the target group's pacing (manual intake takes the next free
+      // slot — never dropped); no campaign → the standard queue drip on the default channel.
+      let scheduledAt: Date | null = null;
+      if (target && targets.length && (!platforms || platforms.has('telegram'))) {
+        // Chain behind the group's FURTHEST existing booking. The pacing horizon (rightly)
+        // ignores bookings beyond one interval — but the slot query also sees only the MAX
+        // pending per campaign, so once intake #2 booked an hour out, intake #1's nearer slot
+        // was shadowed, the group looked free, and every further pasted product stacked onto
+        // the same minute (observed: eight links, one 15:04). Intake posts are deliberate
+        // queue additions — each starts looking one interval after the last one booked.
+        const intervalMin = (await this.channels.getIntervalMinutes(userId, targets[0]).catch(() => null)) ?? 60;
+        const furthest = await this.furthestGroupBooking(userId, targets[0]);
+        const notBefore = PostsService.intakeNotBefore(furthest, intervalMin, Date.now());
+        const { slot } = await this.nextGroupSlot(userId, targets[0], notBefore, target.id, null);
+        scheduledAt = slot;
+      } else if (target) {
+        scheduledAt = new Date();
+      }
 
-    const post = this.repo.create({
-      user_id: userId,
-      campaign_id: campaign?.id || null,
-      product_id: product.product_id,
-      product_title: product.title,
-      product_image: product.image_url,
-      affiliate_url: affiliateUrl,
-      original_price_usd: parts.origUsd,
-      sale_price_usd: parts.saleUsd,
-      price_ils: parts.priceIls,
-      generated_text: text,
-      keyword,
-      status: scheduledAt ? 'scheduled' : 'queued',
-      scheduled_at: scheduledAt,
-    } as Partial<Post>);
-    if (targets.length) this.applyChannels(post as Post, targets);
-    if (!scheduledAt) {
-      const maxOrder = await this.repo.createQueryBuilder('p')
-        .select('MAX(p.queue_order)', 'maxOrder')
-        .where('p.user_id = :userId AND p.status = :status', { userId, status: 'queued' })
-        .getRawOne();
-      (post as Post).queue_order = (maxOrder?.maxOrder ?? -1) + 1;
-    }
-    const saved = await this.repo.save(post);
+      const post = this.repo.create({
+        user_id: userId,
+        campaign_id: target?.id || null,
+        product_id: product.product_id,
+        product_title: product.title,
+        product_image: product.image_url,
+        product_video: product.video_url || null,
+        is_brand_plus: !!product.brand_plus,
+        affiliate_url: affiliateUrl,
+        original_price_usd: parts.origUsd,
+        sale_price_usd: parts.saleUsd,
+        price_ils: parts.priceIls,
+        generated_text: text,
+        keyword,
+        status: scheduledAt ? 'scheduled' : 'queued',
+        scheduled_at: scheduledAt,
+      } as Partial<Post>);
+      if (targets.length) this.applyChannels(post as Post, targets);
+      if (!scheduledAt) {
+        const maxOrder = await this.repo.createQueryBuilder('p')
+          .select('MAX(p.queue_order)', 'maxOrder')
+          .where('p.user_id = :userId AND p.status = :status', { userId, status: 'queued' })
+          .getRawOne();
+        (post as Post).queue_order = (maxOrder?.maxOrder ?? -1) + 1;
+      }
+      const saved = await this.repo.save(post);
 
-    // File the keyword into the campaign's rotation — manual intent also un-retires it.
-    let keywordAdded = false;
-    if (campaign && !(campaign.keywords || []).includes(keyword)) {
-      campaign.keywords = [...(campaign.keywords || []), keyword];
-      campaign.retired_keywords = (campaign.retired_keywords || []).filter((k) => k !== keyword);
-      await this.campaignRepo.save(campaign).catch(() => {});
-      keywordAdded = true;
-    }
-    if (campaign) {
-      await this.postedRepo.query(
-        `INSERT INTO campaign_posted_products (campaign_id, product_id, keyword, created_at)
-         VALUES ($1, $2, $3, now())
-         ON CONFLICT (campaign_id, product_id) DO UPDATE SET created_at = now(), keyword = EXCLUDED.keyword`,
-        [campaign.id, String(product.product_id), keyword],
-      ).catch(() => {});
-    }
+      // File the keyword into the campaign's rotation — manual intent also un-retires it.
+      let keywordAdded = false;
+      if (target && !(target.keywords || []).includes(keyword)) {
+        target.keywords = [...(target.keywords || []), keyword];
+        target.retired_keywords = (target.retired_keywords || []).filter((k) => k !== keyword);
+        await this.campaignRepo.save(target).catch(() => {});
+        keywordAdded = true;
+      }
+      if (target) {
+        await this.postedRepo.query(
+          `INSERT INTO campaign_posted_products (campaign_id, product_id, keyword, created_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (campaign_id, product_id) DO UPDATE SET created_at = now(), keyword = EXCLUDED.keyword`,
+          [target.id, String(product.product_id), keyword],
+        ).catch(() => {});
+      }
+      return {
+        post_id: (saved as Post).id,
+        campaign_name: target?.name || null,
+        scheduled_at: scheduledAt,
+        keyword_added: keywordAdded,
+      };
+    };
 
+    const made: Array<{ post_id: string; campaign_name: string | null; scheduled_at: Date | null; keyword_added: boolean }> = [];
+    for (const c of chosen.length ? chosen : [null]) made.push(await createFor(c));
+
+    const names = made.map((m) => m.campaign_name).filter((n): n is string => !!n);
     return {
-      post_id: (saved as Post).id,
+      post_id: made[0].post_id,
       keyword,
-      campaign_name: campaign?.name || null,
-      keyword_added: keywordAdded,
-      scheduled_at: scheduledAt,
-      note: campaign
-        ? (opts?.campaignId ? 'שויך לטייס לפי בחירתך' : (verdict?.reason || 'שויך לפי התאמת קהל'))
+      campaign_name: names.join(' + ') || null,
+      keyword_added: made.some((m) => m.keyword_added),
+      scheduled_at: made[0].scheduled_at,
+      // Present only on a multi-campaign intake — one entry per created post.
+      posts: made.length > 1
+        ? made.map((m) => ({ post_id: m.post_id, campaign_name: m.campaign_name, scheduled_at: m.scheduled_at }))
+        : undefined,
+      note: names.length
+        ? (pickedIds.length
+          ? (names.length > 1 ? `שויך ל-${names.length} טייסים לפי בחירתך` : 'שויך לטייס לפי בחירתך')
+          : (verdict?.reason || 'שויך לפי התאמת קהל'))
         : (opts?.toQueue
           ? 'נכנס לתור ערוץ ברירת המחדל לפי בחירתך'
           : 'אין טייסים בחשבון — הפוסט נכנס לתור של ערוץ ברירת המחדל'),
@@ -2825,6 +2868,8 @@ export class PostsService {
           product_id: product.product_id,
           product_title: product.title,
           product_image: product.image_url,
+          product_video: product.video_url || null,
+          is_brand_plus: !!product.brand_plus,
           affiliate_url: affiliateUrl,
           original_price_usd: parts.origUsd,
           sale_price_usd: parts.saleUsd,
@@ -3379,6 +3424,14 @@ export class PostsService {
     // Resolved at SEND time so a queued/scheduled post never ships a code that expired while
     // it waited; priced in USD because the tiers are ($7 OFF $55+).
     const isAliExpressPost = /aliexpress/i.test(post.affiliate_url || '');
+
+    // Brand+ (official brand store): the badge that answers "is it original?" — the exact
+    // hesitation that blocks a branded purchase. AliExpress-only by construction (the flag
+    // comes from its API); emphasized in code so it can never be over- or under-claimed.
+    if (post.is_brand_plus && isAliExpressPost && !body.includes(BRAND_PLUS_MARK)) {
+      body = `${body}\n\n${brandPlusLine(/[֐-׿]/.test(body))}`;
+    }
+
     const match = isAliExpressPost
       ? await this.coupons.bestFor(post.user_id, post.sale_price_usd).catch(() => null)
       : null;
@@ -4333,6 +4386,23 @@ export class PostsService {
     const mediaCaption = overflow ? '' : caption;
     const sendOverflow = async () => { if (overflow) await this.sendTelegramText(token, channel, caption); };
 
+    // The product's own video, when the account opted in — it autoplays MUTED in the
+    // feed, which is the scroll-stopper the owner wants. Falls back to the image ONLY
+    // when it is provably safe: Telegram rejected the video (a response = nothing was
+    // published) or the request never connected. An ambiguous failure (top-level
+    // timeout on an open socket) rethrows — falling back there could publish the post
+    // TWICE, once as video and once as photo (same doctrine as telegram-retry.ts).
+    if (creds?.prefer_product_video && post.product_video) {
+      try {
+        await this.sendTelegramVideo(token, channel, post.product_video, mediaCaption, post);
+        await sendOverflow();
+        return;
+      } catch (err: any) {
+        if (!err?.response && !isTelegramConnectionError(err)) throw err;
+        this.logger.warn(`post ${post.id}: video send rejected (${err?.response?.data?.description || err?.code || err?.message}) — falling back to image`);
+      }
+    }
+
     if (m.kind === 'buffers') {
       if (m.buffers.length >= 2) { await this.sendMediaGroupUpload(token, channel, m.buffers, mediaCaption, post); await sendOverflow(); return; }
       if (m.buffers.length === 1) { await this.sendPhotoUpload(token, channel, m.buffers[0], mediaCaption, post); await sendOverflow(); return; }
@@ -4402,6 +4472,38 @@ export class PostsService {
    * rethrows untouched so the existing handling (plain-text fallback, hard failure) still
    * decides. See `isTelegramConnectionError` for why the line sits exactly there.
    */
+  /**
+   * Publish the product's video by URL. Telegram fetches the file server-side (URL sends
+   * are capped at ~20MB — AliExpress product clips are short and fit), so the timeout is
+   * longer than the photo path's. Mirrors the photo path's contracts: confirmed-delivery
+   * check, one connection-level retry, and a plain-text resend when the HTML won't parse.
+   */
+  private async sendTelegramVideo(token: string, channel: string, video: string, caption: string, post: Post) {
+    const url = `https://api.telegram.org/bot${token}/sendVideo`;
+    try {
+      const res = await this.tgRetryOnce('video', () => axios.post(
+        url,
+        { chat_id: channel, video, caption, parse_mode: 'HTML' },
+        { timeout: 45_000 },
+      ));
+      this.assertTelegramDelivered(res, 'video');
+      post.telegram_message_id = res.data?.result?.message_id;
+    } catch (err: any) {
+      const desc: string = err?.response?.data?.description || '';
+      if (err?.response?.status === 400 && /parse|entit|tag/i.test(desc)) {
+        const res = await axios.post(
+          url,
+          { chat_id: channel, video, caption: caption.replace(/<[^>]+>/g, '') },
+          { timeout: 45_000 },
+        );
+        this.assertTelegramDelivered(res, 'video');
+        post.telegram_message_id = res.data?.result?.message_id;
+        return;
+      }
+      throw err;
+    }
+  }
+
   private async tgRetryOnce<T>(what: string, send: () => Promise<T>): Promise<T> {
     try {
       return await send();
@@ -5227,6 +5329,24 @@ export class PostsService {
       if (!instance || !token || !chat) throw new Error('חסרים פרטי Green API (instance / token / מזהה קבוצה)');
       const base = (creds?.green_api_url || 'https://api.green-api.com').replace(/\/$/, '');
 
+      // The product's own video when the account opted in — same fallback doctrine as
+      // Telegram: a REJECTION (response received, nothing delivered) falls back to the
+      // image; an ambiguous network death rethrows rather than risking a double-post.
+      if (creds?.prefer_product_video && post.product_video) {
+        try {
+          const res = await axios.post(
+            `${base}/waInstance${instance}/sendFileByUrl/${token}`,
+            { chatId: chat, urlFile: post.product_video, fileName: 'product.mp4', caption },
+            { timeout: 45_000 },
+          );
+          post.whatsapp_message_id = res.data?.idMessage || null;
+          return;
+        } catch (err: any) {
+          if (!err?.response) throw err;
+          this.logger.warn(`post ${post.id}: WhatsApp video rejected (${err?.response?.status}) — falling back to image`);
+        }
+      }
+
       if (image) {
         const res = await axios.post(
           `${base}/waInstance${instance}/sendFileByUrl/${token}`,
@@ -5360,7 +5480,8 @@ export class PostsService {
         target_currency: targetCcy,
         fields: 'product_id,product_title,original_price,sale_price,sale_price_currency,' +
           'target_original_price,target_sale_price,target_sale_price_currency,promotion_link,' +
-          'discount,product_main_image_url,product_detail_url,evaluate_rate,first_level_category_name,lastest_volume',
+          'discount,product_main_image_url,product_detail_url,evaluate_rate,first_level_category_name,lastest_volume,' +
+          'product_video_url,platform_product_type',
         page_size: params.limit || 10,
         page_no: params.page && params.page > 0 ? params.page : undefined,
         // Rotating sort widens the reachable catalog — a fixed sort keeps returning the
@@ -5420,6 +5541,12 @@ export class PostsService {
       orders_count: parseInt(String(p.lastest_volume || '0').replace(/,/g, ''), 10) || 0,
       rating,
       currency: targetSale > 0 ? (p.target_sale_price_currency || targetCcy) : 'USD',
+      // The product's own promo video — published instead of the image on TG/WA when the
+      // account opted in (prefer_product_video).
+      video_url: p.product_video_url || undefined,
+      // TMALL is the affiliate API's marker for official brand-store listings — the
+      // "Brand+ / Certified Original" badge on the site.
+      brand_plus: String(p.platform_product_type || '').toUpperCase() === 'TMALL',
     };
   }
 
@@ -5441,7 +5568,8 @@ export class PostsService {
       country: process.env.SHIP_TO_COUNTRY || ({ ILS: 'IL', GBP: 'GB' } as any)[targetCcy],
       fields: 'product_id,product_title,original_price,sale_price,sale_price_currency,' +
         'target_original_price,target_sale_price,target_sale_price_currency,promotion_link,' +
-        'discount,product_main_image_url,product_detail_url,evaluate_rate,first_level_category_name,lastest_volume',
+        'discount,product_main_image_url,product_detail_url,evaluate_rate,first_level_category_name,lastest_volume,' +
+        'product_video_url,platform_product_type',
       target_currency: targetCcy,
       tracking_id: creds.aliexpress_tracking_id,
     }, creds.aliexpress_app_secret);

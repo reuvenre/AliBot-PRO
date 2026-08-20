@@ -1003,15 +1003,23 @@ function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: ()
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<Awaited<ReturnType<typeof postsApi.smartIntake>> | null>(null);
-  // The owner's pick when the judge couldn't place the product: a campaign id, or
-  // 'queue' for the explicit default-queue choice.
-  const [choice, setChoice] = useState('');
+  // The owner's pick(s) when the judge couldn't place the product: campaign ids (more
+  // than one publishes the product through EACH chosen campaign's routing), or 'queue'
+  // for the explicit default-queue choice — exclusive with campaign picks by definition.
+  const [choices, setChoices] = useState<string[]>([]);
 
-  const submit = async (opts?: { campaign_id?: string; to_queue?: boolean }) => {
+  const toggleChoice = (id: string) => {
+    setChoices((prev) => {
+      if (prev.includes(id)) return prev.filter((c) => c !== id);
+      return id === 'queue' ? ['queue'] : [...prev.filter((c) => c !== 'queue'), id];
+    });
+  };
+
+  const submit = async (opts?: { campaign_id?: string; campaign_ids?: string[]; to_queue?: boolean }) => {
     setBusy(true); setError('');
     try {
       setResult(await postsApi.smartIntake(url, opts));
-      setChoice('');
+      setChoices([]);
     } catch (e: any) {
       setError(e?.response?.data?.message || 'הקליטה נכשלה');
     } finally { setBusy(false); }
@@ -1053,29 +1061,33 @@ function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: ()
               {result.product_title && <p className="text-xs text-white/70" dir="ltr">{result.product_title}</p>}
               <p className="text-xs text-white/50">מילת מפתח מוצעת: <b dir="ltr">{result.keyword}</b></p>
             </div>
+            <p className="text-2xs text-white/35">אפשר לסמן יותר מטייס אחד — ייווצר פוסט נפרד דרך כל טייס שנבחר, לפי הקבוצות והשפה שלו.</p>
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {(result.campaigns || []).map((c) => (
                 <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
-                  ${choice === c.id ? 'border-teal-500/60 bg-teal-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
-                  <input type="radio" name="intake-campaign" checked={choice === c.id} onChange={() => setChoice(c.id)} className="accent-teal-500" />
+                  ${choices.includes(c.id) ? 'border-teal-500/60 bg-teal-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                  <input type="checkbox" checked={choices.includes(c.id)} onChange={() => toggleChoice(c.id)} className="accent-teal-500" />
                   <span className="text-sm text-white/80 flex-1">{c.name}</span>
                   {c.status === 'paused' && <span className="text-2xs text-white/30">מושהה</span>}
                 </label>
               ))}
               <label className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
-                ${choice === 'queue' ? 'border-teal-500/60 bg-teal-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
-                <input type="radio" name="intake-campaign" checked={choice === 'queue'} onChange={() => setChoice('queue')} className="accent-teal-500" />
+                ${choices.includes('queue') ? 'border-teal-500/60 bg-teal-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                <input type="checkbox" checked={choices.includes('queue')} onChange={() => toggleChoice('queue')} className="accent-teal-500" />
                 <span className="text-sm text-white/60 flex-1">ללא טייס — לתור של ערוץ ברירת המחדל</span>
               </label>
             </div>
             {error && <p className="text-xs text-red-400">{error}</p>}
             <div className="flex gap-2">
-              <button onClick={() => { setResult(null); setChoice(''); }}
+              <button onClick={() => { setResult(null); setChoices([]); }}
                 className="flex-1 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm">ביטול</button>
-              <button disabled={busy || !choice}
-                onClick={() => submit(choice === 'queue' ? { to_queue: true } : { campaign_id: choice })}
+              <button disabled={busy || !choices.length}
+                onClick={() => submit(choices.includes('queue')
+                  ? { to_queue: true }
+                  : choices.length > 1 ? { campaign_ids: choices } : { campaign_id: choices[0] })}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-medium">
-                {busy ? <Loader2 size={14} className="animate-spin" /> : null} שייך ותזמן
+                {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+                {choices.length > 1 && !choices.includes('queue') ? `שייך ותזמן (${choices.length} טייסים)` : 'שייך ותזמן'}
               </button>
             </div>
           </div>
@@ -1084,11 +1096,23 @@ function SmartIntakeModal({ onClose, onDone }: { onClose: () => void; onDone: ()
         {result && !result.needs_choice && (
           <div className="space-y-2.5">
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 space-y-1.5">
-              <p className="text-sm text-emerald-300 font-medium">✓ הפוסט נוצר</p>
+              <p className="text-sm text-emerald-300 font-medium">
+                {(result.posts?.length ?? 0) > 1 ? `✓ נוצרו ${result.posts!.length} פוסטים` : '✓ הפוסט נוצר'}
+              </p>
               <p className="text-xs text-white/70">
                 טייס: <b>{result.campaign_name || 'ערוץ ברירת המחדל'}</b>
                 {result.note ? <span className="text-white/40"> — {result.note}</span> : null}
               </p>
+              {(result.posts?.length ?? 0) > 1 && (
+                <div className="space-y-0.5">
+                  {result.posts!.map((p) => (
+                    <p key={p.post_id} className="text-2xs text-white/50">
+                      {p.campaign_name || 'ערוץ ברירת המחדל'}
+                      {p.scheduled_at ? ` · ${new Date(p.scheduled_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
+                    </p>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-white/70">
                 מילת מפתח: <b dir="ltr">{result.keyword}</b>
                 {result.keyword_added && <span className="text-teal-300"> (נוספה לרוטציה של הטייס)</span>}

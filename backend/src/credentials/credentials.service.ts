@@ -63,6 +63,8 @@ export interface DecryptedCredentials {
   publish_via_make?: boolean;
   image_enhance_enabled?: boolean;
   image_enhance_mode?: string;
+  /** Publish the product's video instead of the image when one exists (TG+WA only). */
+  prefer_product_video?: boolean;
   /** Min minutes between Facebook posts per page (0 = every post). Paces FB independently
    *  of Telegram so high-frequency posting doesn't trip Facebook's spam block. */
   facebook_min_interval_minutes?: number;
@@ -246,6 +248,7 @@ export class CredentialsService {
     if (dto.make_webhook_url !== undefined)  cred.make_webhook_url = dto.make_webhook_url.trim() || null;
     if (dto.publish_via_make !== undefined)  cred.publish_via_make = dto.publish_via_make;
     if (dto.image_enhance_enabled !== undefined) cred.image_enhance_enabled = dto.image_enhance_enabled;
+    if (dto.prefer_product_video !== undefined) cred.prefer_product_video = dto.prefer_product_video;
     if (dto.image_enhance_mode !== undefined) {
       cred.image_enhance_mode = dto.image_enhance_mode === 'ai' ? 'ai' : 'studio';
     }
@@ -652,6 +655,7 @@ export class CredentialsService {
       publish_via_make: cred.publish_via_make,
       image_enhance_enabled: cred.image_enhance_enabled,
       image_enhance_mode: cred.image_enhance_mode || 'studio',
+      prefer_product_video: cred.prefer_product_video,
       facebook_min_interval_minutes: cred.facebook_min_interval_minutes,
       apify_api_token: decrypt(cred.apify_api_token_enc),
       boost_enabled: cred.boost_enabled,
@@ -831,6 +835,7 @@ export class CredentialsService {
       publish_via_make: cred.publish_via_make ?? false,
       image_enhance_enabled: cred.image_enhance_enabled ?? false,
       image_enhance_mode: cred.image_enhance_mode || 'studio',
+      prefer_product_video: cred.prefer_product_video ?? false,
       facebook_min_interval_minutes: cred.facebook_min_interval_minutes ?? 0,
       // Discovery
       apify_api_token: cred.apify_api_token_enc ? mask(decrypt(cred.apify_api_token_enc)) : '',

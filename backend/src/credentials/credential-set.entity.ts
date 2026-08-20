@@ -117,6 +117,12 @@ export class CredentialSet {
   @Column({ default: false })
   image_enhance_enabled: boolean;
 
+  /** Publish the product's own VIDEO instead of the image when AliExpress provides one.
+   *  Telegram + WhatsApp only (video autoplays muted in the feed); Instagram/Pinterest
+   *  keep the image, and any video failure falls back to the image send. */
+  @Column({ default: false })
+  prefer_product_video: boolean;
+
   /** How photos are enhanced: 'studio' = the local sharp pass (fast, free);
    *  'ai' = Gemini image model ("Nano Banana") redesigns the shot — clean studio
    *  background, pro lighting — using the user's own Gemini key. */

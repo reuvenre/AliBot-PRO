@@ -156,10 +156,15 @@ export class PostsController {
     @Req() req: Request,
     @Body('url') url: string,
     @Body('campaign_id') campaignId?: string,
+    @Body('campaign_ids') campaignIds?: string[],
     @Body('to_queue') toQueue?: boolean,
   ) {
     return this.svc.smartIntake(this.uid(req), url, {
       campaignId: campaignId || undefined,
+      // More than one pick → one post through EACH chosen campaign's routing.
+      campaignIds: Array.isArray(campaignIds)
+        ? campaignIds.filter((c) => typeof c === 'string' && c.trim()).slice(0, 10)
+        : undefined,
       toQueue: toQueue === true,
     });
   }
