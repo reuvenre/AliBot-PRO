@@ -26,8 +26,13 @@ redis_data/
 
 # Claude Code local state (settings, worktrees, scratch)
 # Local Claude Code config stays out; shared skills are version-controlled.
+# So is the session-start hook and the settings that register it: the web container is
+# rebuilt from this repo, so the hook only runs if it lives here. Personal overrides
+# (.claude/settings.local.json) stay ignored by the rule above.
 .claude/*
 !.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 *.tsbuildinfo
 # Local cloud startup script with secrets (never commit)
 backend/start-cloud.ps1
