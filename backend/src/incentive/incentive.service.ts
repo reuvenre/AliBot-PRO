@@ -20,6 +20,16 @@ export interface IncentiveInput {
   starts_at?: string;
   ends_at?: string;
   active?: boolean;
+  /** The portal's incentive commission rate for this pool, in percent (11 = 11%). */
+  bonus_rate_pct?: number | null;
+}
+
+/** A rate the portal could plausibly show. Anything else is a typo, not a pool. */
+function cleanBonusRate(v: unknown): number | null {
+  if (v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0 || n > 100) return null;
+  return Math.round(n * 100) / 100;
 }
 
 /** The Incentive Campaign page in the affiliate portal — every reminder points here.
@@ -56,6 +66,7 @@ export class IncentiveService {
       starts_at: dto.starts_at ? new Date(dto.starts_at) : new Date(),
       ends_at: dto.ends_at ? new Date(dto.ends_at) : endOfMonth(new Date()),
       active: dto.active !== false,
+      bonus_rate_pct: cleanBonusRate(dto.bonus_rate_pct),
     });
     return this.repo.save(row);
   }
@@ -71,6 +82,7 @@ export class IncentiveService {
     if (dto.starts_at) row.starts_at = new Date(dto.starts_at);
     if (dto.ends_at) row.ends_at = new Date(dto.ends_at);
     if (typeof dto.active === 'boolean') row.active = dto.active;
+    if (dto.bonus_rate_pct !== undefined) row.bonus_rate_pct = cleanBonusRate(dto.bonus_rate_pct);
     return this.repo.save(row);
   }
 
@@ -119,14 +131,18 @@ export class IncentiveService {
    */
   async stats(userId: string): Promise<Record<string, {
     posts: number; clicks: number; orders: number; revenue_ils: number;
+    order_amount_usd: number; bonus_estimate_usd: number | null;
   }>> {
-    const out: Record<string, { posts: number; clicks: number; orders: number; revenue_ils: number }> = {};
+    const out: Record<string, {
+      posts: number; clicks: number; orders: number; revenue_ils: number;
+      order_amount_usd: number; bonus_estimate_usd: number | null;
+    }> = {};
     const rows = await this.list(userId);
     for (const r of rows) {
       let kws: string[] = [];
       try { kws = JSON.parse(r.keywords_json || '[]'); } catch { kws = []; }
       const lower = kws.map((k) => String(k).trim().toLowerCase()).filter(Boolean);
-      out[r.id] = { posts: 0, clicks: 0, orders: 0, revenue_ils: 0 };
+      out[r.id] = { posts: 0, clicks: 0, orders: 0, revenue_ils: 0, order_amount_usd: 0, bonus_estimate_usd: null };
       if (!lower.length) continue;
       // Measure only inside the pool window — the bonus accrues only there, so posts
       // published before registration must not flatter the pool's numbers.
@@ -148,17 +164,27 @@ export class IncentiveService {
       const e = await this.earnings.createQueryBuilder('e')
         .select('COUNT(*)', 'orders')
         .addSelect('COALESCE(SUM(e.commission_ils), 0)', 'revenue')
+        // The BONUS is computed by the portal on the order amount, not on the commission
+        // (26.92 paid × 11% = 2.96 incentive), so the amount is what the estimate needs.
+        .addSelect('COALESCE(SUM(e.order_amount_usd), 0)', 'amount')
         .where('e.user_id = :u', { u: userId })
         .andWhere("e.status != 'cancelled'")
         .andWhere('LOWER(e.keyword) IN (:...kws)', { kws: lower })
         .andWhere('e.order_date BETWEEN :s AND :e', { s: start, e: end })
         .getRawOne()
         .catch(() => null);
+      const amountUsd = +(Number(e?.amount) || 0).toFixed(2);
       out[r.id] = {
         posts: Number(p?.posts) || 0,
         clicks: Number(p?.clicks) || 0,
         orders: Number(e?.orders) || 0,
         revenue_ils: +(Number(e?.revenue) || 0).toFixed(2),
+        order_amount_usd: amountUsd,
+        // Only with a rate the owner read off the portal. Without one the screen says
+        // nothing rather than inventing a number that looks like money already earned.
+        bonus_estimate_usd: r.bonus_rate_pct && r.bonus_rate_pct > 0
+          ? +(amountUsd * (r.bonus_rate_pct / 100)).toFixed(2)
+          : null,
       };
     }
     return out;

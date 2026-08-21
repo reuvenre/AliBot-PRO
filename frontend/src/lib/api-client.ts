@@ -332,6 +332,8 @@ export interface IncentiveProgram {
   starts_at: string;
   ends_at: string;
   active: boolean;
+  /** The pool's incentive commission rate from the portal, in percent. Null = not entered. */
+  bonus_rate_pct: number | null;
   created_at: string;
 }
 
@@ -342,6 +344,7 @@ export interface IncentiveInput {
   starts_at?: string;
   ends_at?: string;
   active?: boolean;
+  bonus_rate_pct?: number | null;
 }
 
 /** What one pool produced inside its window — see incentive.service.stats(). */
@@ -349,7 +352,12 @@ export interface IncentivePoolStats {
   posts: number;
   clicks: number;
   orders: number;
+  /** BASE commission only — the bonus is paid separately and never reaches our data. */
   revenue_ils: number;
+  /** Order value the pool's keywords drove — what the portal applies the bonus rate to. */
+  order_amount_usd: number;
+  /** order_amount_usd × the pool's rate. Null when no rate was entered. */
+  bonus_estimate_usd: number | null;
 }
 
 export const incentiveApi = {

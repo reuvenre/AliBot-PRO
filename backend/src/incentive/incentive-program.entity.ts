@@ -47,6 +47,19 @@ export class IncentiveProgram {
   @Column({ default: true })
   active: boolean;
 
+  /**
+   * The pool's INCENTIVE COMMISSION RATE from the portal, in percent (e.g. 11 for 11%).
+   *
+   * The bonus itself never reaches our data — AliExpress pays it separately and the orders
+   * sync carries only the base commission — so this is the one number that lets the screen
+   * estimate what a pool is really worth. Applied to the ORDER AMOUNT, which is how the
+   * portal computes it (26.92 paid × 11% = 2.96 incentive), NOT to the base commission.
+   * Null = the owner hasn't entered it; the screen then shows no estimate rather than a
+   * made-up one.
+   */
+  @Column({ type: 'float', nullable: true })
+  bonus_rate_pct: number | null;
+
   @CreateDateColumn()
   created_at: Date;
 }

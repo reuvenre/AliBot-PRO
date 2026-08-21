@@ -205,7 +205,27 @@ function ProgramCard({ program, campaigns, stats, onChanged }: {
               {' · '}<b className={stats.orders > 0 ? 'text-emerald-300' : 'text-white/75'}>{stats.orders}</b> הזמנות
               {stats.revenue_ils > 0 && (
                 <> {' · '}<span className="text-emerald-300 font-semibold">₪{stats.revenue_ils.toLocaleString()}</span>
-                  <span className="text-white/30"> עמלות בסיס — הבונוס משולם מעל זה</span></>
+                  <span className="text-white/30"> עמלות בסיס</span></>
+              )}
+            </p>
+          )}
+          {/* The bonus itself never reaches our data — AliExpress pays it separately — so
+              it is ESTIMATED from the rate the owner read off the portal, applied to the
+              order value (which is how the portal computes it). Labelled as an estimate,
+              never mixed into the base-commission figure above. */}
+          {stats && stats.order_amount_usd > 0 && (
+            <p className="text-2xs mt-1">
+              {stats.bonus_estimate_usd !== null ? (
+                <span className="text-amber-300">
+                  🎁 בונוס משוער: <b>${stats.bonus_estimate_usd.toLocaleString()}</b>
+                  <span className="text-white/30">
+                    {' '}({program.bonus_rate_pct}% על ${stats.order_amount_usd.toLocaleString()} מכירות) — הערכה לפי האחוז שהזנת, לא נתון מהפורטל
+                  </span>
+                </span>
+              ) : (
+                <span className="text-white/35">
+                  🎁 ${stats.order_amount_usd.toLocaleString()} מכירות במסלול — הזן את אחוז הבונוס מהפורטל (ערוך) כדי לראות הערכת בונוס
+                </span>
               )}
             </p>
           )}
@@ -245,6 +265,9 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
   const [startsAt, setStartsAt] = useState(toDateInput(program?.starts_at));
   const [endsAt, setEndsAt] = useState(toDateInput(program?.ends_at, endOfThisMonth()));
   const [targetIds, setTargetIds] = useState<string[]>(parseTargets(program?.target_campaigns || null));
+  const [bonusRate, setBonusRate] = useState(
+    program?.bonus_rate_pct != null ? String(program.bonus_rate_pct) : '',
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [suggesting, setSuggesting] = useState(false);
@@ -274,6 +297,8 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
       name: name.trim(), keywords: kws, target_campaigns: targetIds,
       starts_at: new Date(`${startsAt}T00:00:00`).toISOString(),
       ends_at: new Date(`${endsAt}T23:59:59`).toISOString(),
+      // Empty clears the rate → the card goes back to showing no estimate.
+      bonus_rate_pct: bonusRate.trim() === '' ? null : Number(bonusRate),
     };
     try {
       if (program) await incentiveApi.update(program.id, dto);
@@ -302,6 +327,16 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
             <label className={labelCls}>שם הקמפיין (כמו בפורטל)</label>
             <input value={name} onChange={(e) => setName(e.target.value)}
               placeholder="Home & Living Pool" className={inputCls} />
+          </div>
+
+          <div>
+            <label className={labelCls}>אחוז הבונוס (Incentive Commission Rate)</label>
+            <input type="number" min={0} max={100} step="0.1" value={bonusRate} dir="ltr"
+              onChange={(e) => setBonusRate(e.target.value)}
+              placeholder="11" className={`${inputCls} max-w-[140px]`} />
+            <p className="text-2xs text-white/30 mt-1">
+              מהעמודה &quot;Incentive Commission Rate&quot; בפורטל. משמש לחישוב הערכת הבונוס על סכום המכירות במסלול. ריק = לא תוצג הערכה.
+            </p>
           </div>
 
           <div>
