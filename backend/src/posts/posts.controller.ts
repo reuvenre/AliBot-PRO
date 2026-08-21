@@ -250,6 +250,8 @@ export class PostsController {
     text?: string; scheduled_at?: string;
     product_title?: string; price_ils?: number; product_image?: string; affiliate_url?: string;
     gallery?: string[];
+    /** Re-target the post to other group(s); [] = back to the default channel. */
+    channels?: string[];
   }) {
     return this.svc.updatePost(this.uid(req), id, dto);
   }

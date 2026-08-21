@@ -377,6 +377,7 @@ function QueuePanel() {
       {previewPost && (
         <EditPostModal
           post={previewPost}
+          channels={channels}
           onClose={() => setPreviewPost(null)}
           onSaved={() => { setPreviewPost(null); load(true); }}
         />
@@ -647,10 +648,17 @@ function directProductUrl(post: Post): string {
   return '';
 }
 
-function EditPostModal({ post, onClose, onSaved }: {
-  post: Post; onClose: () => void; onSaved: () => void;
+function EditPostModal({ post, channels, onClose, onSaved }: {
+  post: Post; channels: Channel[]; onClose: () => void; onSaved: () => void;
 }) {
   const isScheduled = post.status === 'scheduled';
+  // Re-targeting: only meaningful while the post hasn't gone out. On a SENT post the
+  // targeting field is history — changing it would rewrite where the message that already
+  // published claims to have gone (the push dialog is the way to send it somewhere else).
+  const canRetarget = post.status !== 'sent';
+  const [groupIds, setGroupIds] = useState<string[]>(() => postTargetIds(post));
+  const toggleGroup = (id: string) =>
+    setGroupIds((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
   const [text, setText] = useState(post.generated_text || '');
   const [title, setTitle] = useState(post.product_title || '');
   const [price, setPrice] = useState<string>(post.price_ils != null ? String(post.price_ils) : '');
@@ -701,6 +709,7 @@ function EditPostModal({ post, onClose, onSaved }: {
         affiliate_url: link,
         scheduled_at: isScheduled && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         gallery: galleryChoices ? gallerySel : undefined,
+        channels: canRetarget ? groupIds : undefined,
       });
       onSaved();
     } catch (e: any) { setError(e?.response?.data?.message || 'שמירה נכשלה'); setSaving(false); }
@@ -871,6 +880,30 @@ function EditPostModal({ post, onClose, onSaved }: {
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8}
           className="w-full bg-white/5 border border-edge-hover rounded-xl px-3 py-2.5 text-sm text-white leading-relaxed outline-none focus:border-blue-500/50 resize-none font-mono" dir="rtl" />
 
+        {/* Target group(s) — a post aimed at the wrong audience is fixed here instead of
+            being deleted and rebuilt. Hidden once sent: then the field is a record of where
+            the message went, and the push dialog is how it reaches another group. */}
+        {canRetarget && channels.length > 0 && (
+          <div className="mt-4">
+            <label className="block text-xs text-white/50 mb-1.5">קבוצת יעד</label>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+              {channels.map((c) => (
+                <label key={c.channel_id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
+                  ${groupIds.includes(c.channel_id) ? 'border-blue-500/60 bg-blue-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                  <input type="checkbox" checked={groupIds.includes(c.channel_id)}
+                    onChange={() => toggleGroup(c.channel_id)} className="accent-blue-500" />
+                  <span className="text-sm text-white/80 flex-1 truncate">{c.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-2xs text-white/30 mt-1.5">
+              {groupIds.length === 0
+                ? 'לא נבחרה קבוצה — הפוסט יפורסם לערוץ ברירת המחדל.'
+                : 'הפוסט יפורסם לקבוצות המסומנות בלבד.'}
+            </p>
+          </div>
+        )}
+
         {isScheduled && (
           <div className="mt-3">
             <label className="block text-xs text-white/50 mb-1.5">מועד פרסום</label>
@@ -879,7 +912,7 @@ function EditPostModal({ post, onClose, onSaved }: {
           </div>
         )}
         {post.status === 'sent' && (
-          <p className="text-2xs text-amber-400/80 mt-2">הפוסט כבר נשלח — העריכה לא תשנה את ההודעה שכבר פורסמה, אבל תחול על &quot;פרסום מחדש&quot;.</p>
+          <p className="text-2xs text-amber-400/80 mt-2">הפוסט כבר נשלח — העריכה לא תשנה את ההודעה שכבר פורסמה, אבל תחול על &quot;פרסום מחדש&quot;. כדי לשלוח אותו לקבוצה אחרת השתמש ב&quot;דחוף עכשיו&quot;.</p>
         )}
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
 
@@ -1537,6 +1570,7 @@ export default function PostsPage() {
       {editingPost && (
         <EditPostModal
           post={editingPost}
+          channels={channels}
           onClose={() => setEditingPost(null)}
           onSaved={() => { setEditingPost(null); load({ silent: true }); }}
         />

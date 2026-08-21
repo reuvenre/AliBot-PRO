@@ -1158,10 +1158,25 @@ export class PostsService {
   async updatePost(userId: string, postId: string, dto: {
     text?: string; scheduled_at?: string;
     product_title?: string; price_ils?: number; product_image?: string; affiliate_url?: string;
-    gallery?: string[];
+    gallery?: string[]; channels?: string[];
   }): Promise<Post> {
     const post = await this.repo.findOne({ where: { id: postId, user_id: userId } });
     if (!post) throw new NotFoundException('פוסט לא נמצא');
+
+    // Re-targeting from the editor: the group(s) this post publishes to. An explicit EMPTY
+    // list means "back to the default channel". Every id is verified against the owner's
+    // own saved channels — the field decides where a real message is delivered, so an
+    // unknown or someone else's id must never reach the send path.
+    if (dto.channels !== undefined) {
+      const uniq = Array.from(new Set((dto.channels || [])
+        .map((c) => (typeof c === 'string' ? c.trim() : '')).filter(Boolean)));
+      for (const id of uniq) {
+        const known = await this.channels.getName(userId, id).catch(() => null);
+        if (!known) throw new BadRequestException(`הקבוצה שנבחרה (${id}) אינה שמורה בחשבון שלך`);
+      }
+      post.channel_override = uniq[0] || null;
+      post.channel_overrides = uniq.length > 1 ? JSON.stringify(uniq) : null;
+    }
     if (typeof dto.text === 'string') post.generated_text = dto.text;
     if (typeof dto.product_title === 'string') post.product_title = dto.product_title;
     if (typeof dto.product_image === 'string' && dto.product_image.trim()) {
@@ -1949,6 +1964,35 @@ export class PostsService {
       .getRawMany()
       .catch(() => [] as { product_id: string }[]);
     return new Set(rows.map((r) => String(r.product_id)));
+  }
+
+  /**
+   * The group(s) the owner sent each product to BY HAND — one entry per manual post.
+   *
+   * "By hand" is `campaign_id IS NULL`: nothing but a deliberate send/queue/schedule from
+   * the product screens creates such a row, so its channel targets are the owner's own
+   * choice of audience for that product. The FLYLINK runner reads this to leave a product
+   * hand-aimed at one group alone (see hand-picked-lock.ts).
+   */
+  async handPickedChannels(userId: string): Promise<Array<{ productKey: string; channels: string[] }>> {
+    const rows: Array<{ product_id: string; channel_override: string | null; channel_overrides: string | null }> =
+      await this.repo.createQueryBuilder('p')
+        .select(['p.product_id AS product_id', 'p.channel_override AS channel_override', 'p.channel_overrides AS channel_overrides'])
+        .where('p.user_id = :userId', { userId })
+        .andWhere('p.campaign_id IS NULL')
+        .andWhere('(p.channel_override IS NOT NULL OR p.channel_overrides IS NOT NULL)')
+        .getRawMany()
+        .catch(() => []);
+
+    return rows.map((r) => {
+      let channels: string[] = [];
+      try {
+        const parsed = r.channel_overrides ? JSON.parse(r.channel_overrides) : [];
+        if (Array.isArray(parsed)) channels = parsed.filter((c) => typeof c === 'string' && c.trim());
+      } catch { /* unreadable list — the single override below still counts */ }
+      if (!channels.length && r.channel_override) channels = [r.channel_override];
+      return { productKey: String(r.product_id), channels };
+    });
   }
 
   /**

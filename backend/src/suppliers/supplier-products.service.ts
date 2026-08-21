@@ -9,6 +9,7 @@ import { normalizeSku } from './sku-match.util';
 import { openPostClash } from './flylink-dedup';
 import { coverFirst } from './gallery-order';
 import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
+import { handPickedElsewhere } from './hand-picked-lock';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { FLYLINK_VARIANTS, pickVariant, variantHint } from '../posts/copy-variants';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -618,7 +619,19 @@ export class SupplierProductsService {
     const groupBusy = await this.posts
       .postedProductIdsToChannels(targets, new Date(Date.now() - FLYLINK_REPEAT_COOLDOWN_MS))
       .catch(() => new Set<string>());
-    const available = candidates.filter((p) => !groupBusy.has(String(p.sku || p.id)));
+
+    // HAND-PICKED LOCK — the catalog is shared by every FLYLINK campaign, so an item the
+    // owner sent by hand to one group used to surface later in another campaign's group
+    // (observed: a tactical item published to the brands-for-moms group). A product he
+    // aimed at a group this campaign does not publish to is his, not the rotation's.
+    const handLocked = handPickedElsewhere(
+      await this.posts.handPickedChannels(userId).catch(() => []),
+      targets,
+    );
+
+    const available = candidates.filter(
+      (p) => !groupBusy.has(String(p.sku || p.id)) && !handLocked.has(String(p.sku || p.id)),
+    );
     if (!available.length) {
       return { queued: 0, failed: 0, keyword: 'מוצרי FLYLINK', searched: 'FLYLINK',
         errors: ['כל המוצרים הזמינים כבר ממתינים לפרסום או פורסמו לאחרונה לקבוצות היעד — דילוג'] };

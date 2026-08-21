@@ -693,12 +693,15 @@ export const postsApi = {
   setRepostSource: (id: string) =>
     http.post<Post>(`/posts/${id}/repost-source`).then(extract),
 
-  /** Full post edit: text, title, price, image, affiliate link, and/or scheduled time. */
+  /** Full post edit: text, title, price, image, affiliate link, target group(s) and/or
+   *  scheduled time. */
   update: (id: string, data: {
     text?: string; scheduled_at?: string;
     product_title?: string; price_ils?: number; product_image?: string; affiliate_url?: string;
     /** Ordered gallery re-selection — first image becomes the main one. */
     gallery?: string[];
+    /** Re-target the post to other group(s); [] = back to the default channel. */
+    channels?: string[];
   }) => http.patch<Post>(`/posts/${id}`, data).then(extract),
 
   /** Delete any post (queued/scheduled/sent/failed). */
