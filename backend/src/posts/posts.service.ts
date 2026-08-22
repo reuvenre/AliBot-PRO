@@ -2481,7 +2481,8 @@ export class PostsService {
     const bonus = await this.incentive.keywordsFor(userId, campaign.id, bonusChannels);
     if (bonus.keywords.length) {
       for (const kw of bonus.keywords) if (!kwList.includes(kw)) kwList.push(kw);
-      this.logger.log(`campaign ${campaign.id}: ${bonus.keywords.length} bonus keywords in rotation (${bonus.names.join(', ')})`);
+      this.logger.log(`campaign ${campaign.id}: ${bonus.keywords.length} bonus keywords in rotation (${bonus.names.join(', ')})`
+        + (bonus.proven.length ? ` · ${bonus.proven.length} from pools that already sold — top rotation tier` : ''));
     }
     // Which keywords are bonus-pool ones, for the per-post copy angle below.
     const bonusKeywordSet = new Set(bonus.keywords.map((k) => k.trim().toLowerCase()));
@@ -2509,7 +2510,12 @@ export class PostsService {
     const kwEffective = kwActive.length ? kwActive : kwList;
 
     const perf = await this.keywordPerformance(campaign.id).catch(() => new Map());
-    const rotation = weightedRotation(kwEffective, perf, new Set(bonus.keywords));
+    // A pool that has SOLD inside its window outranks even a proven earner: it earns AND
+    // pays the bonus percentage on top of every further sale, so it gets more of the run's
+    // product slots for as long as its window is open.
+    const rotation = weightedRotation(
+      kwEffective, perf, new Set(bonus.keywords), new Set(bonus.proven),
+    );
     const rotationList = rotation.length ? rotation : kwEffective;
 
     // One keyword per post SLOT (repeats when there are fewer keywords than posts).

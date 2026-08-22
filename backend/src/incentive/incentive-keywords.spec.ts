@@ -24,9 +24,16 @@ describe('IncentiveService.keywordsFor', () => {
     ...over,
   });
 
-  /** Service with only the collaborators keywordsFor touches. */
-  function serviceWith(rows: any[], allowed = true) {
-    const repo: any = { find: async () => rows };
+  /** Service with only the collaborators keywordsFor touches.
+   *  `soldPools` = pool ids the "did this pool sell?" query reports orders for; `null`
+   *  makes that query blow up, which is how the caller's resilience gets tested. */
+  function serviceWith(rows: any[], allowed = true, soldPools: string[] | null = []) {
+    const repo: any = {
+      find: async () => rows,
+      query: soldPools === null
+        ? undefined // no query method at all — the shape a broken/absent driver has
+        : async () => rows.map((r) => ({ id: r.id, orders: soldPools.includes(r.id) ? 2 : 0 })),
+    };
     const subscription: any = { allows: async () => allowed };
     return new IncentiveService(
       repo, null as any, null as any, null as any, null as any, null as any, subscription, null as any,
@@ -91,5 +98,40 @@ describe('IncentiveService.keywordsFor', () => {
     const res = await svc.keywordsFor(USER, MAMA);
     expect(res.keywords).toEqual(['storage box', 'kitchen organizer', 'kids toys']);
     expect(res.names).toEqual(['Home & Living Pool', 'Toy Pool']);
+  });
+
+  describe('pools that have already sold', () => {
+    it('marks every keyword of a pool with orders — the pool is what proved itself', async () => {
+      // Including keywords that have not sold individually: the bonus is paid on the
+      // pool's categories, and the rotation gives them its top tier.
+      const svc = serviceWith([row()], true, ['p1']);
+      const res = await svc.keywordsFor(USER, MAMA);
+      expect(res.proven).toEqual(['storage box', 'kitchen organizer']);
+    });
+
+    it('marks only the pool that sold, not its neighbours', async () => {
+      const svc = serviceWith([
+        row(),
+        row({ id: 'p2', name: 'Toy Pool', keywords_json: JSON.stringify(['kids toys']) }),
+      ], true, ['p2']);
+      const res = await svc.keywordsFor(USER, MAMA);
+      expect(res.proven).toEqual(['kids toys']);
+      // The unproven pool keeps its ordinary place in the rotation, it is not dropped.
+      expect(res.keywords).toContain('storage box');
+    });
+
+    it('leaves proven empty when no pool has sold yet', async () => {
+      const svc = serviceWith([row()], true, []);
+      expect((await svc.keywordsFor(USER, MAMA)).proven).toEqual([]);
+    });
+
+    it('KEEPS the keywords when the sold-pool lookup fails', async () => {
+      // Knowing which pool sold is an enhancement; the keywords are the feature. A throw
+      // here used to land in the caller's catch and wipe the whole bonus rotation.
+      const svc = serviceWith([row()], true, null);
+      const res = await svc.keywordsFor(USER, MAMA);
+      expect(res.keywords).toEqual(['storage box', 'kitchen organizer']);
+      expect(res.proven).toEqual([]);
+    });
   });
 });

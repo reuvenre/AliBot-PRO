@@ -25,6 +25,19 @@ const WEIGHT_DEAD = 1;
 const WEIGHT_UNPROVEN = 1;
 const WEIGHT_CLICKED = 2;
 const WEIGHT_EARNING = 3;
+/**
+ * A keyword belonging to a bonus pool that HAS SOLD inside its window.
+ *
+ * Highest tier in the list, and it is the only place a keyword outranks a proven earner —
+ * because it is one: the pool sold, and every sale in it pays the ordinary commission PLUS
+ * the pool's bonus percentage. A pool proving itself is the strongest buy signal the
+ * account produces, and it expires by itself when the pool's window closes.
+ *
+ * The tier is given to ALL of that pool's keywords, including ones that have not sold
+ * individually — the pool is the thing that proved itself, and its categories are what the
+ * bonus is paid on.
+ */
+const WEIGHT_BONUS_PROVEN = 4;
 
 /** Posts a keyword needs before "no clicks" means anything. Matches the optimizer's bar. */
 const MIN_POSTS_TO_JUDGE = 5;
@@ -52,6 +65,7 @@ export function keywordWeight(perf?: KeywordPerformance): number {
  */
 export function weightedRotation(
   keywords: string[], scores: Map<string, KeywordPerformance>, boosted?: Set<string>,
+  provenBonus?: Set<string>,
 ): string[] {
   const unique = Array.from(new Set(keywords.map((k) => k?.trim()).filter(Boolean)));
   if (!unique.length) return [];
@@ -63,18 +77,40 @@ export function weightedRotation(
   // Bounded on purpose: a boost, never a takeover — a keyword that actually EARNS still
   // outranks it, and every other keyword keeps its slot.
   const boost = new Set(Array.from(boosted || []).map((k) => k.trim().toLowerCase()));
+  // Pools that have actually SOLD inside their window get more than the entry boost: they
+  // are proven AND they pay a premium on every further sale. Still bounded — 4 slots in a
+  // cycle is emphasis, and every other keyword keeps its own.
+  const proven = new Set(Array.from(provenBonus || []).map((k) => k.trim().toLowerCase()));
 
-  const slots: Array<{ keyword: string; at: number; index: number }> = [];
-  unique.forEach((keyword, index) => {
-    const weight = Math.max(
+  const weights = unique.map((keyword) => {
+    const lower = keyword.toLowerCase();
+    return Math.max(
       keywordWeight(scores.get(keyword)),
-      boost.has(keyword.toLowerCase()) ? WEIGHT_CLICKED : 0,
+      boost.has(lower) ? WEIGHT_CLICKED : 0,
+      proven.has(lower) ? WEIGHT_BONUS_PROVEN : 0,
     );
-    for (let j = 0; j < weight; j++) {
-      slots.push({ keyword, at: (j + 0.5) / weight, index });
-    }
   });
+  const total = weights.reduce((n, w) => n + w, 0);
 
-  slots.sort((a, b) => (a.at - b.at) || (a.index - b.index));
-  return slots.map((s) => s.keyword);
+  // Fill the cycle slot by slot, each time giving it to whoever is furthest BEHIND the share
+  // its weight entitles it to. Placing each copy at its own fraction of the cycle was the
+  // obvious approach and it failed on real data: every single-slot keyword resolves to the
+  // exact midpoint, so a heavy keyword's copies were pushed to the two ENDS of the cycle —
+  // and since the cursor walks these cycles back to back, four copies at the end of one and
+  // the start of the next publish consecutively, which is precisely what spreading exists to
+  // prevent. Deficit-filling interleaves against the crowd of ones as well as against other
+  // winners, and ties break by campaign position, so the result stays deterministic.
+  const taken = new Array(unique.length).fill(0);
+  const out: string[] = [];
+  for (let slot = 0; slot < total; slot++) {
+    let best = 0;
+    let bestDeficit = -Infinity;
+    for (let i = 0; i < unique.length; i++) {
+      const deficit = ((slot + 1) * weights[i]) / total - taken[i];
+      if (deficit > bestDeficit + 1e-9) { bestDeficit = deficit; best = i; }
+    }
+    taken[best] += 1;
+    out.push(unique[best]);
+  }
+  return out;
 }

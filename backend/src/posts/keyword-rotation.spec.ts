@@ -123,4 +123,61 @@ describe('weightedRotation — bonus-pool boost', () => {
     const out = weightedRotation(['Storage Box'], perf, new Set(['storage box']));
     expect(out).toHaveLength(2);
   });
+
+  describe('a bonus pool that has already sold', () => {
+    const pool = new Set(['storage box', 'kitchen organizer']);
+
+    it('gets more product slots than any other keyword — it earns AND pays a bonus', () => {
+      const out = weightedRotation(
+        ['a', 'b', 'storage box'], perf, pool, new Set(['storage box']),
+      );
+      expect(out.filter((k) => k === 'storage box')).toHaveLength(4);
+      // Still a rotation, not a monopoly: everything else keeps its own slot.
+      expect(out.filter((k) => k === 'a')).toHaveLength(1);
+      expect(out.filter((k) => k === 'b')).toHaveLength(1);
+    });
+
+    it('outranks a keyword that earns on its own', () => {
+      const earning = new Map<string, KeywordPerformance>([
+        ['solo earner', { posts: 9, clicks: 30, revenue: 120 }],
+      ]);
+      const out = weightedRotation(
+        ['solo earner', 'storage box'], earning, pool, new Set(['storage box']),
+      );
+      expect(out.filter((k) => k === 'storage box')).toHaveLength(4);
+      expect(out.filter((k) => k === 'solo earner')).toHaveLength(3);
+    });
+
+    it('lifts a pool keyword that has not sold individually — the POOL is what proved itself', () => {
+      const out = weightedRotation(
+        ['kitchen organizer', 'a'], perf, pool, new Set(['kitchen organizer']),
+      );
+      expect(out.filter((k) => k === 'kitchen organizer')).toHaveLength(4);
+    });
+
+    it('breaks the extra slots up instead of publishing them back-to-back', () => {
+      // Four posts of one keyword in a row reads as repetition in the channel. With four
+      // slots out of six some adjacency is arithmetic, so the property that matters is
+      // that the run is broken — not that every copy is isolated.
+      const out = weightedRotation(
+        ['a', 'b', 'storage box'], perf, pool, new Set(['storage box']),
+      );
+      const longestRun = out.reduce((best, k, i) => {
+        if (k !== 'storage box') return best;
+        let n = 1;
+        while (out[i - n] === 'storage box') n++;
+        return Math.max(best, n);
+      }, 0);
+      expect(longestRun).toBeLessThan(4);
+    });
+
+    it('interleaves properly once the cycle is long enough to allow it', () => {
+      // A real campaign has many keywords, and there the four copies do spread out.
+      const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'storage box'];
+      const out = weightedRotation(many, perf, pool, new Set(['storage box']));
+      const positions = out.map((k, i) => (k === 'storage box' ? i : -1)).filter((i) => i >= 0);
+      const gaps = positions.slice(1).map((p, i) => p - positions[i]);
+      expect(Math.min(...gaps)).toBeGreaterThan(1);
+    });
+  });
 });

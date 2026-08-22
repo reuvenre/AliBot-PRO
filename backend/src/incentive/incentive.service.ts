@@ -200,15 +200,54 @@ export class IncentiveService {
    * Never throws: a failure here means the campaign runs on its own keywords, which is
    * exactly the pre-bonus behaviour — earning less is not a reason to publish nothing.
    */
+  /**
+   * Pool ids that have produced at least one order inside their own window.
+   *
+   * A pool that sells is the strongest buy signal the account has — the category is proven
+   * AND every further sale in it pays the bonus on top — so the rotation gives its keywords
+   * the top tier. Measured inside the pool's window only: orders from before registration
+   * were never going to earn a bonus and must not vouch for the pool.
+   */
+  private async provenPoolIds(userId: string, poolIds: string[]): Promise<Set<string>> {
+    if (!poolIds.length) return new Set();
+    try {
+      return await this.queryProvenPoolIds(userId, poolIds);
+    } catch (err: any) {
+      // Knowing WHICH pool sold is an enhancement; the pool keywords themselves are the
+      // feature. A failure here must cost the caller the tier, never the keywords — this
+      // ran inside the caller's try/catch and a throw wiped the whole rotation boost.
+      this.logger.warn(`proven-pool lookup failed: ${err?.message}`);
+      return new Set();
+    }
+  }
+
+  private async queryProvenPoolIds(userId: string, poolIds: string[]): Promise<Set<string>> {
+    const rows: Array<{ id: string; orders: number }> = await this.repo.query(
+      `SELECT p.id, count(e.id)::int AS orders
+       FROM incentive_programs p
+       LEFT JOIN earnings e
+         ON e.user_id = p.user_id
+        AND e.status <> 'cancelled'
+        AND e.order_date BETWEEN p.starts_at AND least(p.ends_at, now())
+        AND lower(e.keyword) IN (
+          SELECT lower(trim(k)) FROM jsonb_array_elements_text(p.keywords_json::jsonb) AS k
+        )
+       WHERE p.id = ANY($1::uuid[]) AND p.user_id = $2
+       GROUP BY p.id`,
+      [poolIds, userId],
+    );
+    return new Set((rows || []).filter((r) => Number(r.orders) > 0).map((r) => String(r.id)));
+  }
+
   async keywordsFor(
     userId: string, campaignId: string, channels: string[] = [],
-  ): Promise<{ keywords: string[]; names: string[] }> {
+  ): Promise<{ keywords: string[]; names: string[]; proven: string[] }> {
     try {
       // Plan gate: steering the rotation is an Autopilot-tier feature. Recording pools
       // and getting the monthly reminder stay open to every plan — knowing the money is
       // there is free, having the system chase it is what's paid for.
       if (!(await this.subscription.allows(userId, 'incentive_steering'))) {
-        return { keywords: [], names: [] };
+        return { keywords: [], names: [], proven: [] };
       }
       const now = new Date();
       const rows = await this.repo.find({ where: { user_id: userId, active: true } });
@@ -219,6 +258,9 @@ export class IncentiveService {
         && new Date(r.starts_at) <= now && new Date(r.ends_at) >= now);
       const keywords: string[] = [];
       const names: string[] = [];
+      // Keywords per matched pool, so the ones belonging to a pool that SOLD can be handed
+      // to the rotation as its own (higher) tier.
+      const byPool = new Map<string, string[]>();
       for (const r of live) {
         let own: string[] = [];
         try { own = r.target_campaigns ? JSON.parse(r.target_campaigns) : []; } catch { own = []; }
@@ -232,12 +274,18 @@ export class IncentiveService {
         const clean = cleanKeywords(kws);
         if (!clean.length) continue;
         names.push(r.name);
+        byPool.set(r.id, clean);
         for (const k of clean) if (!keywords.includes(k)) keywords.push(k);
       }
-      return { keywords, names };
+      const provenIds = await this.provenPoolIds(userId, Array.from(byPool.keys()));
+      const proven: string[] = [];
+      for (const id of provenIds) {
+        for (const k of byPool.get(id) || []) if (!proven.includes(k)) proven.push(k);
+      }
+      return { keywords, names, proven };
     } catch (err: any) {
       this.logger.warn(`incentive keywords lookup failed: ${err?.message}`);
-      return { keywords: [], names: [] };
+      return { keywords: [], names: [], proven: [] };
     }
   }
 
