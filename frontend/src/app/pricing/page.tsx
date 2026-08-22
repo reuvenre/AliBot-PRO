@@ -47,7 +47,7 @@ const PLANS = [
   },
   {
     id: 'autopilot', name: 'Autopilot', tagline: 'טייס אוטומטי מלא',
-    monthly: 220, annual: 176, credits: '7,000', groups: '10 קבוצות',
+    monthly: 250, annual: 200, credits: '7,000', groups: '10 קבוצות',
     popular: false,
     includes: 'כל מה שב-Growth, וגם:',
     features: [

@@ -43,7 +43,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   autopilot: {
     id: 'autopilot', name: 'Autopilot',
-    price_monthly: 220, price_annual: 176,
+    price_monthly: 250, price_annual: 200,
     monthly_credits: 7000, max_groups: 10, popular: false,
   },
   scale: {
