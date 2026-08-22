@@ -38,6 +38,14 @@ interface CampaignActions {
   rejected: string[];
   /** The campaign drew too few clicks in the window to call any keyword dead. */
   tooQuietToJudge: boolean;
+  /** Clicks actually measured in the window — printed with the "too quiet" line so the
+   *  owner sees how far the campaign is from the threshold instead of only that it missed. */
+  windowClicks: number;
+  /** Days the score window covered — the wide one when the normal window was too quiet. */
+  windowDays: number;
+  /** Learning from what sold is switched off for this campaign — the reason nothing is
+   *  ever added, which reads identically to "nothing worth adding" unless it is said. */
+  learningOff: boolean;
 }
 
 /** Scoring window — long enough for commissions to land, short enough to track trends. */
@@ -245,7 +253,8 @@ export class OptimizerService {
       );
       for (const l of actions.learned) claimed.add(l.keyword.toLowerCase());
       if (actions.retired.length || actions.boosted || actions.unboosted.length
-        || actions.learned.length || actions.rejected.length || actions.tooQuietToJudge) {
+        || actions.learned.length || actions.rejected.length || actions.tooQuietToJudge
+        || actions.learningOff) {
         allActions.push(actions);
       }
     }
@@ -391,6 +400,9 @@ export class OptimizerService {
     const out: CampaignActions = {
       campaign: c.name, retired: [], boosted: null, unboosted: [], learned: [], rejected: [],
       tooQuietToJudge: false,
+      windowClicks: this.totalClicks(scores),
+      windowDays,
+      learningOff: !c.learn_from_orders,
     };
     const byKw = new Map(scores.map((s) => [s.keyword, s]));
     let kws = [...(c.keywords || [])];
@@ -705,9 +717,37 @@ export class OptimizerService {
     const [clicks] = await q(
       `SELECT count(*)::int AS n FROM link_clicks
        WHERE user_id = $1 AND clicked_at > now() - interval '1 day'`, [userId]);
-    const [rev] = await q(
+    // Orders are counted on the ALIEXPRESS ACCOUNTING DAY that just closed, by the date the
+    // ORDER carries — the exact rows the owner sees in the portal, so the two agree.
+    //
+    // It used to count `created_at > now() - interval '1 day'`: rows OUR SYNC inserted in
+    // the last 24 hours. That is the sync's clock, not the shop's — an order placed
+    // yesterday and first seen 25 hours ago fell out of the window, and one placed the day
+    // before but discovered late fell in. The owner counted 4 orders in the portal against
+    // a digest that said 3.
+    const [day] = await q(`SELECT ((now() AT TIME ZONE 'Asia/Shanghai')::date - 1) AS d`, []);
+    const portalDay: string | null = day?.d
+      ? new Date(day.d).toISOString().slice(0, 10)
+      : null;
+    // order_date is a naive timestamp holding UTC, so it must be DECLARED as UTC before it
+    // can be rendered on the portal's clock — one AT TIME ZONE would re-read it as local.
+    const orderDayFilter = `((order_date AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date = $2::date`;
+    const [rev] = portalDay ? await q(
       `SELECT count(*)::int AS orders, coalesce(sum(commission_ils), 0)::float AS ils
-       FROM earnings WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [userId]);
+       FROM earnings
+       WHERE user_id = $1 AND status <> 'cancelled' AND ${orderDayFilter}`, [userId, portalDay]) : [];
+    // Of those, the ones the BONUS pools earned on: their keywords are the ones paying a
+    // premium, so "how much of yesterday came from them" is the number that says whether
+    // registering for the pools is doing anything.
+    const [bonus] = portalDay ? await q(
+      `SELECT count(*)::int AS orders, coalesce(sum(commission_ils), 0)::float AS ils
+       FROM earnings e
+       WHERE e.user_id = $1 AND e.status <> 'cancelled' AND ${orderDayFilter}
+         AND lower(e.keyword) IN (
+           SELECT lower(trim(k))
+           FROM incentive_programs p, jsonb_array_elements_text(p.keywords_json::jsonb) AS k
+           WHERE p.user_id = $1 AND p.active = true AND now() BETWEEN p.starts_at AND p.ends_at
+         )`, [userId, portalDay]) : [];
     const [topProduct] = await q(
       `SELECT product_title, clicks_count FROM posts
        WHERE user_id = $1 AND sent_at > now() - interval '7 days' AND clicks_count > 0
@@ -748,6 +788,10 @@ export class OptimizerService {
       clicks_yesterday: Number(clicks?.n) || 0,
       orders_yesterday: Number(rev?.orders) || 0,
       revenue_yesterday_ils: +(Number(rev?.ils) || 0).toFixed(2),
+      /** The AliExpress accounting day the order figures cover (YYYY-MM-DD). */
+      portal_day: portalDay,
+      bonus_orders: Number(bonus?.orders) || 0,
+      bonus_revenue_ils: +(Number(bonus?.ils) || 0).toFixed(2),
       top_product: topProduct?.product_title ? String(topProduct.product_title).slice(0, 60) : null,
       top_product_clicks: Number(topProduct?.clicks_count) || 0,
       golden_hours: goldenHours.map((h) => ({
@@ -797,7 +841,20 @@ export class OptimizerService {
     lines.push('');
     // "24 השעות האחרונות", not "אתמול": the window is rolling and now ends at the AliExpress
     // 10:00 close, so it covers the day that just shut rather than a calendar yesterday.
-    lines.push(`📊 24 השעות האחרונות (עד סגירת היום באלי אקספרס): ${stats.posts_yesterday} פוסטים · ${stats.clicks_yesterday} קליקים · ${stats.orders_yesterday} הזמנות (₪${stats.revenue_yesterday_ils})`);
+    // Two clocks, two lines. Posts and clicks are OUR activity on the owner's day; orders
+    // belong to the AliExpress accounting day and are printed with that date, so the figure
+    // can be held against the portal row by row instead of "roughly the same period".
+    lines.push(`📊 24 השעות האחרונות: ${stats.posts_yesterday} פוסטים · ${stats.clicks_yesterday} קליקים`);
+    const dayLabel = stats.portal_day
+      ? stats.portal_day.split('-').reverse().slice(0, 2).join('.')
+      : null;
+    lines.push(`💰 הזמנות${dayLabel ? ` ליום ${dayLabel}` : ''} (יום החשבונאות של אלי אקספרס): `
+      + `${stats.orders_yesterday} הזמנות · ₪${stats.revenue_yesterday_ils} עמלות בסיס`);
+    if (stats.bonus_orders > 0) {
+      lines.push(`   🎁 מתוכן ${stats.bonus_orders} ממסלולי הבונוס (₪${stats.bonus_revenue_ils}) — הבונוס עצמו משולם מעל זה`);
+    } else if (stats.orders_yesterday > 0) {
+      lines.push('   🎁 אף הזמנה לא הגיעה ממילות מסלולי הבונוס');
+    }
     if (stats.top_product) lines.push(`🏆 המוביל השבוע: ${stats.top_product} (${stats.top_product_clicks} קליקים)`);
     // Per-group golden hours (30 days) beat the account-wide line when we have them —
     // each group's audience has its own rhythm, and per-group is what the scheduler will
@@ -837,9 +894,17 @@ export class OptimizerService {
         if (a.rejected.length) {
           lines.push(`  • [${a.campaign}] לא הוספתי: ${a.rejected.join(', ')} — לא מתאימות לקהל של הקבוצה`);
         }
-        // Saying "I chose not to decide" beats quietly retiring good keywords on silence.
+        // Saying "I chose not to decide" beats quietly retiring good keywords on silence —
+        // and printing the clicks actually measured turns "not enough data" into a distance
+        // the owner can watch close, instead of a sentence that reads the same every day.
         if (a.tooQuietToJudge) {
-          lines.push(`  • [${a.campaign}] לא הדחתי אף מילה — פחות מ-${MIN_CAMPAIGN_CLICKS_TO_JUDGE} קליקים ב-${SPARSE_WINDOW_DAYS} ימים, אין מספיק דאטה כדי לקבוע שמילה מתה`);
+          lines.push(`  • [${a.campaign}] לא הדחתי אף מילה — ${a.windowClicks} קליקים ב-${a.windowDays} ימים `
+            + `(נדרשים ${MIN_CAMPAIGN_CLICKS_TO_JUDGE}), אין מספיק דאטה כדי לקבוע שמילה מתה`);
+        }
+        // "Nothing was added" and "adding is switched off" look identical in a report and
+        // mean opposite things — one is a verdict, the other is a setting waiting for him.
+        if (a.learningOff) {
+          lines.push(`  • [${a.campaign}] לא הוספתי מילים — "למידה ממכירות" כבויה בטייס הזה (הפעל בעריכת הטייס כדי שאוסיף קטגוריות שמוכרות)`);
         }
       }
     } else {
