@@ -18,6 +18,7 @@ import { PinterestService } from '../pinterest/pinterest.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
 import { soldPriceBand } from './sold-price-band';
+import { frictionProducts, pickTopAction, trendArrow } from './digest-insights';
 import { collapsedKeywords, hoursChanged, postsPerRunDelta } from './manager-rules';
 import {
   CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
@@ -46,6 +47,9 @@ interface CampaignActions {
   /** Learning from what sold is switched off for this campaign — the reason nothing is
    *  ever added, which reads identically to "nothing worth adding" unless it is said. */
   learningOff: boolean;
+  /** Which evidence the decisions stood on: this campaign's own numbers, or the keyword's
+   *  behaviour across the account (the fallback that lets a quiet campaign be judged). */
+  basis: 'campaign' | 'account';
 }
 
 /** Scoring window — long enough for commissions to land, short enough to track trends. */
@@ -247,9 +251,22 @@ export class OptimizerService {
         scores = await this.scoreKeywords(userId, c.id, SPARSE_WINDOW_DAYS);
         window = SPARSE_WINDOW_DAYS;
       }
+      // Still too quiet after looking a month back? Judge the keywords on how they behave
+      // ACROSS the account. Without this the engine simply never decided anything at these
+      // volumes — every morning reported "not enough data" and changed nothing.
+      let basis: 'campaign' | 'account' = 'campaign';
+      if (this.totalClicks(scores) < MIN_CAMPAIGN_CLICKS_TO_JUDGE) {
+        const wide = await this.scoreKeywordsAccountWide(
+          userId, c.keywords || [], SPARSE_WINDOW_DAYS,
+        );
+        if (this.totalClicks(wide) >= MIN_CAMPAIGN_CLICKS_TO_JUDGE) {
+          scores = wide;
+          basis = 'account';
+        }
+      }
       allScores[c.name] = scores;
       const actions = await this.applyActions(
-        userId, c, scores, soldCategories, channelsById, claimed, window,
+        userId, c, scores, soldCategories, channelsById, claimed, window, basis,
       );
       for (const l of actions.learned) claimed.add(l.keyword.toLowerCase());
       if (actions.retired.length || actions.boosted || actions.unboosted.length
@@ -269,6 +286,16 @@ export class OptimizerService {
       return [] as string[];
     });
     let digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles, hotByGroup);
+    // Sunday carries the week's review — the trend view a single day cannot show. Israel
+    // time, because that is the week the owner lives in (Sunday is a working day here).
+    const weekday = new Date().toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Jerusalem' });
+    if (weekday === 'Sun') {
+      const weekly = await this.weeklyReview(userId).catch((e) => {
+        this.logger.warn(`weekly review failed for ${userId}: ${e?.message}`);
+        return [] as string[];
+      });
+      if (weekly.length) digest += `\n${weekly.join('\n')}`;
+    }
     if (managerLines.length) {
       digest += `\n\n🤖 סוכן-המנהל — מה שיניתי היום:\n${managerLines.map((l) => `  • ${l}`).join('\n')}`;
     }
@@ -297,6 +324,54 @@ export class OptimizerService {
    * out. Attribution is heuristic (same product, order after post) — the same signal the
    * attribution report uses; good enough to rank keywords, not an accounting statement.
    */
+  /**
+   * The same scoring, but for a keyword ACROSS THE WHOLE ACCOUNT.
+   *
+   * A single campaign rarely clears the click floor at these volumes, so the engine spent
+   * most mornings declining to judge anything — a learning engine that never learns. The
+   * same keyword usually runs in several campaigns, and its behaviour there is evidence
+   * about the keyword: five posts and no clicks anywhere is a dead phrase, whichever group
+   * it was posted to. This is the fallback signal, used only when the campaign's own window
+   * is too quiet, and the digest says which basis a decision stood on.
+   *
+   * It is deliberately NOT the default: where a campaign has its own numbers, its own
+   * audience is the better judge — a phrase that dies with the moms can earn with the
+   * tactical crowd, and the account-wide view would flatten exactly that difference.
+   */
+  private async scoreKeywordsAccountWide(
+    userId: string, keywords: string[], windowDays: number,
+  ): Promise<KeywordScore[]> {
+    const kws = Array.from(new Set((keywords || []).map((k) => String(k).trim()).filter(Boolean)));
+    if (!kws.length) return [];
+    const rows: any[] = await this.campaigns.query(
+      `SELECT pp.keyword,
+              count(DISTINCT pp.product_id)::int                    AS posts,
+              coalesce(sum(p.clicks_count + p.pinterest_clicks), 0)::int AS clicks,
+              coalesce((
+                SELECT sum(e.commission_ils)
+                FROM earnings e
+                WHERE e.user_id = $1
+                  AND lower(e.keyword) = lower(pp.keyword)
+                  AND e.order_date > now() - ($3 || ' days')::interval
+              ), 0)::float                                          AS revenue_ils
+       FROM campaign_posted_products pp
+       JOIN campaigns c ON c.id = pp.campaign_id AND c.user_id = $1
+       LEFT JOIN posts p
+         ON p.campaign_id = pp.campaign_id AND p.product_id = pp.product_id AND p.status = 'sent'
+       WHERE pp.keyword IS NOT NULL
+         AND lower(pp.keyword) = ANY($2::text[])
+         AND pp.created_at > now() - ($3 || ' days')::interval
+       GROUP BY pp.keyword`,
+      [userId, kws.map((k) => k.toLowerCase()), String(windowDays)],
+    ).catch(() => []);
+    return rows.map((r) => ({
+      keyword: String(r.keyword),
+      posts: Number(r.posts) || 0,
+      clicks: Number(r.clicks) || 0,
+      revenue_ils: +(Number(r.revenue_ils) || 0).toFixed(2),
+    }));
+  }
+
   private async scoreKeywords(
     userId: string, campaignId: string, windowDays: number,
   ): Promise<KeywordScore[]> {
@@ -395,7 +470,7 @@ export class OptimizerService {
   private async applyActions(
     userId: string, c: Campaign, scores: KeywordScore[], soldCategories: CategoryScore[] = [],
     channelsById: Map<string, Channel> = new Map(), claimed: Set<string> = new Set(),
-    windowDays: number = WINDOW_DAYS,
+    windowDays: number = WINDOW_DAYS, basis: 'campaign' | 'account' = 'campaign',
   ): Promise<CampaignActions> {
     const out: CampaignActions = {
       campaign: c.name, retired: [], boosted: null, unboosted: [], learned: [], rejected: [],
@@ -403,6 +478,7 @@ export class OptimizerService {
       windowClicks: this.totalClicks(scores),
       windowDays,
       learningOff: !c.learn_from_orders,
+      basis,
     };
     const byKw = new Map(scores.map((s) => [s.keyword, s]));
     let kws = [...(c.keywords || [])];
@@ -752,6 +828,69 @@ export class OptimizerService {
       `SELECT product_title, clicks_count FROM posts
        WHERE user_id = $1 AND sent_at > now() - interval '7 days' AND clicks_count > 0
        ORDER BY clicks_count DESC LIMIT 1`, [userId]);
+
+    // A number with nothing to stand against says nothing: is 4 orders a good day? The
+    // baseline is the DAILY AVERAGE of the preceding week (yesterday excluded, so a strong
+    // day can't flatter its own comparison).
+    const [base] = await q(
+      `SELECT (count(*) FILTER (WHERE kind = 'post'))::float / 7  AS posts,
+              (count(*) FILTER (WHERE kind = 'click'))::float / 7 AS clicks
+       FROM (
+         SELECT 'post'::text AS kind FROM posts
+          WHERE user_id = $1 AND status = 'sent'
+            AND sent_at BETWEEN now() - interval '8 days' AND now() - interval '1 day'
+         UNION ALL
+         SELECT 'click'::text FROM link_clicks
+          WHERE user_id = $1
+            AND clicked_at BETWEEN now() - interval '8 days' AND now() - interval '1 day'
+       ) s`, [userId]);
+    const [ordersBase] = portalDay ? await q(
+      `SELECT count(*)::float / 7 AS orders, coalesce(sum(commission_ils), 0)::float / 7 AS ils
+       FROM earnings
+       WHERE user_id = $1 AND status <> 'cancelled'
+         AND ((order_date AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
+             BETWEEN $2::date - 7 AND $2::date - 1`, [userId, portalDay]) : [];
+
+    // Clicks that produced nothing: the shopper went to the page and walked away. Almost
+    // always price or shipping, and the one signal here the owner can act on the same day.
+    const frictionRows: any[] = await q(
+      `SELECT p.product_title AS title,
+              (p.clicks_count + coalesce(p.pinterest_clicks, 0))::int AS clicks,
+              (SELECT count(*)::int FROM earnings e
+                WHERE e.user_id = $1 AND e.product_id = p.product_id
+                  AND e.status <> 'cancelled') AS orders
+       FROM posts p
+       WHERE p.user_id = $1 AND p.status = 'sent'
+         AND p.sent_at > now() - ($2 || ' days')::interval
+         AND (p.clicks_count + coalesce(p.pinterest_clicks, 0)) > 0
+       ORDER BY clicks DESC LIMIT 40`, [userId, String(WINDOW_DAYS)]);
+
+    // Posts vs clicks per GROUP — where the effort goes against where the attention is.
+    const groupRows: any[] = await q(
+      `SELECT coalesce(ch.name, 'ערוץ ברירת המחדל') AS name,
+              count(*)::int                          AS posts,
+              coalesce(sum(p.clicks_count + coalesce(p.pinterest_clicks, 0)), 0)::int AS clicks
+       FROM posts p
+       LEFT JOIN channels ch ON ch.channel_id = p.channel_override AND ch.user_id = $1
+       WHERE p.user_id = $1 AND p.status = 'sent'
+         AND p.sent_at > now() - ($2 || ' days')::interval
+       GROUP BY 1`, [userId, String(WINDOW_DAYS)]);
+
+    // Active campaigns that have published nothing for over a day — the one finding that
+    // outranks every optimisation in the report.
+    const silentRows: any[] = await q(
+      `SELECT c.name FROM campaigns c
+       WHERE c.user_id = $1 AND c.status = 'active'
+         AND NOT EXISTS (
+           SELECT 1 FROM posts p
+           WHERE p.campaign_id = c.id AND p.status = 'sent'
+             AND p.sent_at > now() - interval '1 day')
+         AND EXISTS (SELECT 1 FROM posts p2 WHERE p2.campaign_id = c.id AND p2.status = 'sent')`,
+      [userId]);
+
+    const [poolCount] = await q(
+      `SELECT count(*)::int AS n FROM incentive_programs
+       WHERE user_id = $1 AND active = true AND now() BETWEEN starts_at AND ends_at`, [userId]);
     // The account's proven price band (what buyers actually pay) — the sales-profile
     // signal product selection now prefers; shown so the owner sees what steers it.
     const bandRows: any[] = await q(
@@ -792,6 +931,23 @@ export class OptimizerService {
       portal_day: portalDay,
       bonus_orders: Number(bonus?.orders) || 0,
       bonus_revenue_ils: +(Number(bonus?.ils) || 0).toFixed(2),
+      /** Daily averages over the preceding week — what yesterday is measured against. */
+      avg_posts: +(Number(base?.posts) || 0).toFixed(1),
+      avg_clicks: +(Number(base?.clicks) || 0).toFixed(1),
+      avg_orders: +(Number(ordersBase?.orders) || 0).toFixed(1),
+      avg_revenue_ils: +(Number(ordersBase?.ils) || 0).toFixed(2),
+      friction: frictionProducts(frictionRows.map((r) => ({
+        title: String(r.title || ''),
+        clicks: Number(r.clicks) || 0,
+        orders: Number(r.orders) || 0,
+      }))),
+      groups: groupRows.map((r) => ({
+        name: String(r.name),
+        posts: Number(r.posts) || 0,
+        clicks: Number(r.clicks) || 0,
+      })),
+      silent_campaigns: silentRows.map((r) => String(r.name)),
+      has_bonus_pools: (Number(poolCount?.n) || 0) > 0,
       top_product: topProduct?.product_title ? String(topProduct.product_title).slice(0, 60) : null,
       top_product_clicks: Number(topProduct?.clicks_count) || 0,
       golden_hours: goldenHours.map((h) => ({
@@ -828,6 +984,74 @@ export class OptimizerService {
     return { scored: scoreVariants(stats), winner: bestVariant(stats) };
   }
 
+  /**
+   * The week against the week before it — appended to Sunday's report.
+   *
+   * A daily report is a smoke alarm; it cannot show a trend, and a trend is what a decision
+   * needs. Rather than a second delivery to ignore, the weekly comparison rides the report
+   * the owner already opens, once a week.
+   */
+  private async weeklyReview(userId: string): Promise<string[]> {
+    const q = (sql: string, params: any[]) => this.campaigns.query(sql, params).catch(() => []);
+    const [wk] = await q(
+      `SELECT
+         (SELECT count(*)::int FROM posts
+           WHERE user_id = $1 AND status = 'sent' AND sent_at > now() - interval '7 days')  AS posts,
+         (SELECT count(*)::int FROM posts
+           WHERE user_id = $1 AND status = 'sent'
+             AND sent_at BETWEEN now() - interval '14 days' AND now() - interval '7 days')  AS posts_prev,
+         (SELECT count(*)::int FROM link_clicks
+           WHERE user_id = $1 AND clicked_at > now() - interval '7 days')                   AS clicks,
+         (SELECT count(*)::int FROM link_clicks
+           WHERE user_id = $1
+             AND clicked_at BETWEEN now() - interval '14 days' AND now() - interval '7 days') AS clicks_prev,
+         (SELECT count(*)::int FROM earnings
+           WHERE user_id = $1 AND status <> 'cancelled' AND order_date > now() - interval '7 days') AS orders,
+         (SELECT count(*)::int FROM earnings
+           WHERE user_id = $1 AND status <> 'cancelled'
+             AND order_date BETWEEN now() - interval '14 days' AND now() - interval '7 days') AS orders_prev,
+         (SELECT coalesce(sum(commission_ils), 0)::float FROM earnings
+           WHERE user_id = $1 AND status <> 'cancelled' AND order_date > now() - interval '7 days') AS ils,
+         (SELECT coalesce(sum(commission_ils), 0)::float FROM earnings
+           WHERE user_id = $1 AND status <> 'cancelled'
+             AND order_date BETWEEN now() - interval '14 days' AND now() - interval '7 days') AS ils_prev`,
+      [userId]);
+    if (!wk) return [];
+
+    const n = (v: any) => Number(v) || 0;
+    const lines = [
+      '',
+      '📅 סיכום שבועי (7 ימים מול השבוע שלפניו):',
+      `  • פוסטים: ${n(wk.posts)}${trendArrow(n(wk.posts), n(wk.posts_prev))} (${n(wk.posts_prev)} בשבוע שעבר)`,
+      `  • קליקים: ${n(wk.clicks)}${trendArrow(n(wk.clicks), n(wk.clicks_prev))} (${n(wk.clicks_prev)})`,
+      `  • הזמנות: ${n(wk.orders)}${trendArrow(n(wk.orders), n(wk.orders_prev))} (${n(wk.orders_prev)})`,
+      `  • עמלות בסיס: ₪${n(wk.ils).toFixed(2)}${trendArrow(n(wk.ils), n(wk.ils_prev))} (₪${n(wk.ils_prev).toFixed(2)})`,
+    ];
+
+    // The week's best group and best keyword — where to put next week's effort.
+    const [topGroup] = await q(
+      `SELECT coalesce(ch.name, 'ערוץ ברירת המחדל') AS name,
+              coalesce(sum(p.clicks_count + coalesce(p.pinterest_clicks, 0)), 0)::int AS clicks
+       FROM posts p
+       LEFT JOIN channels ch ON ch.channel_id = p.channel_override AND ch.user_id = $1
+       WHERE p.user_id = $1 AND p.status = 'sent' AND p.sent_at > now() - interval '7 days'
+       GROUP BY 1 ORDER BY clicks DESC LIMIT 1`, [userId]);
+    if (topGroup?.name && n(topGroup.clicks) > 0) {
+      lines.push(`  • הקבוצה המובילה: ${topGroup.name} (${n(topGroup.clicks)} קליקים)`);
+    }
+    const [topKw] = await q(
+      `SELECT lower(keyword) AS kw, count(*)::int AS orders,
+              coalesce(sum(commission_ils), 0)::float AS ils
+       FROM earnings
+       WHERE user_id = $1 AND status <> 'cancelled' AND keyword IS NOT NULL
+         AND order_date > now() - interval '7 days'
+       GROUP BY 1 ORDER BY ils DESC LIMIT 1`, [userId]);
+    if (topKw?.kw) {
+      lines.push(`  • מילת המפתח המכניסה: "${topKw.kw}" — ${n(topKw.orders)} הזמנות, ₪${n(topKw.ils).toFixed(2)}`);
+    }
+    return lines;
+  }
+
   private buildDigest(
     stats: Awaited<ReturnType<OptimizerService['digestStats']>>,
     actions: CampaignActions[],
@@ -839,17 +1063,41 @@ export class OptimizerService {
     const lines: string[] = [];
     lines.push('🧠 דו"ח הבוקר של המנוע הלומד');
     lines.push('');
+
+    // THE ACTION FIRST. A report read in fifteen seconds and acted on beats a complete one
+    // that is skimmed: everything below is the evidence, this is the ask. Null on a quiet
+    // day on purpose — an invented action teaches the owner to ignore the line.
+    const action = pickTopAction({
+      groups: stats.groups,
+      friction: stats.friction,
+      silentCampaigns: stats.silent_campaigns,
+      orders: stats.orders_yesterday,
+      bonusOrders: stats.bonus_orders,
+      hasBonusPools: stats.has_bonus_pools,
+      enoughSignal: !actions.some((a) => a.tooQuietToJudge),
+    });
+    if (action) {
+      lines.push(`🎯 הפעולה של היום: ${action}`);
+      lines.push('');
+    }
     // "24 השעות האחרונות", not "אתמול": the window is rolling and now ends at the AliExpress
     // 10:00 close, so it covers the day that just shut rather than a calendar yesterday.
     // Two clocks, two lines. Posts and clicks are OUR activity on the owner's day; orders
     // belong to the AliExpress accounting day and are printed with that date, so the figure
     // can be held against the portal row by row instead of "roughly the same period".
-    lines.push(`📊 24 השעות האחרונות: ${stats.posts_yesterday} פוסטים · ${stats.clicks_yesterday} קליקים`);
+    // Every figure carries its movement against the past week's daily average — "4 orders"
+    // is meaningless until it is 4 against 2.
+    lines.push(`📊 24 השעות האחרונות: ${stats.posts_yesterday} פוסטים${trendArrow(stats.posts_yesterday, stats.avg_posts)}`
+      + ` · ${stats.clicks_yesterday} קליקים${trendArrow(stats.clicks_yesterday, stats.avg_clicks)}`);
     const dayLabel = stats.portal_day
       ? stats.portal_day.split('-').reverse().slice(0, 2).join('.')
       : null;
     lines.push(`💰 הזמנות${dayLabel ? ` ליום ${dayLabel}` : ''} (יום החשבונאות של אלי אקספרס): `
-      + `${stats.orders_yesterday} הזמנות · ₪${stats.revenue_yesterday_ils} עמלות בסיס`);
+      + `${stats.orders_yesterday} הזמנות${trendArrow(stats.orders_yesterday, stats.avg_orders)}`
+      + ` · ₪${stats.revenue_yesterday_ils} עמלות בסיס${trendArrow(stats.revenue_yesterday_ils, stats.avg_revenue_ils)}`);
+    if (stats.avg_orders > 0) {
+      lines.push(`   📐 ממוצע יומי בשבוע שקדם: ${stats.avg_orders} הזמנות · ₪${stats.avg_revenue_ils}`);
+    }
     if (stats.bonus_orders > 0) {
       lines.push(`   🎁 מתוכן ${stats.bonus_orders} ממסלולי הבונוס (₪${stats.bonus_revenue_ils}) — הבונוס עצמו משולם מעל זה`);
     } else if (stats.orders_yesterday > 0) {
@@ -872,6 +1120,12 @@ export class OptimizerService {
     } else if (stats.golden_hours.length) {
       const parts = stats.golden_hours.map((g) => `${g.hour} (${g.clicks} קליקים)`);
       lines.push(`⏰ שעות הזהב שלך: ${parts.join(', ')} — לפי ${WINDOW_DAYS} הימים האחרונים`);
+    }
+    // Clicks that led nowhere. Named, because "improve conversion" is not an action and
+    // "this product got 12 clicks and sold nothing" is.
+    if (stats.friction.length) {
+      lines.push(`🧲 קיבלו קליקים ולא נמכרו (${WINDOW_DAYS} יום) — בדוק מחיר/משלוח:`);
+      for (const f of stats.friction) lines.push(`  • ${f.title} — ${f.clicks} קליקים, 0 הזמנות`);
     }
     if (stats.price_band) {
       lines.push(`💵 פרופיל הקנייה שלך: רוב ההזמנות בין $${stats.price_band.low} ל-$${stats.price_band.high} `
@@ -905,6 +1159,11 @@ export class OptimizerService {
         // mean opposite things — one is a verdict, the other is a setting waiting for him.
         if (a.learningOff) {
           lines.push(`  • [${a.campaign}] לא הוספתי מילים — "למידה ממכירות" כבויה בטייס הזה (הפעל בעריכת הטייס כדי שאוסיף קטגוריות שמוכרות)`);
+        }
+        // A decision made on the account-wide fallback is a weaker claim than one made on
+        // the group's own numbers, and the report should never blur the two.
+        if (a.basis === 'account' && (a.retired.length || a.boosted || a.unboosted.length)) {
+          lines.push(`  • [${a.campaign}] ההחלטות למעלה נשענו על ביצועי המילים בכל החשבון — לקבוצה הזו לבדה עוד אין מספיק קליקים`);
         }
       }
     } else {
