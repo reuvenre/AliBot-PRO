@@ -177,6 +177,18 @@ export function variantHint(variant: CopyVariant, language: string): string {
 }
 
 /** An angle by id — for turning a stored post value back into something displayable. */
+/**
+ * The Hebrew name of a copy angle, for anything the OWNER reads.
+ *
+ * `variantById(id)?.label || id` was the old formula, and it leaks a raw English id into a
+ * Hebrew report the moment a post carries an angle the catalog no longer lists — a renamed
+ * or retired variant on an older post. The id means nothing to the reader; say plainly that
+ * it is an older style instead.
+ */
+export function variantLabel(id: string): string {
+  return variantById(id)?.label || 'סגנון קודם';
+}
+
 export function variantById(id: string | null | undefined): CopyVariant | null {
   if (!id) return null;
   // Search every pool — a stored 'trust' post must still resolve to its label in digests.

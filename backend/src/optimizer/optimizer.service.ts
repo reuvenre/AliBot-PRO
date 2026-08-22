@@ -18,6 +18,7 @@ import { PinterestService } from '../pinterest/pinterest.service';
 import { CategoryScore, SoldProduct, newKeywordsFor, scoreCategories } from './order-learning';
 import { HotHoursResult, HourClicks, formatHours, hotHours } from './hot-hours';
 import { soldPriceBand } from './sold-price-band';
+import { tidyRtlBody } from '../posts/rtl';
 import { frictionProducts, pickTopAction, trendArrow } from './digest-insights';
 import { collapsedKeywords, hoursChanged, postsPerRunDelta } from './manager-rules';
 import {
@@ -26,7 +27,7 @@ import {
 } from './campaign-fit';
 import {
   MIN_CLICKS_TO_PICK_WINNER, MIN_POSTS_PER_VARIANT, VariantScore, VariantStat,
-  bestVariant, scoreVariants, variantById,
+  bestVariant, scoreVariants, variantLabel,
 } from '../posts/copy-variants';
 
 interface KeywordScore { keyword: string; posts: number; clicks: number; revenue_ils: number }
@@ -299,6 +300,12 @@ export class OptimizerService {
     if (managerLines.length) {
       digest += `\n\n🤖 סוכן-המנהל — מה שיניתי היום:\n${managerLines.map((l) => `  • ${l}`).join('\n')}`;
     }
+    // Pin every line to the right. A bidi renderer picks each LINE's direction from its
+    // first strong character, and nearly every line here opens with an emoji or a bullet —
+    // neutral — so a line whose first strong character happened to be Latin ("storage box",
+    // a product title) flipped left and the report read as a ragged mix. Same fix the post
+    // bodies use, applied last so the manager and weekly blocks are covered too.
+    digest = tidyRtlBody(digest);
 
     // The digest TEXT rides along, so a failed delivery can be re-sent tomorrow morning's
     // tick without recomputing the day — and without re-applying the manager's actions.
@@ -1187,11 +1194,11 @@ export class OptimizerService {
       lines.push('');
       lines.push('✍️ סגנונות הכתיבה (קליקים לפוסט):');
       for (const s of copyAngles.scored) {
-        const label = variantById(s.variant)?.label || s.variant;
+        const label = variantLabel(s.variant);
         lines.push(`  • ${label} — ${s.clicksPerPost} (${s.clicks} קליקים ב-${s.posts} פוסטים)`);
       }
       if (copyAngles.winner) {
-        const label = variantById(copyAngles.winner.variant)?.label || copyAngles.winner.variant;
+        const label = variantLabel(copyAngles.winner.variant);
         lines.push(`  ↳ רוב הפוסטים נכתבים עכשיו בסגנון "${label}", וחלק קטן ממשיך לבדוק את השאר.`);
       } else {
         // Explicitly NOT a winner yet — so an early front-runner is not read as a verdict.
