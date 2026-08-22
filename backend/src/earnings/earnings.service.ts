@@ -6,6 +6,7 @@ import { Post } from '../posts/post.entity';
 import { Campaign } from '../campaigns/campaign.entity';
 import { parsePortalCsv } from './portal-csv';
 import { portalRangeEnd, portalRangeStart } from './portal-time';
+import { incentiveCommissionUsd } from './incentive-commission';
 import { CredentialsService } from '../credentials/credentials.service';
 import { RatesService } from '../rates/rates.service';
 import { signAliexpress } from '../common/aliexpress-sign';
@@ -552,6 +553,10 @@ export class EarningsService {
     // Per-status diagnostics so "why is 'approved/settled' still 0?" is answerable from
     // the sync result instead of a black box — did that pass error, or genuinely find none?
     const byStatus: Record<string, StatusDiag> = {};
+    // Logged once per sync: which field the feed actually carried the bonus in. The name
+    // varies across gateway versions, and this is how the real one gets known rather than
+    // assumed.
+    let incentiveFieldSeen: string | null = null;
 
     for (const st of ORDER_STATUSES) {
       const diag: StatusDiag = { found: 0, new: 0, updated: 0 };
@@ -599,18 +604,30 @@ export class EarningsService {
               // Payment-completed time — the portal's "Completed Payments Time" basis.
               // Field name varies across gateway versions; try the known spellings.
               const paidAt = parseAliTime(order.paid_time || order.pay_time || order.payment_time);
+              // The BONUS the portal paid on this order — its verdict on pool membership,
+              // which beats matching our search phrase against the pool's keyword list.
+              const incentive = incentiveCommissionUsd(order);
+              if (incentive.field && !incentiveFieldSeen) {
+                incentiveFieldSeen = incentive.field;
+                this.logger.log(`Earnings sync: incentive commission read from "${incentive.field}"`);
+              }
 
               const exists = await this.repo.findOne({ where: { order_id: orderKey, user_id: userId } });
               if (exists) {
                 // Status/commission transitions (estimated → settled/cancelled) — and a
                 // one-time paid_date backfill for rows synced before the column existed.
                 const needsPaidBackfill = !exists.paid_date && !!paidAt;
-                if (exists.status !== st.local || Math.abs((exists.commission_usd || 0) - commissionUsd) > 0.001 || needsPaidBackfill) {
+                // Rows synced before this column existed carry NULL; fill them in on the
+                // next pass rather than waiting for an unrelated status change.
+                const needsIncentiveBackfill = exists.incentive_commission_usd === null
+                  || exists.incentive_commission_usd === undefined;
+                if (needsIncentiveBackfill || exists.status !== st.local || Math.abs((exists.commission_usd || 0) - commissionUsd) > 0.001 || needsPaidBackfill) {
                   exists.status = st.local;
                   exists.order_amount_usd = amountUsd;
                   exists.commission_usd = commissionUsd;
                   exists.commission_ils = +(commissionUsd * rate).toFixed(2);
                   exists.settlement_date = settleAt;
+                  exists.incentive_commission_usd = incentive.usd;
                   if (paidAt) exists.paid_date = paidAt;
                   await this.repo.save(exists);
                   updated++;
@@ -626,6 +643,7 @@ export class EarningsService {
                 order_amount_usd: amountUsd,
                 commission_usd: commissionUsd,
                 commission_ils: +(commissionUsd * rate).toFixed(2),
+                incentive_commission_usd: incentive.usd,
                 status: st.local,
                 order_date: parseAliTime(order.created_time) || new Date(),
                 paid_date: paidAt,

@@ -215,7 +215,13 @@ function ProgramCard({ program, campaigns, stats, onChanged }: {
               never mixed into the base-commission figure above. */}
           {stats && stats.order_amount_usd > 0 && (
             <p className="text-2xs mt-1">
-              {stats.bonus_estimate_usd !== null ? (
+              {stats.bonus_paid_usd > 0 ? (
+                // The portal's own figure — nothing left to estimate.
+                <span className="text-amber-300">
+                  🎁 בונוס ששולם: <b>${stats.bonus_paid_usd.toLocaleString()}</b>
+                  <span className="text-white/30"> — נתון מאלי אקספרס, לא הערכה</span>
+                </span>
+              ) : stats.bonus_estimate_usd !== null ? (
                 <span className="text-amber-300">
                   🎁 בונוס משוער: <b>${stats.bonus_estimate_usd.toLocaleString()}</b>
                   <span className="text-white/30">

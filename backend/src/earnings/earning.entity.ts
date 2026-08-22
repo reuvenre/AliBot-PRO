@@ -48,6 +48,19 @@ export class Earning {
   @Column('float', { default: 0 })
   commission_ils: number;
 
+  /**
+   * The BONUS AliExpress paid on this order (incentive campaign), in USD — its own money,
+   * paid on top of commission_usd.
+   *
+   * This is the portal's verdict on whether an order belongs to a bonus pool, and it
+   * replaces guessing from the keyword: AliExpress pays the bonus by product CATEGORY,
+   * while our keyword is only the phrase we happened to search. NULL = the order feed
+   * carried no such field for this row (older rows, or a gateway that omits it) —
+   * distinct from 0, which means "read it, there was no bonus".
+   */
+  @Column('float', { nullable: true })
+  incentive_commission_usd: number | null;
+
   @Column({ default: 'estimated' })
   status: EarningStatus;
 

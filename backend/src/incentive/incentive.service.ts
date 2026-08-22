@@ -131,18 +131,18 @@ export class IncentiveService {
    */
   async stats(userId: string): Promise<Record<string, {
     posts: number; clicks: number; orders: number; revenue_ils: number;
-    order_amount_usd: number; bonus_estimate_usd: number | null;
+    order_amount_usd: number; bonus_estimate_usd: number | null; bonus_paid_usd: number;
   }>> {
     const out: Record<string, {
       posts: number; clicks: number; orders: number; revenue_ils: number;
-      order_amount_usd: number; bonus_estimate_usd: number | null;
+      order_amount_usd: number; bonus_estimate_usd: number | null; bonus_paid_usd: number;
     }> = {};
     const rows = await this.list(userId);
     for (const r of rows) {
       let kws: string[] = [];
       try { kws = JSON.parse(r.keywords_json || '[]'); } catch { kws = []; }
       const lower = kws.map((k) => String(k).trim().toLowerCase()).filter(Boolean);
-      out[r.id] = { posts: 0, clicks: 0, orders: 0, revenue_ils: 0, order_amount_usd: 0, bonus_estimate_usd: null };
+      out[r.id] = { posts: 0, clicks: 0, orders: 0, revenue_ils: 0, order_amount_usd: 0, bonus_estimate_usd: null, bonus_paid_usd: 0 };
       if (!lower.length) continue;
       // Measure only inside the pool window — the bonus accrues only there, so posts
       // published before registration must not flatter the pool's numbers.
@@ -167,6 +167,9 @@ export class IncentiveService {
         // The BONUS is computed by the portal on the order amount, not on the commission
         // (26.92 paid × 11% = 2.96 incentive), so the amount is what the estimate needs.
         .addSelect('COALESCE(SUM(e.order_amount_usd), 0)', 'amount')
+        // What AliExpress actually paid in bonus on these orders. Where the feed carried
+        // it there is nothing to estimate.
+        .addSelect('COALESCE(SUM(e.incentive_commission_usd), 0)', 'bonus_paid')
         .where('e.user_id = :u', { u: userId })
         .andWhere("e.status != 'cancelled'")
         .andWhere('LOWER(e.keyword) IN (:...kws)', { kws: lower })
@@ -185,6 +188,9 @@ export class IncentiveService {
         bonus_estimate_usd: r.bonus_rate_pct && r.bonus_rate_pct > 0
           ? +(amountUsd * (r.bonus_rate_pct / 100)).toFixed(2)
           : null,
+        // The REAL bonus, when the order feed carried it. An estimate is what you show
+        // when you don't have the number; here we increasingly do.
+        bonus_paid_usd: +(Number(e?.bonus_paid) || 0).toFixed(2),
       };
     }
     return out;

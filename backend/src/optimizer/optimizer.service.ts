@@ -825,14 +825,26 @@ export class OptimizerService {
     // Of those, the ones the BONUS pools earned on: their keywords are the ones paying a
     // premium, so "how much of yesterday came from them" is the number that says whether
     // registering for the pools is doing anything.
+    // Bonus membership is the PORTAL's verdict — an order it paid an incentive commission
+    // on — not our guess from the keyword. AliExpress pays the bonus by product CATEGORY,
+    // while the keyword is only the phrase the product was found through, so matching
+    // keywords undercounted badly: an order with no attributed post carries no keyword at
+    // all, and an attributed one counted only if our phrase happened to sit in the pool's
+    // list. Rows synced before that figure was captured are NULL, and fall back to the old
+    // keyword match so history does not read as zero.
     const [bonus] = portalDay ? await q(
-      `SELECT count(*)::int AS orders, coalesce(sum(commission_ils), 0)::float AS ils
+      `SELECT count(*)::int AS orders,
+              coalesce(sum(e.commission_ils), 0)::float AS ils,
+              coalesce(sum(e.incentive_commission_usd), 0)::float AS bonus_usd
        FROM earnings e
        WHERE e.user_id = $1 AND e.status <> 'cancelled' AND ${orderDayFilter}
-         AND lower(e.keyword) IN (
-           SELECT lower(trim(k))
-           FROM incentive_programs p, jsonb_array_elements_text(p.keywords_json::jsonb) AS k
-           WHERE p.user_id = $1 AND p.active = true AND now() BETWEEN p.starts_at AND p.ends_at
+         AND (
+           e.incentive_commission_usd > 0
+           OR (e.incentive_commission_usd IS NULL AND lower(e.keyword) IN (
+             SELECT lower(trim(k))
+             FROM incentive_programs p, jsonb_array_elements_text(p.keywords_json::jsonb) AS k
+             WHERE p.user_id = $1 AND p.active = true AND now() BETWEEN p.starts_at AND p.ends_at
+           ))
          )`, [userId, portalDay]) : [];
     const [topProduct] = await q(
       `SELECT product_title, clicks_count FROM posts
@@ -962,6 +974,8 @@ export class OptimizerService {
       portal_day: portalDay,
       bonus_orders: Number(bonus?.orders) || 0,
       bonus_revenue_ils: +(Number(bonus?.ils) || 0).toFixed(2),
+      /** The bonus AliExpress actually paid on those orders — no longer an estimate. */
+      bonus_paid_usd: +(Number(bonus?.bonus_usd) || 0).toFixed(2),
       /** Daily averages over the preceding week — what yesterday is measured against. */
       avg_posts: +(Number(base?.posts) || 0).toFixed(1),
       avg_clicks: +(Number(base?.clicks) || 0).toFixed(1),
@@ -1135,7 +1149,12 @@ export class OptimizerService {
       lines.push(`   📐 ממוצע יומי בשבוע שקדם: ${stats.avg_orders} הזמנות · ₪${stats.avg_revenue_ils}`);
     }
     if (stats.bonus_orders > 0) {
-      lines.push(`   🎁 מתוכן ${stats.bonus_orders} ממסלולי הבונוס (₪${stats.bonus_revenue_ils}) — הבונוס עצמו משולם מעל זה`);
+      // With the figure from the portal this stops being "paid on top, somewhere" and
+      // becomes the actual amount.
+      const paid = stats.bonus_paid_usd > 0
+        ? ` · בונוס ששולם: $${stats.bonus_paid_usd}`
+        : ' — הבונוס עצמו משולם מעל זה';
+      lines.push(`   🎁 מתוכן ${stats.bonus_orders} ממסלולי הבונוס (₪${stats.bonus_revenue_ils} עמלות בסיס)${paid}`);
     } else if (stats.orders_yesterday > 0) {
       lines.push('   🎁 אף הזמנה לא הגיעה ממילות מסלולי הבונוס');
     }

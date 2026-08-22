@@ -358,6 +358,9 @@ export interface IncentivePoolStats {
   order_amount_usd: number;
   /** order_amount_usd × the pool's rate. Null when no rate was entered. */
   bonus_estimate_usd: number | null;
+  /** The bonus AliExpress actually paid on the pool's orders — 0 until the sync has
+   *  captured it. Where this is non-zero it replaces the estimate. */
+  bonus_paid_usd: number;
 }
 
 export const incentiveApi = {
