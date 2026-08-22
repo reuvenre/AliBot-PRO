@@ -38,7 +38,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   growth: {
     id: 'growth', name: 'Growth',
-    price_monthly: 150, price_annual: 120,
+    price_monthly: 170, price_annual: 136,
     monthly_credits: 5000, max_groups: 5, popular: true,
   },
   autopilot: {

@@ -33,7 +33,7 @@ const PLANS = [
   },
   {
     id: 'growth', name: 'Growth', tagline: 'הסוכן הראשון שלכם',
-    monthly: 150, annual: 120, credits: '5,000', groups: '5 קבוצות',
+    monthly: 170, annual: 136, credits: '5,000', groups: '5 קבוצות',
     popular: true,
     includes: 'כל מה שב-Starter, וגם:',
     features: [
