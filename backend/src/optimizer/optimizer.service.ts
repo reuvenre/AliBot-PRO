@@ -58,6 +58,9 @@ const WINDOW_DAYS = 14;
 /** Fallback window for a campaign too quiet to judge over the normal one. Sparse data is
  *  not the same as bad data: look further back before concluding anything. */
 const SPARSE_WINDOW_DAYS = 30;
+/** Window for the per-channel earnings breakdown — wide enough to have rows on an account
+ *  that sees a handful of orders a day, recent enough to still describe how things are. */
+const SOURCE_WINDOW_DAYS = 30;
 /**
  * Clicks a campaign must have drawn IN TOTAL before any of its keywords can be called dead.
  *
@@ -898,6 +901,27 @@ export class OptimizerService {
     const [poolCount] = await q(
       `SELECT count(*)::int AS n FROM incentive_programs
        WHERE user_id = $1 AND active = true AND now() BETWEEN starts_at AND ends_at`, [userId]);
+
+    // WHICH channel actually earns. Every order is attributed to the post that most likely
+    // drove it (same product, published before the order, most-clicked wins), and that post
+    // belongs to a campaign and a group — so the money can be traced back to where it was
+    // published. This is the line that answers "is Pinterest producing anything, or only
+    // the Telegram groups?", which no other figure in the report can say.
+    //
+    // Orders we could not attribute to any post are shown as their own row rather than
+    // dropped: they are real income, and hiding them would make the shares add up to a
+    // total that isn't the total.
+    const bySourceRows: any[] = await q(
+      `SELECT coalesce(c.name, ch.name, 'לא משויך לפוסט') AS src,
+              count(*)::int                              AS orders,
+              coalesce(sum(e.commission_ils), 0)::float  AS ils
+       FROM earnings e
+       LEFT JOIN posts p     ON p.id = e.post_id
+       LEFT JOIN campaigns c ON c.id = p.campaign_id
+       LEFT JOIN channels ch ON ch.channel_id = p.channel_override AND ch.user_id = $1
+       WHERE e.user_id = $1 AND e.status <> 'cancelled'
+         AND e.order_date > now() - ($2 || ' days')::interval
+       GROUP BY 1 ORDER BY ils DESC, orders DESC`, [userId, String(SOURCE_WINDOW_DAYS)]);
     // The account's proven price band (what buyers actually pay) — the sales-profile
     // signal product selection now prefers; shown so the owner sees what steers it.
     const bandRows: any[] = await q(
@@ -955,6 +979,11 @@ export class OptimizerService {
       })),
       silent_campaigns: silentRows.map((r) => String(r.name)),
       has_bonus_pools: (Number(poolCount?.n) || 0) > 0,
+      by_source: bySourceRows.map((r) => ({
+        src: String(r.src),
+        orders: Number(r.orders) || 0,
+        ils: +(Number(r.ils) || 0).toFixed(2),
+      })),
       top_product: topProduct?.product_title ? String(topProduct.product_title).slice(0, 60) : null,
       top_product_clicks: Number(topProduct?.clicks_count) || 0,
       golden_hours: goldenHours.map((h) => ({
@@ -1134,6 +1163,17 @@ export class OptimizerService {
       lines.push(`🧲 קיבלו קליקים ולא נמכרו (${WINDOW_DAYS} יום) — בדוק מחיר/משלוח:`);
       for (const f of stats.friction) lines.push(`  • ${f.title} — ${f.clicks} קליקים, 0 הזמנות`);
     }
+    // Where the money is actually made. Shown only with at least two sources — with one
+    // there is no comparison to draw, and the line would be a restatement of the total.
+    if (stats.by_source.length > 1) {
+      const totalIls = stats.by_source.reduce((n, s) => n + s.ils, 0);
+      lines.push(`📡 מאיפה הגיעו ההזמנות (${SOURCE_WINDOW_DAYS} יום):`);
+      for (const s of stats.by_source) {
+        const share = totalIls > 0 ? ` · ${Math.round((s.ils / totalIls) * 100)}%` : '';
+        lines.push(`  • ${s.src} — ${s.orders} הזמנות · ₪${s.ils}${share}`);
+      }
+      lines.push('  ↳ לפי הפוסט שהוביל להזמנה (אותו מוצר, פורסם לפני ההזמנה) — שיוך משוער, לא נתון מהפורטל.');
+    }
     if (stats.price_band) {
       lines.push(`💵 פרופיל הקנייה שלך: רוב ההזמנות בין $${stats.price_band.low} ל-$${stats.price_band.high} `
         + `(חציון $${stats.price_band.median}, ${stats.price_band.orders} הזמנות ב-90 יום) — בחירת המוצרים מעדיפה את הטווח הזה`);
@@ -1147,7 +1187,10 @@ export class OptimizerService {
         for (const kw of a.unboosted) lines.push(`  • [${a.campaign}] החזרתי את "${kw}" למינון רגיל — ההכנסות מהחלון האחרון התייבשו`);
         for (const l of a.learned) {
           const why = l.reason ? ` — ${l.reason}` : '';
-          lines.push(`  • [${a.campaign}] הוספתי "${l.keyword}" (₪${l.commissionIls} · ${l.orders} הזמנות)${why}`);
+          // "(3 orders)" beside a campaign name reads as "this campaign sold three" — it is
+          // not: the category's record is account-wide, which is exactly why it is worth
+          // giving to another group. Say whose numbers these are.
+          lines.push(`  • [${a.campaign}] הוספתי "${l.keyword}" — הקטגוריה הזו הכניסה ₪${l.commissionIls} ב-${l.orders} הזמנות בכל החשבון${why}`);
         }
         // Saying what a group did NOT get is the point of the change: it shows the engine
         // considered the account's winners for this group and turned them down on purpose,
