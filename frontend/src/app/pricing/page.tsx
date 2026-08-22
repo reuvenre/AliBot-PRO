@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 const PLANS = [
   {
     id: 'starter', name: 'Starter', tagline: 'התחילו עכשיו',
-    monthly: 69, annual: 55, credits: '1,500', groups: 'קבוצה אחת',
+    monthly: 89, annual: 71, credits: '1,500', groups: 'קבוצה אחת',
     popular: false,
     includes: 'התחילו בחינם עם:',
     features: [
@@ -33,7 +33,7 @@ const PLANS = [
   },
   {
     id: 'growth', name: 'Growth', tagline: 'הסוכן הראשון שלכם',
-    monthly: 170, annual: 136, credits: '5,000', groups: '5 קבוצות',
+    monthly: 199, annual: 159, credits: '5,000', groups: '5 קבוצות',
     popular: true,
     includes: 'כל מה שב-Starter, וגם:',
     features: [
@@ -47,7 +47,7 @@ const PLANS = [
   },
   {
     id: 'autopilot', name: 'Autopilot', tagline: 'טייס אוטומטי מלא',
-    monthly: 250, annual: 200, credits: '7,000', groups: '10 קבוצות',
+    monthly: 275, annual: 220, credits: '7,000', groups: '10 קבוצות',
     popular: false,
     includes: 'כל מה שב-Growth, וגם:',
     features: [

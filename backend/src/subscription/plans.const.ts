@@ -33,17 +33,17 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   starter: {
     id: 'starter', name: 'Starter',
-    price_monthly: 69, price_annual: 55,
+    price_monthly: 89, price_annual: 71,
     monthly_credits: 1500, max_groups: 1, popular: false,
   },
   growth: {
     id: 'growth', name: 'Growth',
-    price_monthly: 170, price_annual: 136,
+    price_monthly: 199, price_annual: 159,
     monthly_credits: 5000, max_groups: 5, popular: true,
   },
   autopilot: {
     id: 'autopilot', name: 'Autopilot',
-    price_monthly: 250, price_annual: 200,
+    price_monthly: 275, price_annual: 220,
     monthly_credits: 7000, max_groups: 10, popular: false,
   },
   scale: {
