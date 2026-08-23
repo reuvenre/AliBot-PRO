@@ -191,6 +191,9 @@ type TgMedia =
 @Injectable()
 export class PostsService {
   private readonly logger = new Logger(PostsService.name);
+
+  /** Product ids a clip lookup came back empty for — see the send-time backfill. */
+  private readonly noVideoProducts = new Set<string>();
   /** Hebrew keyword → English search phrase. Deterministic, so one lookup per keyword. */
   private readonly keywordCache = new Map<string, string>();
 
@@ -247,6 +250,7 @@ export class PostsService {
   private productFromData(d?: {
     title?: string; sale_price?: number; original_price?: number; currency?: string;
     discount_percent?: number; orders_count?: number; rating?: number;
+    video_url?: string; brand_plus?: boolean;
   }): any | null {
     if (!d) return null;
     const sale = Number(d.sale_price) || 0;
@@ -259,7 +263,69 @@ export class PostsService {
       discount_percent: Number(d.discount_percent) || 0,
       orders_count: Number(d.orders_count) || 0,
       rating: Number(d.rating) || 0,
+      video_url: d.video_url || undefined,
+      brand_plus: !!d.brand_plus,
     };
+  }
+
+  /**
+   * The product's clip + Brand+ flag for a post that is about to be created.
+   *
+   * Campaign posts get these from the search result they were built from, but a post
+   * published by hand (quick post / scheduled post / an agent run) is built from what the
+   * UI already had on screen — which carries neither. Those posts were therefore saved
+   * with product_video NULL, so "prefer the product video" had nothing to send and the
+   * image went out instead, and a Brand+ item never got its badge.
+   *
+   * productdetail.get is the authoritative source for both fields. Only AliExpress ids
+   * (numeric) are looked up — a supplier/FLYLINK sku has no entry there. Never throws:
+   * a clip is a nice-to-have, and a lookup failure must not block a publish.
+   */
+  /**
+   * Fill in a post's clip at send time when the row doesn't have one yet.
+   *
+   * Every post created before the video feature existed — and every post already sitting
+   * in the queue when the toggle was switched on — carries product_video NULL, so the
+   * preference had nothing to send and the image went out. Resolving it here (once, then
+   * persisted on the row) makes the toggle apply to the standing queue too.
+   */
+  private async ensureProductVideo(post: Post, creds: DecryptedCredentials | null): Promise<void> {
+    if (!creds?.prefer_product_video || post.product_video || !post.id) return;
+    const key = String(post.product_id || '');
+    if (!key || this.noVideoProducts.has(key)) return;
+
+    const late = await this.productMediaFor(post.product_id, creds);
+    if (late.video) {
+      post.product_video = late.video;
+      await this.repo.update({ id: post.id }, { product_video: late.video }).catch(() => undefined);
+      return;
+    }
+    // Most products simply have no clip. Remember that, so a fan-out to five groups (or
+    // the next post about the same item) doesn't spend five more lookups rediscovering
+    // it — AliExpress throttles, and a throttled lookup costs seconds on the send path.
+    if (this.noVideoProducts.size > 2000) this.noVideoProducts.clear();
+    this.noVideoProducts.add(key);
+  }
+
+  private async productMediaFor(
+    productId: string,
+    creds: DecryptedCredentials,
+    known?: { video_url?: string; brand_plus?: boolean } | null,
+  ): Promise<{ video: string | null; brandPlus: boolean }> {
+    if (known?.video_url) return { video: known.video_url, brandPlus: !!known.brand_plus };
+    if (!/^\d{5,}$/.test(String(productId || ''))) {
+      return { video: null, brandPlus: !!known?.brand_plus };
+    }
+    try {
+      const detail = await this.productDetailById(String(productId), creds);
+      return {
+        video: detail?.video_url || null,
+        brandPlus: detail ? !!detail.brand_plus : !!known?.brand_plus,
+      };
+    } catch (err: any) {
+      this.logger.warn(`productMediaFor(${productId}) failed: ${err?.message}`);
+      return { video: null, brandPlus: !!known?.brand_plus };
+    }
   }
 
   /**
@@ -730,11 +796,17 @@ export class PostsService {
       promoNorm ? { promo: { discount: promoNorm.discount, endsLabel: this.promoEndsLabel(promo?.ends_at) } } : undefined,
     );
 
+    // A hand-published product deserves the same clip and Brand+ badge a campaign post
+    // gets — the UI it was launched from doesn't carry either, so resolve them here.
+    const media = await this.productMediaFor(productId, creds, product);
+
     const post = this.repo.create({
       user_id: userId,
       product_id: productId,
       product_title: product?.title || '',
       product_image: productImageOverride || product?.image_url || '',
+      product_video: media.video,
+      is_brand_plus: media.brandPlus,
       affiliate_url: affiliateUrl,
       original_price_usd: parts.origUsd,
       sale_price_usd: parts.saleUsd,
@@ -794,11 +866,16 @@ export class PostsService {
       promoNorm ? { promo: { discount: promoNorm.discount, endsLabel: this.promoEndsLabel(promo?.ends_at) } } : undefined,
     );
 
+    // Same enrichment as an immediate publish — a scheduled post must not go out poorer.
+    const media = await this.productMediaFor(productId, creds, product);
+
     const post = this.repo.create({
       user_id: userId,
       product_id: productId,
       product_title: product?.title || '',
       product_image: productImageOverride || gallery[0] || product?.image_url || '',
+      product_video: media.video,
+      is_brand_plus: media.brandPlus,
       affiliate_url: affiliateUrl,
       original_price_usd: parts.origUsd,
       sale_price_usd: parts.saleUsd,
@@ -3085,6 +3162,9 @@ export class PostsService {
     // Respect the product's currency — agent products may already carry the
     // site-accurate local (₪) price, which must not be multiplied by the rate again.
     const parts = this.priceParts(data, data.rate);
+    // The agent hands over what it needed to write the copy; the clip and the Brand+ flag
+    // aren't part of that, so an agent-run campaign published image-only until now.
+    const media = await this.productMediaFor(data.product_id, creds, data as any);
 
     const post = this.repo.create({
       user_id: userId,
@@ -3092,6 +3172,8 @@ export class PostsService {
       product_id: data.product_id,
       product_title: data.title,
       product_image: data.image_url,
+      product_video: media.video,
+      is_brand_plus: media.brandPlus,
       affiliate_url: affiliateUrl,
       original_price_usd: parts.origUsd,
       sale_price_usd: parts.saleUsd,
@@ -3246,6 +3328,10 @@ export class PostsService {
         product_id: original.product_id,
         product_title: original.product_title,
         product_image: original.product_image,
+        // Carry the winner's clip and Brand+ badge into the rerun — a recycled post that
+        // drops them republishes the winner in a weaker form than the one that won.
+        product_video: original.product_video || null,
+        is_brand_plus: !!original.is_brand_plus,
         affiliate_url: original.affiliate_url,
         original_price_usd: parts.origUsd || original.original_price_usd,
         sale_price_usd: parts.saleUsd || original.sale_price_usd,
@@ -4470,6 +4556,9 @@ export class PostsService {
     // published) or the request never connected. An ambiguous failure (top-level
     // timeout on an open socket) rethrows — falling back there could publish the post
     // TWICE, once as video and once as photo (same doctrine as telegram-retry.ts).
+    // Last chance to find the clip for a post whose row doesn't carry one yet.
+    await this.ensureProductVideo(post, creds);
+
     if (creds?.prefer_product_video && post.product_video) {
       try {
         await this.sendTelegramVideo(token, channel, post.product_video, mediaCaption, post);
@@ -5410,6 +5499,9 @@ export class PostsService {
       // The product's own video when the account opted in — same fallback doctrine as
       // Telegram: a REJECTION (response received, nothing delivered) falls back to the
       // image; an ambiguous network death rethrows rather than risking a double-post.
+      // A WhatsApp-only post never passes through the Telegram sender, so the clip is
+      // resolved here too (no-op once either channel has already filled it in).
+      await this.ensureProductVideo(post, creds);
       if (creds?.prefer_product_video && post.product_video) {
         try {
           const res = await axios.post(
