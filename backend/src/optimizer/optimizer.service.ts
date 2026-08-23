@@ -21,6 +21,9 @@ import { soldPriceBand } from './sold-price-band';
 import { tidyRtlBody } from '../posts/rtl';
 import { frictionProducts, pickTopAction, trendArrow } from './digest-insights';
 import { collapsedKeywords, hoursChanged, postsPerRunDelta } from './manager-rules';
+import { BriefAction, buildBrief } from './digest-brief';
+import { ActionRow, actionLabel, isUndoable, undoPlan } from './action-undo';
+import { digestKeyboard } from './digest-keyboard';
 import {
   CampaignProfile, FittedCategory, FIT_SYSTEM_PROMPT, MAX_FIT_CANDIDATES,
   buildFitPrompt, lexicalFit, parseFitVerdicts, rankFitted,
@@ -51,6 +54,9 @@ interface CampaignActions {
   /** Which evidence the decisions stood on: this campaign's own numbers, or the keyword's
    *  behaviour across the account (the fallback that lets a quiet campaign be judged). */
   basis: 'campaign' | 'account';
+  /** manager_actions row for tonight's rotation change — the handle the owner's undo
+   *  button carries. Null when nothing changed, or when the log write itself failed. */
+  actionId?: string | null;
 }
 
 /** Scoring window — long enough for commissions to land, short enough to track trends. */
@@ -242,7 +248,7 @@ export class OptimizerService {
    * on screen immediately — waiting until tomorrow morning to find out whether the engine
    * works is not a reasonable way to verify it.
    */
-  async runForUser(userId: string): Promise<{ ok: boolean; digest?: string; reason?: string }> {
+  async runForUser(userId: string): Promise<{ ok: boolean; digest?: string; detail?: string; reason?: string }> {
     if (!(await this.subscription.allows(userId, 'learning_optimizer'))) {
       return { ok: false, reason: 'המנוע הלומד זמין במסלול Autopilot ומעלה' };
     }
@@ -252,6 +258,10 @@ export class OptimizerService {
     });
     const allActions: CampaignActions[] = [];
     const allScores: Record<string, KeywordScore[]> = {};
+    // Every action-log row written by THIS pass, in the order it happened. Collected as we
+    // go rather than queried by timestamp afterwards: two passes for the same account (the
+    // cron and a manual "run now") would otherwise claim each other's changes.
+    const loggedIds: string[] = [];
 
     // What actually SOLD, ranked by category. Computed once for the account: orders are not
     // reliably attributable to a campaign (most are for products the autopilot never posted),
@@ -295,6 +305,7 @@ export class OptimizerService {
         userId, c, scores, soldCategories, channelsById, claimed, window, basis,
       );
       for (const l of actions.learned) claimed.add(l.keyword.toLowerCase());
+      if (actions.actionId) loggedIds.push(actions.actionId);
       if (actions.retired.length || actions.boosted || actions.unboosted.length
         || actions.learned.length || actions.rejected.length || actions.tooQuietToJudge
         || actions.learningOff) {
@@ -307,7 +318,7 @@ export class OptimizerService {
     const hotByGroup = await this.groupHotHours(userId).catch(() => []);
     // The daily manager: three owner-approved bounded actions, every one logged and
     // reported below. Failures never break the digest.
-    const managerLines = await this.runManagerActions(userId, active, hotByGroup).catch((e) => {
+    const managerLines = await this.runManagerActions(userId, active, hotByGroup, loggedIds).catch((e) => {
       this.logger.warn(`manager actions failed for ${userId}: ${e?.message}`);
       return [] as string[];
     });
@@ -332,18 +343,38 @@ export class OptimizerService {
     // bodies use, applied last so the manager and weekly blocks are covered too.
     digest = tidyRtlBody(digest);
 
-    // The digest TEXT rides along, so a failed delivery can be re-sent tomorrow morning's
-    // tick without recomputing the day — and without re-applying the manager's actions.
+    // What the owner actually receives. The long text above stops being the report and
+    // becomes the EVIDENCE behind it — reachable by a button, not delivered unasked.
+    const changes = await this.briefActions(userId, loggedIds);
+    const brief = tidyRtlBody(buildBrief({
+      dateLabel: this.dayLabel(new Date()),
+      posts: stats.posts_yesterday, postsArrow: trendArrow(stats.posts_yesterday, stats.avg_posts),
+      clicks: stats.clicks_yesterday, clicksArrow: trendArrow(stats.clicks_yesterday, stats.avg_clicks),
+      orders: stats.orders_yesterday, ordersArrow: trendArrow(stats.orders_yesterday, stats.avg_orders),
+      revenueIls: stats.revenue_yesterday_ils,
+      portalDayLabel: stats.portal_day
+        ? stats.portal_day.split('-').reverse().slice(0, 2).join('.')
+        : null,
+      bonusOrders: stats.bonus_orders,
+      bonusPaidUsd: stats.bonus_paid_usd,
+      actions: changes,
+    }));
+
+    // Both texts ride along: a failed delivery re-sends tomorrow's tick without recomputing
+    // the day, and the "full detail" button reads the long one straight off the run.
     const run = await this.runs.save(this.runs.create({
       user_id: userId,
-      summary_json: JSON.stringify({ scores: allScores, actions: allActions, stats, soldCategories, digest }),
+      summary_json: JSON.stringify({
+        scores: allScores, actions: allActions, stats, soldCategories,
+        digest: brief, detail: digest, actionIds: loggedIds,
+      }),
       delivered_at: null,
     })).catch(() => null);
 
-    const outcome = await this.deliverDigest(userId, digest);
+    const outcome = await this.deliverDigest(userId, brief, digest, run?.id || null);
     if (outcome.delivered) {
       if (run) await this.runs.update({ id: run.id }, { delivered_at: new Date() }).catch(() => {});
-      return { ok: true, digest };
+      return { ok: true, digest: brief, detail: digest };
     }
     // Not delivered: leave delivered_at NULL so the next hourly tick re-sends, and fail
     // loudly so markInsightsSent is not called for a report nobody got.
@@ -515,6 +546,11 @@ export class OptimizerService {
     const byKw = new Map(scores.map((s) => [s.keyword, s]));
     let kws = [...(c.keywords || [])];
     const distinct = () => Array.from(new Set(kws));
+    // The state to put back if the owner rejects tonight's rotation. Captured before the
+    // rules run, and including retired_keywords — a retirement moves a word between the
+    // two lists, so restoring only one of them would lose it.
+    const keywordsBefore = [...kws];
+    const retiredBefore = [...(c.retired_keywords || [])];
 
     // 1) Collapse stale boosts: a duplicated keyword whose window revenue dried up goes
     //    back to a single slot (fully reversible pressure valve).
@@ -584,6 +620,24 @@ export class OptimizerService {
       await this.campaigns.save(c).catch((err: any) =>
         this.logger.warn(`optimizer save failed for campaign ${c.id}: ${err.message}`));
       this.logger.log(`optimizer [${c.name}]: retired=${out.retired.join(',') || '—'} boosted=${out.boosted || '—'} unboosted=${out.unboosted.join(',') || '—'} learned=${out.learned.map((l) => l.keyword).join(',') || '—'}`);
+
+      // The rotation used to change with nothing written down, so the morning report could
+      // describe it but the owner could not take it back. One row per campaign per night:
+      // the unit he sees in the brief is the unit his undo button addresses.
+      const why = [
+        out.learned.length ? `נלמדו: ${out.learned.map((l) => l.keyword).join(', ')}` : '',
+        out.retired.length ? `הודחו: ${out.retired.join(', ')}` : '',
+        out.boosted ? `הוכפלה: ${out.boosted}` : '',
+        out.unboosted.length ? `חזרו למינון רגיל: ${out.unboosted.join(', ')}` : '',
+      ].filter(Boolean).join(' · ');
+      out.actionId = await this.logAction(userId, {
+        kind: 'keywords',
+        targetId: c.id,
+        targetLabel: c.name,
+        before: JSON.stringify({ keywords: keywordsBefore, retired: retiredBefore }),
+        after: JSON.stringify({ keywords: kws, retired: c.retired_keywords || [] }),
+        reason: why,
+      });
     }
     return out;
   }
@@ -701,6 +755,162 @@ export class OptimizerService {
       .sort((a, b) => (b.verdict?.total || 0) - (a.verdict?.total || 0));
   }
 
+  /** dd.MM in the owner's timezone — the report's own date, not the portal's. */
+  private dayLabel(d: Date): string {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: '2-digit', timeZone: process.env.SCHEDULER_TZ || 'Asia/Jerusalem',
+    }).format(d).replace('/', '.');
+  }
+
+  /** The action-log rows this pass wrote, as the brief's bullet list. */
+  private async briefActions(userId: string, ids: string[]): Promise<BriefAction[]> {
+    const rows = await this.actionRows(userId, ids);
+    return rows.map((r) => ({ id: r.id, text: actionLabel(r) }));
+  }
+
+  /** Action-log rows by id, scoped to their owner. Order follows the ids given. */
+  private async actionRows(userId: string, ids: string[]): Promise<ActionRow[]> {
+    if (!ids.length) return [];
+    const rows: ActionRow[] = await this.campaigns.query(
+      `SELECT id, kind, target_id, target_label, "before", "after", reason, until_at, undone_at
+       FROM manager_actions WHERE user_id = $1 AND id = ANY($2::uuid[])`,
+      [userId, ids],
+    ).catch((err: any) => {
+      this.logger.warn(`action rows read failed: ${err?.message}`);
+      return [] as ActionRow[];
+    });
+    const byId = new Map(rows.map((r) => [String(r.id), r]));
+    return ids.map((id) => byId.get(id)).filter((r): r is ActionRow => !!r);
+  }
+
+  /**
+   * The changes still standing from the last few days, newest first — what the dashboard
+   * lists and what the "undo" button offers when the owner asks for the list.
+   */
+  async recentActions(userId: string, days = 7): Promise<Array<{
+    id: string; label: string; reason: string | null; undoable: boolean;
+    undone: boolean; at: string;
+  }>> {
+    const rows: Array<ActionRow & { created_at: Date }> = await this.campaigns.query(
+      `SELECT id, kind, target_id, target_label, "before", "after", reason, until_at, undone_at, created_at
+       FROM manager_actions
+       WHERE user_id = $1 AND created_at > now() - ($2 || ' days')::interval
+       ORDER BY created_at DESC LIMIT 60`,
+      [userId, String(days)],
+    ).catch(() => []);
+    return rows.map((r) => ({
+      id: String(r.id),
+      label: actionLabel(r),
+      reason: r.reason,
+      undoable: isUndoable(r),
+      undone: !!r.undone_at,
+      at: new Date(r.created_at).toISOString(),
+    }));
+  }
+
+  /**
+   * Put one change back.
+   *
+   * The row is stamped BEFORE the state is restored is deliberately NOT the order used:
+   * stamping first would mark a change reversed that then failed to revert. The write
+   * happens first, and only a successful one is recorded as undone.
+   */
+  async undoAction(userId: string, actionId: string): Promise<{ ok: boolean; label?: string; reason?: string }> {
+    const [row] = await this.actionRows(userId, [actionId]);
+    if (!row) return { ok: false, reason: 'הפעולה לא נמצאה' };
+    if (row.undone_at) return { ok: false, reason: 'הפעולה כבר בוטלה' };
+    const plan = undoPlan(row);
+    if (!plan) return { ok: false, reason: 'לא ניתן לבטל את הפעולה הזו' };
+
+    const q = (sql: string, params: any[]) => this.campaigns.query(sql, params);
+    try {
+      switch (plan.kind) {
+        case 'keywords':
+          await q(`UPDATE campaigns SET keywords = $1, retired_keywords = $2 WHERE id = $3 AND user_id = $4`,
+            [plan.keywords, plan.retired, plan.campaignId, userId]);
+          break;
+        case 'posts_per_run':
+          await q(`UPDATE campaigns SET posts_per_run = $1 WHERE id = $2 AND user_id = $3`,
+            [plan.value, plan.campaignId, userId]);
+          break;
+        case 'keyword_pause':
+          // Expiring the pause IS the inverse — the rotation reads until_at, so a past
+          // timestamp releases the keyword on the next run with no other state to touch.
+          await q(`UPDATE manager_actions SET until_at = now()
+                   WHERE user_id = $1 AND kind = 'keyword_pause' AND target_id = $2 AND target_label = $3
+                     AND until_at > now()`,
+          [userId, plan.campaignId, plan.keyword]);
+          break;
+        case 'campaign_status':
+          await q(`UPDATE campaigns SET status = $1 WHERE id = $2 AND user_id = $3`,
+            [plan.status, plan.campaignId, userId]);
+          break;
+        case 'learn_from_orders':
+          await q(`UPDATE campaigns SET learn_from_orders = $1 WHERE id = $2 AND user_id = $3`,
+            [plan.value, plan.campaignId, userId]);
+          break;
+        case 'product_mute':
+          // The owner-facing "don't auto-post this" switch lives on the supplier catalog —
+          // the same one the products screen toggles, so an undo here shows up there.
+          await q(`UPDATE supplier_products SET no_auto_post = $1 WHERE user_id = $2 AND id = $3`,
+            [plan.value, userId, plan.productId]);
+          break;
+      }
+    } catch (err: any) {
+      this.logger.warn(`undo ${actionId} failed: ${err?.message}`);
+      return { ok: false, reason: 'הביטול נכשל — נסה שוב' };
+    }
+
+    await this.campaigns.query(`UPDATE manager_actions SET undone_at = now() WHERE id = $1 AND user_id = $2`,
+      [actionId, userId]).catch(() => {});
+    return { ok: true, label: actionLabel(row) };
+  }
+
+  /** The full report behind the brief, for the "show detail" button and the dashboard. */
+  async lastRunDetail(userId: string, runId?: string | null): Promise<string | null> {
+    const rows: Array<{ summary_json: string }> = await this.runs.query(
+      runId
+        ? `SELECT summary_json FROM optimizer_runs WHERE id = $2 AND user_id = $1`
+        : `SELECT summary_json FROM optimizer_runs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      runId ? [userId, runId] : [userId],
+    ).catch(() => []);
+    if (!rows.length) return null;
+    try {
+      const parsed = JSON.parse(rows[0].summary_json);
+      return parsed?.detail || parsed?.digest || null;
+    } catch { return null; }
+  }
+
+  /**
+   * Record one change in the action log, and hand back its id.
+   *
+   * EVERY change the engine makes goes through here — the manager's bounded numeric moves
+   * and, since the owner gave the brain authority to act on its own, the keyword rotation
+   * too. The id is the undo handle: the morning brief names the change and its button
+   * carries this id, so "take that one back" addresses exactly one row.
+   *
+   * Never throws. A change that happened but failed to log is bad; a logging failure that
+   * aborts the run is worse.
+   */
+  private async logAction(userId: string, a: {
+    kind: string; targetId: string | null; targetLabel: string | null;
+    before?: string | null; after?: string | null; baseline?: string | null;
+    reason: string; untilAt?: Date | null;
+  }): Promise<string | null> {
+    try {
+      const [row] = await this.campaigns.query(
+        `INSERT INTO manager_actions (user_id, kind, target_id, target_label, "before", "after", baseline, reason, until_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [userId, a.kind, a.targetId, a.targetLabel, a.before ?? null, a.after ?? null,
+          a.baseline ?? null, a.reason, a.untilAt ?? null],
+      );
+      return row?.id ? String(row.id) : null;
+    } catch (err: any) {
+      this.logger.warn(`action log failed (${a.kind}): ${err?.message}`);
+      return null;
+    }
+  }
+
   /**
    * The daily manager (project 3): reviews the account once a day and takes small actions
    * from the OWNER-APPROVED list — nothing else, nothing silent. Each action inserts a
@@ -712,16 +922,18 @@ export class OptimizerService {
     userId: string,
     campaigns: Campaign[],
     hotByGroup: Array<{ channel_id: string; name: string; verdict: HotHoursResult | null }>,
+    /** Ids of the rows written here, so the brief can offer an undo button per change. */
+    logged: string[] = [],
   ): Promise<string[]> {
     const q = (sql: string, params: any[]) => this.campaigns.query(sql, params);
     const lines: string[] = [];
-    const act = (kind: string, targetId: string, targetLabel: string, before: string | null,
-      after: string | null, baseline: string | null, reason: string, untilAt: Date | null) =>
-      q(
-        `INSERT INTO manager_actions (user_id, kind, target_id, target_label, "before", "after", baseline, reason, until_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [userId, kind, targetId, targetLabel, before, after, baseline, reason, untilAt],
-      );
+    const act = async (kind: string, targetId: string, targetLabel: string, before: string | null,
+      after: string | null, baseline: string | null, reason: string, untilAt: Date | null) => {
+      const id = await this.logAction(userId, {
+        kind, targetId, targetLabel, before, after, baseline, reason, untilAt,
+      });
+      if (id) logged.push(id);
+    };
 
     // 1) Golden-hours refresh for groups the owner opted into smart timing. The snap cache
     //    refreshes itself half-hourly anyway; what the manager adds is the RECORD — the
@@ -1303,7 +1515,9 @@ export class OptimizerService {
    * is the owner's, so routing a customer's keyword and revenue report there would leak
    * their business data into someone else's inbox.
    */
-  private async deliverDigest(userId: string, text: string): Promise<DeliveryOutcome> {
+  private async deliverDigest(
+    userId: string, text: string, detail = '', runId: string | null = null,
+  ): Promise<DeliveryOutcome> {
     const results: ChannelResult[] = [];
     const { email, isAdmin } = await this.credentials.userContact(userId).catch(
       () => ({ email: null as string | null, isAdmin: false }),
@@ -1316,7 +1530,8 @@ export class OptimizerService {
         const token = process.env.WATCHDOG_TELEGRAM_BOT_TOKEN || creds?.telegram_bot_token;
         if (chatId && token) {
           await axios.post(`https://api.telegram.org/bot${token}/sendMessage`,
-            { chat_id: chatId, text }, { timeout: 10_000 });
+            { chat_id: chatId, text, reply_markup: { inline_keyboard: digestKeyboard(runId) } },
+            { timeout: 10_000 });
           results.push({ channel: 'telegram', attempted: true, ok: true });
         }
       } catch (err: any) {
@@ -1327,8 +1542,11 @@ export class OptimizerService {
 
     try {
       if (email && this.mail.isConfigured()) {
+        // Email has no buttons, so the evidence cannot hide behind one — it ships below a
+        // rule instead. The brief still leads, so the mail opens the same way the chat does.
+        const body = detail ? `${text}\n\n──────────\n\n${detail}` : text;
         await this.mail.sendHtml(email, '🧠 Nexlify — דו"ח הבוקר של המנוע הלומד',
-          `<div dir="rtl" style="font-family:Arial,sans-serif;white-space:pre-line;padding:16px">${text}</div>`);
+          `<div dir="rtl" style="font-family:Arial,sans-serif;white-space:pre-line;padding:16px">${body}</div>`);
         results.push({ channel: 'email', attempted: true, ok: true });
       }
     } catch (err: any) {
@@ -1356,11 +1574,16 @@ export class OptimizerService {
     ).catch(() => []);
     if (!row) return false;
     let digest = '';
-    try { digest = JSON.parse(row.summary_json)?.digest || ''; } catch { digest = ''; }
+    let detail = '';
+    try {
+      const parsed = JSON.parse(row.summary_json);
+      digest = parsed?.digest || '';
+      detail = parsed?.detail || '';
+    } catch { digest = ''; }
     // A row from before the digest text was stored has nothing to re-send; let the normal
     // path rebuild it rather than delivering an empty report.
     if (!digest) return false;
-    const outcome = await this.deliverDigest(userId, digest);
+    const outcome = await this.deliverDigest(userId, digest, detail, String(row.id));
     if (!outcome.delivered) {
       this.logger.warn(`digest re-delivery still failing for ${userId} — ${outcome.reason}`);
       return false;

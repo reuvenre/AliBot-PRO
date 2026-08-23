@@ -5,13 +5,21 @@ import { User } from '../users/user.entity';
 import { ProductsModule } from '../products/products.module';
 import { PostsModule } from '../posts/posts.module';
 import { CredentialsModule } from '../credentials/credentials.module';
+import { OptimizerModule } from '../optimizer/optimizer.module';
 import { TelegramBotService } from './telegram-bot.service';
 
 // Channel/User are registered as REPOSITORIES rather than pulling in ChannelsModule +
 // UsersModule: UsersModule imports WatchdogModule, which imports this module for the
 // webhook — going through the service would close that circle.
+//
+// OptimizerModule is safe to import outright: its own tree (credentials, subscription,
+// mail, products, earnings, ai, notifications, pinterest) reaches neither UsersModule nor
+// WatchdogModule, so the morning report's buttons don't reopen that circle.
 @Module({
-  imports: [TypeOrmModule.forFeature([Channel, User]), ProductsModule, PostsModule, CredentialsModule],
+  imports: [
+    TypeOrmModule.forFeature([Channel, User]),
+    ProductsModule, PostsModule, CredentialsModule, OptimizerModule,
+  ],
   providers: [TelegramBotService],
   exports: [TelegramBotService],
 })

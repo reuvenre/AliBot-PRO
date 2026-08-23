@@ -48,6 +48,16 @@ export class ManagerAction {
   @Column({ type: 'timestamptz', nullable: true })
   until_at: Date | null;
 
+  /**
+   * When the owner took this change back. NULL = it still stands.
+   *
+   * The row is never deleted: "the engine did X and he undid it" is the history worth
+   * keeping — for him, and for teaching the engine what he rejects. It is also what stops
+   * a second tap on the same button from re-applying a stale state.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  undone_at: Date | null;
+
   @CreateDateColumn()
   created_at: Date;
 }

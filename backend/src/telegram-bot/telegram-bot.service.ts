@@ -7,12 +7,16 @@ import { User } from '../users/user.entity';
 import { ProductsService } from '../products/products.service';
 import { PostsService } from '../posts/posts.service';
 import { CredentialsService } from '../credentials/credentials.service';
+import { OptimizerService } from '../optimizer/optimizer.service';
+import { CB_DETAIL, CB_UNDO, CB_UNDO_LIST, undoKeyboard } from '../optimizer/digest-keyboard';
 import {
   BotProduct, encodeCallback, matchByPrefix, parseCallback, productCaption, truncate,
 } from './product-card';
+import { splitMessage } from './split-message';
 
-/** Inline keyboard row(s) as Telegram wants them. */
-type Keyboard = Array<Array<{ text: string; callback_data: string }>>;
+/** Inline keyboard row(s) as Telegram wants them. A button carries EITHER a callback or a
+ *  url — the morning report's "open the dashboard" button is the latter. */
+type Keyboard = Array<Array<{ text: string; callback_data?: string; url?: string }>>;
 
 const RESULTS_PER_PAGE = 5;
 
@@ -62,6 +66,8 @@ export class TelegramBotService {
     private readonly products: ProductsService,
     private readonly posts: PostsService,
     private readonly credentials: CredentialsService,
+    // The morning report's buttons: show the evidence, and take a change back.
+    private readonly optimizer: OptimizerService,
   ) {}
 
   // ── Entry point ────────────────────────────────────────────────────────────
@@ -172,6 +178,9 @@ export class TelegramBotService {
       case 'm': return this.onMoreResults(chatId, cbId, Number(args[0]));
       case 'c': return this.onPickChannel(chatId, cbId, args[0]);
       case 'g': return this.onPublish(chatId, cbId, messageId, args[0], args[1]);
+      case CB_DETAIL: return this.onDigestDetail(chatId, cbId, args[0]);
+      case CB_UNDO_LIST: return this.onUndoList(chatId, cbId);
+      case CB_UNDO: return this.onUndo(chatId, cbId, messageId, args[0]);
       case 'x':
         await this.answer(cbId, 'בוטל');
         await this.editText(chatId, messageId, 'בוטל.');
@@ -179,6 +188,52 @@ export class TelegramBotService {
       default:
         await this.answer(cbId);
     }
+  }
+
+  // ── The morning report's buttons ───────────────────────────────────────────
+
+  /** "📋 פירוט מלא" — the evidence behind the brief, on request instead of unasked. */
+  private async onDigestDetail(chatId: string, cbId: string, runId?: string): Promise<void> {
+    await this.answer(cbId, 'טוען…');
+    const userId = await this.ownerUserId();
+    const detail = userId ? await this.optimizer.lastRunDetail(userId, runId || null) : null;
+    if (!detail) {
+      await this.send(chatId, 'אין פירוט שמור לדוח הזה.');
+      return;
+    }
+    await this.sendLong(chatId, detail);
+  }
+
+  /** "↩️ בטל שינוי" — the changes still standing, each with its own undo button. */
+  private async onUndoList(chatId: string, cbId: string): Promise<void> {
+    await this.answer(cbId);
+    const userId = await this.ownerUserId();
+    const actions = userId ? await this.optimizer.recentActions(userId, 2) : [];
+    const undoable = actions.filter((a) => a.undoable && !a.undone);
+    if (!undoable.length) {
+      await this.send(chatId, 'אין שינויים לביטול מהיומיים האחרונים.');
+      return;
+    }
+    await this.send(chatId, 'איזה שינוי לבטל?',
+      undoKeyboard(undoable.map((a) => ({ id: a.id, text: a.label }))));
+  }
+
+  /** One change, put back. */
+  private async onUndo(
+    chatId: string, cbId: string, messageId: number | undefined, actionId?: string,
+  ): Promise<void> {
+    const userId = await this.ownerUserId();
+    if (!actionId || !userId) {
+      await this.answer(cbId, 'לא נמצא');
+      return;
+    }
+    await this.answer(cbId, 'מבטל…');
+    const res = await this.optimizer.undoAction(userId, actionId);
+    // Editing the message drops its keyboard, so a second tap can't re-apply an old state
+    // even before undone_at is read — the same guard the publish flow uses.
+    await this.editText(chatId, messageId, res.ok
+      ? `↩️ בוטל: ${res.label || 'השינוי הוחזר'}`
+      : `❌ ${res.reason || 'הביטול נכשל'}`);
   }
 
   private async onMoreResults(chatId: string, cbId: string, page: number): Promise<void> {
@@ -337,6 +392,11 @@ export class TelegramBotService {
       disable_web_page_preview: true,
       ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
     });
+  }
+
+  /** A report too long for one message, sent in order as several. */
+  private async sendLong(chatId: string, text: string): Promise<void> {
+    for (const part of splitMessage(text)) await this.send(chatId, part);
   }
 
   private sendPhoto(chatId: string, photo: string, caption: string, keyboard?: Keyboard): Promise<boolean> {
