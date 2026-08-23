@@ -1,4 +1,54 @@
-import { codeFromResolvedUrl, parseBulkLinks } from './flylink-bulk';
+import { codeFromResolvedUrl, codesFromTitle, parseBulkLinks, titleFromHtml } from './flylink-bulk';
+
+describe('codesFromTitle — the code the seller wrote into the page title', () => {
+  // The real title behind s.flylinking.com/g-XKBRBNHMUD. ₪129.28 on the page against
+  // 42.66 here is the day's USD rate — the middle number is the price, not the code.
+  const REAL = '6380-42.66-LHYF-High quality pure cotton solid color long-sleeved shirt';
+
+  it('takes the leading segment as the code and never the price', () => {
+    const codes = codesFromTitle(REAL);
+    expect(codes[0]).toBe('6380');
+    expect(codes).not.toContain('42.66');
+    expect(codes).not.toContain('42');
+  });
+
+  it('also offers the brand-prefixed form, since stores file the same product both ways', () => {
+    const codes = codesFromTitle(REAL);
+    expect(codes).toContain('LHYF6380');
+    expect(codes).toContain('LHYF-6380');
+  });
+
+  it('reads a plain letters-then-digits code out of an ordinary title', () => {
+    expect(codesFromTitle('LN1526 COACH shoulder bag')).toEqual(['LN1526']);
+    expect(codesFromTitle('$56.99 MM-2642001DP COACH')).toContain('MM-2642001DP');
+  });
+
+  it('offers nothing rather than a guess when the title has no code', () => {
+    expect(codesFromTitle('Welcome to jack-shop')).toEqual([]);
+    expect(codesFromTitle('')).toEqual([]);
+  });
+
+  it('never repeats a candidate', () => {
+    const codes = codesFromTitle('LN1526-10.00-LN1526 bag');
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+});
+
+describe('titleFromHtml', () => {
+  it('reads and unescapes the page title', () => {
+    expect(titleFromHtml('<html><head><title>6380-42.66-LHYF-Shirt &amp; more</title></head>'))
+      .toBe('6380-42.66-LHYF-Shirt & more');
+  });
+
+  it('survives a page with no title instead of throwing', () => {
+    expect(titleFromHtml('<html><body>hi</body></html>')).toBe('');
+    expect(titleFromHtml('')).toBe('');
+  });
+
+  it('collapses a title broken across lines', () => {
+    expect(titleFromHtml('<title>\n  6380-42.66-LHYF\n  Shirt\n</title>')).toBe('6380-42.66-LHYF Shirt');
+  });
+});
 
 describe('parseBulkLinks — however the paste arrives', () => {
   it('reads a plain column of links', () => {

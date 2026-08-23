@@ -89,6 +89,60 @@ export function parseBulkLinks(text: string): BulkParse {
  * string is mostly tracking parameters, and a campaign id shaped like a code would win a
  * whole-string search.
  */
+/**
+ * Product codes hiding in a FLYLINK store page's title.
+ *
+ * The URL carries nothing, but the page it opens is titled the way the seller writes it —
+ * the same `CODE-PRICE-DESCRIPTION` convention the Yupoo album titles use, because it is
+ * the same seller:
+ *
+ *     6380-42.66-LHYF-High quality pure cotton solid color long-sleeved shirt
+ *      ↑code ↑USD  ↑brand
+ *
+ * (42.66 USD against the ₪129.28 the page shows is the day's rate — the middle number is
+ * the price, not part of the code.)
+ *
+ * Several CANDIDATES come back rather than one answer, because the same product may be
+ * filed under the bare number in one store and the brand-prefixed form in another. The
+ * caller tries each against the real album index, so a wrong candidate simply finds
+ * nothing — far safer than this file picking one and being confidently wrong.
+ */
+export function codesFromTitle(title: string): string[] {
+  const clean = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const out: string[] = [];
+  const add = (c?: string | null) => {
+    const v = (c || '').trim();
+    if (v && !out.includes(v)) out.push(v);
+  };
+
+  // `<code>-<price>-<rest>` — the leading segment is the code, and the letters that open
+  // the rest are the brand, which some stores prepend to that same code.
+  const lead = clean.match(/^([A-Za-z0-9]{2,15}(?:[-_][A-Za-z0-9]{1,8})?)-\d{1,6}\.\d{1,2}-(.*)$/);
+  if (lead) {
+    add(lead[1]);
+    const brand = lead[2].match(/^([A-Za-z]{2,8})\b/)?.[1];
+    if (brand && /^\d/.test(lead[1])) { add(`${brand}${lead[1]}`); add(`${brand}-${lead[1]}`); }
+  }
+
+  // Anything else in the title shaped like a code (letters then digits), which is what a
+  // store that writes `LN1526 COACH bag` gives.
+  for (const m of clean.matchAll(/\b([A-Za-z]{1,6}[-_]?\d{3,}[A-Za-z0-9-]*)\b/g)) add(m[1]);
+
+  return out;
+}
+
+/** The `<title>` of a fetched HTML page, or '' when there is none. */
+export function titleFromHtml(html: string): string {
+  const m = String(html || '').match(/<title[^>]*>([\s\S]{0,300}?)<\/title>/i);
+  if (!m) return '';
+  return m[1]
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function codeFromResolvedUrl(url: string): string {
   if (!url) return '';
   let parsed: URL;

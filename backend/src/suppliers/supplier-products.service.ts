@@ -11,7 +11,7 @@ import { openPostClash } from './flylink-dedup';
 import { coverFirst } from './gallery-order';
 import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
 import { handPickedElsewhere } from './hand-picked-lock';
-import { codeFromResolvedUrl, parseBulkLinks } from './flylink-bulk';
+import { codeFromResolvedUrl, codesFromTitle, parseBulkLinks, titleFromHtml } from './flylink-bulk';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { FLYLINK_VARIANTS, pickVariant, variantHint } from '../posts/copy-variants';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -261,7 +261,7 @@ export class SupplierProductsService {
    * the request it was given). Never throws: an unresolvable link is reported on its own
    * line, it does not fail the batch.
    */
-  async resolveFlylink(url: string, maxHops = 5): Promise<string> {
+  async resolveFlylink(url: string, maxHops = 5): Promise<{ url: string; title: string }> {
     let current = url;
     for (let hop = 0; hop < maxHops; hop++) {
       let res: any;
@@ -274,16 +274,18 @@ export class SupplierProductsService {
           headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,*/*' },
         });
       } catch {
-        return current;
+        return { url: current, title: '' };
       }
       const location = res.headers?.location;
       if (res.status >= 300 && res.status < 400 && location) {
-        try { current = new URL(location, current).toString(); } catch { return current; }
+        try { current = new URL(location, current).toString(); } catch { return { url: current, title: '' }; }
         continue;
       }
-      return current;
+      // The destination page's title is where the product code actually lives — the URL
+      // carries only opaque tokens.
+      return { url: current, title: titleFromHtml(typeof res.data === 'string' ? res.data : '') };
     }
-    return current;
+    return { url: current, title: '' };
   }
 
   /**
@@ -324,35 +326,56 @@ export class SupplierProductsService {
 
     for (const entry of entries) {
       // What the owner typed beats what we can infer — he was looking at the product.
-      let code = entry.code;
-      let resolved = '';
-      if (!code) {
-        resolved = await this.resolveFlylink(entry.url);
-        code = codeFromResolvedUrl(resolved);
+      // Otherwise: open the link, and read the code off the page it lands on. Several
+      // candidates come back (the bare number, the brand-prefixed form), each TRIED
+      // against the real albums — a wrong candidate simply finds nothing.
+      let candidates = entry.code ? [entry.code] : [];
+      let opened = false;
+      if (!candidates.length) {
+        const res = await this.resolveFlylink(entry.url);
+        opened = !!res.title || res.url !== entry.url;
+        candidates = codesFromTitle(res.title);
+        const fromUrl = codeFromResolvedUrl(res.url);
+        if (fromUrl && !candidates.includes(fromUrl)) candidates.push(fromUrl);
       }
-      if (!code) {
+      if (!candidates.length) {
         failed++;
         results.push({
           line: entry.line, url: entry.url, code: '', status: 'no_code',
-          detail: resolved && resolved !== entry.url
-            ? 'הקישור נפתח אבל אין בו קוד מוצר — הוסף את הקוד בשורה'
+          detail: opened
+            ? 'הקישור נפתח אבל לא זוהה קוד מוצר — הוסף את הקוד בשורה'
             : 'לא הצלחתי לפתוח את הקישור — הוסף את הקוד בשורה',
         });
         continue;
       }
 
-      const canon = normalizeSku(code, catalog.sku_match_mode, catalog.sku_match_config || {});
-      const hit = index.get(canon);
+      // Every candidate that matches an album. Two candidates landing on DIFFERENT albums
+      // is the same coin flip as a shared code, and is refused for the same reason.
+      const matches = new Map<string, AlbumHit | typeof AMBIGUOUS>();
+      for (const c of candidates) {
+        const canon = normalizeSku(c, catalog.sku_match_mode, catalog.sku_match_config || {});
+        const found = canon ? index.get(canon) : undefined;
+        if (found) matches.set(c, found);
+      }
+      const code = Array.from(matches.keys())[0] || candidates[0];
+      const distinct = new Set(
+        Array.from(matches.values()).map((m) => (m === AMBIGUOUS ? 'ambiguous' : m.album_url)),
+      );
+      const hit = matches.size ? Array.from(matches.values())[0] : undefined;
+
       if (!hit) {
         failed++;
-        results.push({ line: entry.line, url: entry.url, code, status: 'no_album', detail: 'לא נמצא אלבום עם הקוד הזה בחנות' });
+        results.push({
+          line: entry.line, url: entry.url, code, status: 'no_album',
+          detail: `לא נמצא אלבום עם הקוד הזה בחנות (נוסו: ${candidates.join(', ')})`,
+        });
         continue;
       }
-      if (hit === AMBIGUOUS) {
+      if (hit === AMBIGUOUS || distinct.size > 1) {
         // Two albums normalize to one code. Picking either would be a coin flip on which
         // photos go out, so this one stays for the owner.
         failed++;
-        results.push({ line: entry.line, url: entry.url, code, status: 'ambiguous', detail: 'יותר מאלבום אחד עם הקוד הזה — קשר ידנית' });
+        results.push({ line: entry.line, url: entry.url, code, status: 'ambiguous', detail: 'יותר מאלבום אחד תואם — קשר ידנית' });
         continue;
       }
 
