@@ -43,6 +43,7 @@ import type {
   BillingCycle,
   SupplierCatalog,
   SupplierProduct,
+  BulkLinkResult,
   AiUsageSummary,
   CustomPost,
   CustomPostInput,
@@ -1019,6 +1020,12 @@ export const suppliersApi = {
     album?: { code?: string; price?: number; currency?: string; description?: string; title?: string; images?: string[]; album_url?: string };
   }) =>
     http.post<SupplierProduct & { sku_verified: boolean }>('/suppliers/products/link', data, { timeout: 50_000 }).then(extract),
+  /**
+   * Paste a batch of FLYLINK links and let the server match each to its album. Every link
+   * costs a redirect fetch on top of the store scan, so this needs the long timeout.
+   */
+  bulkLink: (catalogId: string, text: string) =>
+    http.post<BulkLinkResult>('/suppliers/products/bulk-link', { catalogId, text }, { timeout: 300_000 }).then(extract),
   updateProduct: (id: string, data: Partial<SupplierProduct>) =>
     http.patch<SupplierProduct>(`/suppliers/products/${id}`, data).then(extract),
   deleteProduct: (id: string) => http.delete(`/suppliers/products/${id}`).then(extract),

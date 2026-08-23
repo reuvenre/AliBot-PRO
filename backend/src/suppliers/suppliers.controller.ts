@@ -73,6 +73,19 @@ export class SuppliersController {
     return this.products.link(this.uid(req), dto);
   }
 
+  /**
+   * A whole batch of pasted FLYLINK links, matched to their albums automatically.
+   *
+   * Each link costs a redirect fetch plus the store scan, so this runs well past a normal
+   * request — the client sets its own long timeout, the same way the optimizer's manual
+   * run does.
+   */
+  @Post('products/bulk-link')
+  @HttpCode(200)
+  bulkLink(@Req() req: Request, @Body() dto: { catalogId: string; text: string }) {
+    return this.products.bulkLink(this.uid(req), dto?.catalogId, dto?.text || '');
+  }
+
   @Patch('products/:id')
   updateProduct(@Req() req: Request, @Param('id') id: string, @Body() dto: any) {
     return this.products.update(this.uid(req), id, dto);

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import axios from 'axios';
 import { SupplierProduct } from './entities/supplier-product.entity';
 import { SupplierCatalog } from './entities/supplier-catalog.entity';
 import { SupplierCatalogsService } from './supplier-catalogs.service';
@@ -10,6 +11,7 @@ import { openPostClash } from './flylink-dedup';
 import { coverFirst } from './gallery-order';
 import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
 import { handPickedElsewhere } from './hand-picked-lock';
+import { codeFromResolvedUrl, parseBulkLinks } from './flylink-bulk';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { FLYLINK_VARIANTS, pickVariant, variantHint } from '../posts/copy-variants';
 import { Campaign } from '../campaigns/campaign.entity';
@@ -29,6 +31,21 @@ const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'fly
  * past the gap. Tunable via env for stores that accept faster repeats.
  */
 const FLYLINK_REPEAT_COOLDOWN_MS = (Number(process.env.FLYLINK_REPEAT_COOLDOWN_HOURS) || 48) * 3_600_000;
+
+/** The same browser identity the Yupoo scraper needs — a bare client is a common block. */
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+/** One paste at a time. Each link costs a redirect fetch, so a runaway paste would hold
+ *  the request open for minutes; the owner can simply paste the rest after. */
+const MAX_BULK_LINKS = 200;
+
+/** Album pages scanned to build the code index — 100 albums a page, so 2,000 products. */
+const MAX_ALBUM_PAGES = 20;
+
+/** A code that two different albums share: matched to neither, on purpose. */
+const AMBIGUOUS = Symbol('ambiguous-code');
+
+interface AlbumHit { code: string; album_url: string }
 
 @Injectable()
 export class SupplierProductsService {
@@ -230,6 +247,158 @@ export class SupplierProductsService {
     });
     const saved = await this.repo.save(product);
     return { ...saved, sku_verified };
+  }
+
+  /**
+   * Follow a FLYLINK short link to whatever it actually opens.
+   *
+   * `https://s.flylinking.com/g-XKBRBNHMUD` is a fixed prefix and ten random characters —
+   * it says nothing about the product, which is why linking a catalog meant pairing each
+   * link to an album BY HAND. The destination is a real product URL, so resolving it is
+   * what lets a bare column of links be matched to albums with nothing typed.
+   *
+   * Redirects are followed manually so the FINAL url is known exactly (axios reports only
+   * the request it was given). Never throws: an unresolvable link is reported on its own
+   * line, it does not fail the batch.
+   */
+  async resolveFlylink(url: string, maxHops = 5): Promise<string> {
+    let current = url;
+    for (let hop = 0; hop < maxHops; hop++) {
+      let res: any;
+      try {
+        res = await axios.get(current, {
+          maxRedirects: 0,
+          timeout: 12_000,
+          validateStatus: () => true,
+          // The same browser-ish identity Yupoo needs; a bare client is a common block.
+          headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,*/*' },
+        });
+      } catch {
+        return current;
+      }
+      const location = res.headers?.location;
+      if (res.status >= 300 && res.status < 400 && location) {
+        try { current = new URL(location, current).toString(); } catch { return current; }
+        continue;
+      }
+      return current;
+    }
+    return current;
+  }
+
+  /**
+   * Link a whole batch of pasted FLYLINK links at once.
+   *
+   * The one thing in this pipeline no machine can produce is the affiliate link — FLYLINK
+   * generates an opaque token per product on its own site. Everything AFTER that was
+   * already automatic, and everything BEFORE it (title, price, gallery) is scraped. What
+   * remained manual was the pairing: one album plus one link per pass through a form,
+   * repeated for every product in the catalog.
+   *
+   * Here the owner pastes the links and nothing else. Each one is resolved to its
+   * destination, the product code is read off it, and the matching Yupoo album is found by
+   * the catalog's own SKU rules. A line that cannot be matched is REPORTED, never guessed
+   * at: a link silently attached to the wrong album publishes the wrong pictures, and that
+   * failure is invisible — the link works, the product is not the one in the photo.
+   */
+  async bulkLink(userId: string, catalogId: string, text: string): Promise<{
+    linked: number; updated: number; failed: number; duplicates: number;
+    results: Array<{ line: number; url: string; code: string; status: string; detail?: string }>;
+  }> {
+    const catalog = await this.catalogs.get(userId, catalogId);
+    if (!catalog.source_store) throw new BadRequestException('לא הוגדרה חנות Yupoo לקטלוג');
+
+    const { entries, skipped, duplicates } = parseBulkLinks(text);
+    if (!entries.length && !skipped.length) throw new BadRequestException('לא נמצאו קישורים בטקסט');
+    if (entries.length > MAX_BULK_LINKS) {
+      throw new BadRequestException(`יותר מדי קישורים בבת אחת (${entries.length}) — עד ${MAX_BULK_LINKS}`);
+    }
+
+    const index = await this.albumIndex(catalog);
+    const results: Array<{ line: number; url: string; code: string; status: string; detail?: string }> = [];
+    let linked = 0; let updated = 0; let failed = 0;
+
+    for (const n of skipped) {
+      results.push({ line: n, url: '', code: '', status: 'skipped', detail: 'אין קישור בשורה' });
+    }
+
+    for (const entry of entries) {
+      // What the owner typed beats what we can infer — he was looking at the product.
+      let code = entry.code;
+      let resolved = '';
+      if (!code) {
+        resolved = await this.resolveFlylink(entry.url);
+        code = codeFromResolvedUrl(resolved);
+      }
+      if (!code) {
+        failed++;
+        results.push({
+          line: entry.line, url: entry.url, code: '', status: 'no_code',
+          detail: resolved && resolved !== entry.url
+            ? 'הקישור נפתח אבל אין בו קוד מוצר — הוסף את הקוד בשורה'
+            : 'לא הצלחתי לפתוח את הקישור — הוסף את הקוד בשורה',
+        });
+        continue;
+      }
+
+      const canon = normalizeSku(code, catalog.sku_match_mode, catalog.sku_match_config || {});
+      const hit = index.get(canon);
+      if (!hit) {
+        failed++;
+        results.push({ line: entry.line, url: entry.url, code, status: 'no_album', detail: 'לא נמצא אלבום עם הקוד הזה בחנות' });
+        continue;
+      }
+      if (hit === AMBIGUOUS) {
+        // Two albums normalize to one code. Picking either would be a coin flip on which
+        // photos go out, so this one stays for the owner.
+        failed++;
+        results.push({ line: entry.line, url: entry.url, code, status: 'ambiguous', detail: 'יותר מאלבום אחד עם הקוד הזה — קשר ידנית' });
+        continue;
+      }
+
+      try {
+        const before = await this.repo.findOne({
+          where: { user_id: userId, supplier_catalog_id: catalog.id, yupoo_url: hit.album_url },
+        });
+        await this.link(userId, {
+          catalogId, yupooUrl: hit.album_url, flylinkUrl: entry.url, code,
+        });
+        if (before) { updated++; results.push({ line: entry.line, url: entry.url, code, status: 'updated' }); }
+        else { linked++; results.push({ line: entry.line, url: entry.url, code, status: 'linked' }); }
+      } catch (err: any) {
+        failed++;
+        results.push({ line: entry.line, url: entry.url, code, status: 'error', detail: err?.message || 'שגיאה' });
+      }
+    }
+
+    this.logger.log(`bulk link catalog ${catalogId}: ${linked} new, ${updated} updated, ${failed} failed`);
+    return { linked, updated, failed, duplicates, results };
+  }
+
+  /**
+   * Every album in the store, by its normalized code.
+   *
+   * A code shared by two albums maps to AMBIGUOUS rather than to one of them: the existing
+   * per-album collision handling exists because merging two albums on a shared code put the
+   * WRONG product's images on a post, and a bulk import must not reintroduce that by
+   * picking whichever album happened to be scraped first.
+   */
+  private async albumIndex(catalog: SupplierCatalog): Promise<Map<string, AlbumHit | typeof AMBIGUOUS>> {
+    const pw = this.catalogs.catalogPassword(catalog);
+    const index = new Map<string, AlbumHit | typeof AMBIGUOUS>();
+    for (let page = 1; page <= MAX_ALBUM_PAGES; page++) {
+      const res = await this.yupoo.fetchStore(catalog.source_store!, { page, password: pw });
+      for (const item of res.items) {
+        if (!item.code || !item.album_url) continue;
+        const canon = normalizeSku(item.code, catalog.sku_match_mode, catalog.sku_match_config || {});
+        if (!canon) continue;
+        const seen = index.get(canon);
+        if (!seen) index.set(canon, { code: item.code, album_url: item.album_url });
+        else if (seen !== AMBIGUOUS && seen.album_url !== item.album_url) index.set(canon, AMBIGUOUS);
+      }
+      if (!res.hasMore) break;
+    }
+    return index;
   }
 
   async update(userId: string, id: string, dto: any): Promise<SupplierProduct> {

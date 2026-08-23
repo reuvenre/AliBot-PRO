@@ -12,7 +12,7 @@ import { PostPreview } from '@/components/products/PostPreview';
 import { ProductSourceTabs } from '@/components/products/ProductSourceTabs';
 import { TemplatePanel, BUILTIN as BUILTIN_BODY_TEMPLATES } from '@/components/templates/TemplatePanel';
 import { GroupMultiSelect } from '@/components/GroupMultiSelect';
-import type { SupplierCatalog, SupplierProduct, SkuMatchMode, Channel, PostPreview as PostPreviewType, PostTemplate } from '@/types';
+import type { SupplierCatalog, SupplierProduct, SkuMatchMode, Channel, PostPreview as PostPreviewType, PostTemplate, BulkLinkResult } from '@/types';
 
 const POST_LANGS: { value: string; label: string }[] = [
   { value: 'he', label: 'עברית' },
@@ -254,6 +254,7 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [linkInit, setLinkInit] = useState<{ catalogId?: string; yupooUrl?: string } | null>(null);
+  const [bulk, setBulk] = useState(false);
   const [composing, setComposing] = useState<SupplierProduct | null>(null);
 
   const load = useCallback(async () => {
@@ -277,10 +278,16 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
           </button>
         </div>
         {mode === 'mine' && (
-          <button onClick={() => setLinkInit({})} disabled={catalogs.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all">
-            <Link2 size={15} /> חבר מוצר ידני
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setBulk(true)} disabled={catalogs.length === 0}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all">
+              <Layers size={15} /> ייבוא מרוכז
+            </button>
+            <button onClick={() => setLinkInit({})} disabled={catalogs.length === 0}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all">
+              <Link2 size={15} /> חבר מוצר ידני
+            </button>
+          </div>
         )}
       </div>
       {catalogs.length === 0 && <p className="text-xs text-amber-400 mb-4">צור קודם קטלוג ספק בטאב &quot;קטלוגים&quot;</p>}
@@ -302,6 +309,7 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
       )}
 
       {linkInit && <LinkModal catalogs={catalogs} initial={linkInit} onClose={() => setLinkInit(null)} onDone={() => { setLinkInit(null); setMode('mine'); load(); }} />}
+      {bulk && <BulkLinkModal catalogs={catalogs} onClose={() => setBulk(false)} onDone={load} />}
       {composing && (
         <SavedProductPostModal product={composing} channels={channels}
           defaultChannel={catChannel(composing.supplier_catalog_id)}
@@ -1248,6 +1256,128 @@ function LinkModal({ catalogs, initial, onClose, onDone }: { catalogs: SupplierC
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} חבר
           </button>
           <button onClick={onClose} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl">ביטול</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Paste a batch of FLYLINK links and let the server do the pairing.
+ *
+ * The affiliate link is the one thing in this pipeline no machine can produce — FLYLINK
+ * generates an opaque token per product on its own site. What used to follow it was the
+ * real cost: one album plus one link per pass through a form, for every product in the
+ * catalog. Here the links go in as a column and each is matched to its album by code.
+ */
+const BULK_STATUS: Record<string, { label: string; tone: string }> = {
+  linked: { label: 'נוסף', tone: 'text-emerald-400' },
+  updated: { label: 'עודכן', tone: 'text-blue-400' },
+  no_code: { label: 'אין קוד', tone: 'text-amber-400' },
+  no_album: { label: 'אין אלבום תואם', tone: 'text-amber-400' },
+  ambiguous: { label: 'יותר מאלבום אחד', tone: 'text-amber-400' },
+  skipped: { label: 'דולג', tone: 'text-white/30' },
+  error: { label: 'שגיאה', tone: 'text-red-400' },
+};
+
+function BulkLinkModal({ catalogs, onClose, onDone }: {
+  catalogs: SupplierCatalog[]; onClose: () => void; onDone: () => void;
+}) {
+  const [catalogId, setCatalogId] = useState(catalogs[0]?.id || '');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<BulkLinkResult | null>(null);
+
+  const lineCount = text.split('\n').filter((l) => l.trim()).length;
+
+  const submit = async () => {
+    setBusy(true); setError(''); setResult(null);
+    try {
+      const r = await suppliersApi.bulkLink(catalogId, text);
+      setResult(r);
+      // Refresh the list behind the modal, but keep it open — the per-line report IS the
+      // answer to "what happened", and closing on success would throw it away.
+      onDone();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'הייבוא נכשל');
+    } finally { setBusy(false); }
+  };
+
+  const problems = (result?.results || []).filter((r) => r.status !== 'linked' && r.status !== 'updated');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-surface-primary border border-edge rounded-2xl p-5 w-full max-w-2xl max-h-[92vh] overflow-y-auto" dir="rtl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Layers size={15} className="text-emerald-400" /> ייבוא מרוכז של קישורי FLYLINK
+          </h3>
+          <button onClick={onClose} className="text-white/40 hover:text-white/70"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-3.5">
+          <Field label="קטלוג ספק">
+            <select value={catalogId} onChange={(e) => setCatalogId(e.target.value)}
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white/80 outline-none focus:border-blue-500/50">
+              {catalogs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+
+          <Field
+            label="קישורי FLYLINK — אחד בכל שורה"
+            hint="אין צורך בקוד מוצר: המערכת פותחת כל קישור, קוראת ממנו את הקוד ומשייכת לאלבום. אם קישור לא נפתח — הוסף את הקוד באותה שורה לפני או אחרי הקישור."
+          >
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={8}
+              dir="ltr"
+              placeholder={'https://s.flylinking.com/g-XKBRBNHMUD\nhttps://s.flylinking.com/g-YDER0F6RLK\nMM-2642001DP  https://s.flylinking.com/g-…'}
+              className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white/80 outline-none focus:border-blue-500/50 font-mono"
+            />
+          </Field>
+          {lineCount > 0 && <p className="text-2xs text-white/35">{lineCount} שורות</p>}
+
+          {error && <div className="flex items-center gap-2 text-xs text-red-400"><AlertTriangle size={13} /> {error}</div>}
+
+          {result && (
+            <div className="rounded-xl border border-edge bg-surface-secondary p-3 space-y-2">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className="text-emerald-400">{result.linked} נוספו</span>
+                <span className="text-blue-400">{result.updated} עודכנו</span>
+                {result.failed > 0 && <span className="text-amber-400">{result.failed} לא שויכו</span>}
+                {result.duplicates > 0 && <span className="text-white/40">{result.duplicates} כפולים</span>}
+              </div>
+              {problems.length > 0 && (
+                <div className="max-h-52 overflow-y-auto space-y-1 pt-1 border-t border-edge">
+                  {problems.map((r) => {
+                    const s = BULK_STATUS[r.status] || { label: r.status, tone: 'text-white/40' };
+                    return (
+                      <div key={`${r.line}-${r.url}`} className="text-2xs flex items-start gap-2">
+                        <span className="text-white/25 shrink-0">שורה {r.line}</span>
+                        <span className={`${s.tone} shrink-0`}>{s.label}</span>
+                        <span className="text-white/40 truncate" dir="ltr">{r.code || r.url}</span>
+                        {r.detail && <span className="text-white/30 truncate">— {r.detail}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button onClick={submit} disabled={busy || !text.trim() || !catalogId}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-medium rounded-xl">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
+            {busy ? 'מייבא… זה עשוי לקחת דקה' : 'ייבא'}
+          </button>
+          <button onClick={onClose} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-sm rounded-xl">
+            {result ? 'סגור' : 'ביטול'}
+          </button>
         </div>
       </div>
     </div>

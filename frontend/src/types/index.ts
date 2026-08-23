@@ -844,6 +844,26 @@ export interface UpdateChannelInput {
   schedule_end_hour?: number | null;
 }
 
+// ─── Suppliers (FLYLINK) ──────────────────────────────────────────────────────
+
+/** One pasted line's outcome in a bulk FLYLINK import. */
+export interface BulkLinkRow {
+  line: number;
+  url: string;
+  code: string;
+  /** linked | updated | no_code | no_album | ambiguous | error | skipped */
+  status: string;
+  detail?: string;
+}
+
+export interface BulkLinkResult {
+  linked: number;
+  updated: number;
+  failed: number;
+  duplicates: number;
+  results: BulkLinkRow[];
+}
+
 // ─── Learning optimizer ───────────────────────────────────────────────────────
 
 /** One change the engine made on its own, as the optimizer screen lists it. */
