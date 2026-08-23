@@ -125,16 +125,38 @@ export class OptimizerService {
   ) {}
 
   /**
-   * Hourly tick at :10, dispatching each user's insights report at the hour THEY chose
+   * Dispatches each user's insights report at the hour THEY chose
    * (notification_prefs.insights_hour, floored at 10 — see report-hours.ts: AliExpress
    * closes its accounting day at 10:00 Israel, and a digest before that reports and learns
    * from numbers still in motion).
    *
+   * The FIRST opportunity each hour is still :10, so a 10:00 reader gets the report at
+   * 10:10 exactly as before. The later ticks are the retry: this used to run once an hour,
+   * which meant any tick lost to a restart, a deploy, or a host that had spun down cost a
+   * FULL HOUR — the report then landed at hh:10 of the next hour and read as "late" with
+   * nothing in the UI to explain it. Retrying every ten minutes bounds that to ten.
+   *
    * The zone is explicit rather than a UTC hour because Israel observes DST: a hardcoded
    * UTC hour would drift an hour off the boundary this schedule exists to sit behind.
    */
-  @Cron('0 10 * * * *', { timeZone: 'Asia/Jerusalem' })
+  @Cron('0 10,20,30,40,50 * * * *', { timeZone: 'Asia/Jerusalem' })
   async runDaily(): Promise<void> {
+    // A pass can take minutes (orders sync, then up to 40 sequential Pinterest analytics
+    // calls, then the run itself). At an hourly cadence an overrun was unreachable; at ten
+    // minutes it is not, and two concurrent passes would send the owner two reports —
+    // neither one stamped before the other started.
+    if (this.dispatching) return;
+    this.dispatching = true;
+    try {
+      await this.dispatchDue();
+    } finally {
+      this.dispatching = false;
+    }
+  }
+
+  private dispatching = false;
+
+  private async dispatchDue(): Promise<void> {
     let userIds: string[] = [];
     try {
       userIds = await this.credentials.listUserIdsWithOptimizer();
