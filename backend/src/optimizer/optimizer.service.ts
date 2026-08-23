@@ -82,6 +82,15 @@ const MIN_POSTS_TO_JUDGE = 5;
 const MIN_ACTIVE_KEYWORDS = 5;
 /** At most this many retirements per campaign per day — slow, reversible pressure. */
 const MAX_RETIRE_PER_DAY = 3;
+/**
+ * Clicks a product must draw, with NO order behind any of them, before the engine stops
+ * recycling it. Set above the retirement threshold on purpose: a product is a bigger unit
+ * than a keyword, and the cost of muting a slow converter is higher than the cost of
+ * letting one more click go by.
+ */
+const MIN_CLICKS_TO_MUTE = 8;
+/** At most this many products muted per run — a bad rule should cost a night, not a catalog. */
+const MAX_MUTES_PER_RUN = 3;
 /** How far back ORDERS are read for category learning. Wider than the keyword window:
  *  commissions are sparse, and a category needs several sales before it means anything. */
 const ORDER_LEARNING_WINDOW_DAYS = 90;
@@ -322,6 +331,11 @@ export class OptimizerService {
       this.logger.warn(`manager actions failed for ${userId}: ${e?.message}`);
       return [] as string[];
     });
+    // The findings that used to be printed as homework, acted on instead.
+    const autoLines = await this.runAutonomousActions(userId, active, loggedIds).catch((e) => {
+      this.logger.warn(`autonomous actions failed for ${userId}: ${e?.message}`);
+      return [] as string[];
+    });
     let digest = this.buildDigest(stats, allActions, soldCategories, active, copyAngles, hotByGroup);
     // Sunday carries the week's review — the trend view a single day cannot show. Israel
     // time, because that is the week the owner lives in (Sunday is a working day here).
@@ -333,8 +347,9 @@ export class OptimizerService {
       });
       if (weekly.length) digest += `\n${weekly.join('\n')}`;
     }
-    if (managerLines.length) {
-      digest += `\n\n🤖 סוכן-המנהל — מה שיניתי היום:\n${managerLines.map((l) => `  • ${l}`).join('\n')}`;
+    const changedLines = [...managerLines, ...autoLines];
+    if (changedLines.length) {
+      digest += `\n\n🤖 סוכן-המנהל — מה שיניתי היום:\n${changedLines.map((l) => `  • ${l}`).join('\n')}`;
     }
     // Pin every line to the right. A bidi renderer picks each LINE's direction from its
     // first strong character, and nearly every line here opens with an emoji or a bullet —
@@ -850,10 +865,8 @@ export class OptimizerService {
             [plan.value, plan.campaignId, userId]);
           break;
         case 'product_mute':
-          // The owner-facing "don't auto-post this" switch lives on the supplier catalog —
-          // the same one the products screen toggles, so an undo here shows up there.
-          await q(`UPDATE supplier_products SET no_auto_post = $1 WHERE user_id = $2 AND id = $3`,
-            [plan.value, userId, plan.productId]);
+          // Nothing to write: the standing row IS the mute (the recycler reads the log
+          // directly), so the undone_at stamp below is the entire inverse.
           break;
       }
     } catch (err: any) {
@@ -909,6 +922,103 @@ export class OptimizerService {
       this.logger.warn(`action log failed (${a.kind}): ${err?.message}`);
       return null;
     }
+  }
+
+  /**
+   * The findings the report used to hand back as homework, done instead of said.
+   *
+   * Three lines in the old report were instructions to the owner: "switch learning on for
+   * this campaign", "check the price on this product", "this campaign has stopped". He
+   * asked for an engine that makes the change rather than one that files a request, so
+   * each of these is now an action — logged, named in the brief, and one tap from being
+   * put back.
+   *
+   * A change he ALREADY undid is never re-applied: an undone row is him saying no, and an
+   * engine that re-decides the same thing every night is not autonomous, it is a nag with
+   * write access.
+   */
+  private async runAutonomousActions(
+    userId: string, campaigns: Campaign[], logged: string[],
+  ): Promise<string[]> {
+    const q = (sql: string, params: any[]) => this.campaigns.query(sql, params).catch(() => []);
+    const lines: string[] = [];
+
+    /** Did the owner reverse this exact decision before? Then it is settled. */
+    const wasRejected = async (kind: string, targetId: string): Promise<boolean> => {
+      const [row] = await q(
+        `SELECT 1 FROM manager_actions
+         WHERE user_id = $1 AND kind = $2 AND target_id = $3 AND undone_at IS NOT NULL LIMIT 1`,
+        [userId, kind, targetId]);
+      return !!row;
+    };
+    const record = async (a: Parameters<OptimizerService['logAction']>[1], line: string) => {
+      const id = await this.logAction(userId, a);
+      if (id) logged.push(id);
+      lines.push(line);
+    };
+
+    // 1) A campaign with NO keywords left cannot publish, whatever else is configured —
+    //    that is the whole of why it went quiet, and it has a determinate fix. Retired
+    //    words are the only ones we know it once ran, so they come back.
+    for (const c of campaigns) {
+      if ((c.keywords || []).length || !(c.retired_keywords || []).length) continue;
+      if (await wasRejected('keywords', c.id)) continue;
+      const restored = [...(c.retired_keywords || [])];
+      await q(`UPDATE campaigns SET keywords = $1, retired_keywords = $2 WHERE id = $3 AND user_id = $4`,
+        [restored, [], c.id, userId]);
+      await record({
+        kind: 'keywords', targetId: c.id, targetLabel: c.name,
+        before: JSON.stringify({ keywords: [], retired: restored }),
+        after: JSON.stringify({ keywords: restored, retired: [] }),
+        reason: 'הטייס נשאר בלי אף מילת מפתח ולכן הפסיק לפרסם — המילים שהודחו הוחזרו',
+      }, `[${c.name}] החזרתי ${restored.length} מילות מפתח — הטייס נשאר בלי אף אחת והפסיק לפרסם`);
+    }
+
+    // 2) "Learning from sales is off here" was a line asking him to go flip a switch. The
+    //    switch is his, in his account, and the report is the place he sees it flipped.
+    for (const c of campaigns) {
+      if (c.learn_from_orders) continue;
+      if (await wasRejected('learn_from_orders', c.id)) continue;
+      await q(`UPDATE campaigns SET learn_from_orders = true WHERE id = $1 AND user_id = $2`,
+        [c.id, userId]);
+      await record({
+        kind: 'learn_from_orders', targetId: c.id, targetLabel: c.name,
+        before: 'false', after: 'true',
+        reason: 'קטגוריות שמוכרות בחשבון לא נכנסו לטייס הזה כי הלימוד היה כבוי',
+      }, `[${c.name}] הדלקתי "למידה ממכירות" — קטגוריות שמוכרות ייכנסו לרוטציה`);
+    }
+
+    // 3) Clicks that led nowhere used to be printed as "check the price/shipping". Worse
+    //    than useless on its own: winner-recycling ranks by CLICKS, so the products proven
+    //    not to convert were exactly the ones it republished. Muting one keeps it out of
+    //    that rotation. The standing row is the mute — no side table, and undo is the stamp.
+    const friction: any[] = await q(
+      `SELECT p.product_id, max(p.product_title) AS title,
+              sum(p.clicks_count + coalesce(p.pinterest_clicks, 0))::int AS clicks
+       FROM posts p
+       WHERE p.user_id = $1 AND p.status = 'sent'
+         AND p.sent_at > now() - ($2 || ' days')::interval
+         AND p.product_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM earnings e
+           WHERE e.user_id = $1 AND e.product_id = p.product_id AND e.status <> 'cancelled')
+         AND NOT EXISTS (
+           SELECT 1 FROM manager_actions ma
+           WHERE ma.user_id = $1 AND ma.kind = 'product_mute' AND ma.target_id = p.product_id)
+       GROUP BY p.product_id
+       HAVING sum(p.clicks_count + coalesce(p.pinterest_clicks, 0)) >= $3
+       ORDER BY clicks DESC LIMIT $4`,
+      [userId, String(WINDOW_DAYS), MIN_CLICKS_TO_MUTE, MAX_MUTES_PER_RUN]);
+    for (const f of friction) {
+      const title = String(f.title || '').slice(0, 50);
+      await record({
+        kind: 'product_mute', targetId: String(f.product_id), targetLabel: title,
+        before: 'false', after: 'true',
+        reason: `${f.clicks} קליקים ואף הזמנה ב-${WINDOW_DAYS} יום`,
+      }, `הפסקתי למחזר את "${title}" — ${f.clicks} קליקים ואף הזמנה`);
+    }
+
+    return lines;
   }
 
   /**

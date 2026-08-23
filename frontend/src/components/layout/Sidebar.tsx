@@ -10,6 +10,7 @@ import {
   Users, BarChart3, Settings, LogOut,
   ShoppingCart, Sun, Moon, Sparkles, Package,
   Shield, ShieldAlert, Ticket, LayoutTemplate, ExternalLink, CalendarClock, BookOpen, Gift,
+  Brain,
 } from 'lucide-react';
 
 // The user's landing-page system (ClickLead), unlocked for the top plan. Override in
@@ -42,6 +43,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/orders',  label: 'הזמנות', icon: ShoppingCart },
       { href: '/reports', label: 'דוחות',  icon: BarChart3 },
+      { href: '/optimizer', label: 'המוח הלומד', icon: Brain },
       { href: '/guide',   label: 'מדריך למשתמש', icon: BookOpen },
     ],
   },

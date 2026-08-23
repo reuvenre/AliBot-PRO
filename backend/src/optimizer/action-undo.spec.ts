@@ -89,6 +89,11 @@ describe('undoPlan — one tap puts it back', () => {
       .toEqual({ kind: 'learn_from_orders', campaignId: 'c1', value: false });
   });
 
+  it('un-mutes a product by naming it — the standing row IS the mute', () => {
+    expect(undoPlan(row({ kind: 'product_mute', target_id: '1005006', target_label: 'מטחנת קפה' })))
+      .toEqual({ kind: 'product_mute', productId: '1005006' });
+  });
+
   it('refuses to undo twice — a second tap must not re-apply an old state', () => {
     const already = row({ before: kw(['א']), after: kw(['ב']), undone_at: new Date() });
     expect(undoPlan(already)).toBeNull();

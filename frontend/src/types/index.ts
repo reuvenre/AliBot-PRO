@@ -844,6 +844,22 @@ export interface UpdateChannelInput {
   schedule_end_hour?: number | null;
 }
 
+// ─── Learning optimizer ───────────────────────────────────────────────────────
+
+/** One change the engine made on its own, as the optimizer screen lists it. */
+export interface OptimizerAction {
+  id: string;
+  /** Already-written Hebrew: "[טקטי בקליק] הוספתי "מטחנת קפה"". */
+  label: string;
+  /** The measured reason behind it — why, in numbers. */
+  reason: string | null;
+  /** Some rows record a recomputation rather than a change, and have nothing to put back. */
+  undoable: boolean;
+  undone: boolean;
+  /** ISO timestamp. */
+  at: string;
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {

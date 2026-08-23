@@ -3256,6 +3256,14 @@ export class PostsService {
         'NOT EXISTS (SELECT 1 FROM posts p2 WHERE p2.user_id = p.user_id AND p2.product_id = p.product_id AND p2.created_at > :cooldown)',
         { cooldown },
       )
+      // Products the learning engine muted: many clicks, never an order. Ranking by clicks
+      // made those the FIRST candidates here — the recycler was systematically republishing
+      // the products proven not to convert. A standing (un-undone) mute row keeps them out.
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM manager_actions ma
+                     WHERE ma.user_id = p.user_id AND ma.kind = 'product_mute'
+                       AND ma.target_id = p.product_id AND ma.undone_at IS NULL)`,
+      )
       .orderBy('p.clicks_count', 'DESC')
       .addOrderBy('p.sent_at', 'DESC')
       .take(3)

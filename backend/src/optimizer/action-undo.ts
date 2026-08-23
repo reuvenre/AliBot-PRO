@@ -32,7 +32,9 @@ export type UndoPlan =
   | { kind: 'keyword_pause'; campaignId: string; keyword: string }
   | { kind: 'campaign_status'; campaignId: string; status: string }
   | { kind: 'learn_from_orders'; campaignId: string; value: boolean }
-  | { kind: 'product_mute'; productId: string; value: boolean };
+  // A mute has no side table: the standing, un-undone row IS the mute, which the recycler
+  // reads. Stamping undone_at is therefore the whole inverse — nothing else to write.
+  | { kind: 'product_mute'; productId: string };
 
 interface KeywordsPayload { keywords?: unknown; retired?: unknown }
 
@@ -137,7 +139,7 @@ export function undoPlan(row: ActionRow): UndoPlan | null {
     }
     case 'product_mute': {
       if (!row.target_id) return null;
-      return { kind: 'product_mute', productId: row.target_id, value: row.before === 'true' };
+      return { kind: 'product_mute', productId: row.target_id };
     }
     default:
       // golden_hours and anything unknown: the row is a record of a recomputation, not a

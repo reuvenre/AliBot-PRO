@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
 import type {
   User,
   AuthResponse,
+  OptimizerAction,
   CredentialSet,
   CredentialSetInput,
   Campaign,
@@ -914,9 +915,22 @@ export const optimizerApi = {
    * Run the nightly pass now and get back the digest it would have sent. Scoring every
    * keyword across every active campaign (plus the email) runs well past the 15s default.
    */
-  run: () => http.post<{ ok: boolean; digest?: string; reason?: string }>(
+  run: () => http.post<{ ok: boolean; digest?: string; detail?: string; reason?: string }>(
     '/optimizer/run', {}, { timeout: 180_000 },
   ).then(extract),
+
+  /** Every change the engine made lately, newest first — the "what did it do" screen. */
+  actions: (days = 14) => http.get<OptimizerAction[]>(
+    '/optimizer/actions', { params: { days } },
+  ).then(extract),
+
+  /** Put one change back. The engine acts on its own; this is the other half of that. */
+  undo: (id: string) => http.post<{ ok: boolean; label?: string; reason?: string }>(
+    '/optimizer/actions/undo', { id },
+  ).then(extract),
+
+  /** The full report behind the last brief — the evidence, on request. */
+  detail: () => http.get<{ detail: string | null }>('/optimizer/detail').then(extract),
 };
 
 // ─── Catalog API ─────────────────────────────────────────────────────────────
