@@ -44,6 +44,10 @@ import type {
   SupplierCatalog,
   SupplierProduct,
   BulkLinkResult,
+  StoreMeta,
+  StorePage,
+  StoreProduct,
+  StorefrontSettings,
   AiUsageSummary,
   CustomPost,
   CustomPostInput,
@@ -932,6 +936,34 @@ export const optimizerApi = {
 
   /** The full report behind the last brief — the evidence, on request. */
   detail: () => http.get<{ detail: string | null }>('/optimizer/detail').then(extract),
+};
+
+// ─── Storefront API ──────────────────────────────────────────────────────────
+
+/**
+ * The PUBLIC store endpoints. Deliberately on a bare axios call rather than the shared
+ * instance: a follower browsing the store has no session, and the instance's 401 →
+ * refresh → retry interceptor would turn an ordinary 404 into a login round-trip.
+ */
+export const storeApi = {
+  meta: (slug: string) =>
+    axios.get<StoreMeta>(`${BASE_URL}/store/${encodeURIComponent(slug)}`).then((r) => r.data),
+
+  products: (slug: string, params: { page?: number; brand?: string; group?: string; q?: string } = {}) =>
+    axios.get<StorePage>(`${BASE_URL}/store/${encodeURIComponent(slug)}/products`, { params })
+      .then((r) => r.data),
+
+  product: (slug: string, id: string) =>
+    axios.get<StoreProduct & { buy_url: string }>(
+      `${BASE_URL}/store/${encodeURIComponent(slug)}/products/${encodeURIComponent(id)}`,
+    ).then((r) => r.data),
+};
+
+/** The owner's side of their store. */
+export const storefrontApi = {
+  get: () => http.get<StorefrontSettings>('/storefront').then(extract),
+  update: (data: Partial<StorefrontSettings>) =>
+    http.patch<StorefrontSettings>('/storefront', data).then(extract),
 };
 
 // ─── Catalog API ─────────────────────────────────────────────────────────────

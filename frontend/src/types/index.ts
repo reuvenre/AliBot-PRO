@@ -844,6 +844,60 @@ export interface UpdateChannelInput {
   schedule_end_hour?: number | null;
 }
 
+// ─── Public storefront ────────────────────────────────────────────────────────
+
+/** One product as the public store shows it. */
+export interface StoreProduct {
+  /** Prefixed id: "s:<uuid>" (supplier catalog) or "p:<uuid>" (published post). */
+  id: string;
+  title: string;
+  brand: string | null;
+  image: string | null;
+  gallery: string[];
+  price: number;
+  currency: string;
+  source: 'supplier' | 'post';
+  /** The group / catalog it belongs to — the store's own filter. */
+  group: string | null;
+  /** ISO date it was last published. */
+  at: string | null;
+}
+
+/** The store's header and the filter values that have products behind them. */
+export interface StoreMeta {
+  slug: string;
+  name: string;
+  tagline: string | null;
+  whatsapp: string | null;
+  shipping_text: string | null;
+  details_text: string | null;
+  brands: string[];
+  groups: string[];
+}
+
+export interface StorePage {
+  products: StoreProduct[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+/** The owner's settings for their store. */
+export interface StorefrontSettings {
+  id: string;
+  slug: string;
+  name: string;
+  tagline: string | null;
+  enabled: boolean;
+  whatsapp: string | null;
+  shipping_text: string | null;
+  details_text: string | null;
+  /** Comma list: 'suppliers', 'posts'. */
+  sources: string;
+  /** The public address, ready to paste. */
+  url: string;
+}
+
 // ─── Suppliers (FLYLINK) ──────────────────────────────────────────────────────
 
 /** One pasted line's outcome in a bulk FLYLINK import. */
