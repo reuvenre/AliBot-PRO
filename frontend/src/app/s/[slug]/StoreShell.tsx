@@ -104,9 +104,6 @@ export function StoreShell({
         <div className="max-w-6xl mx-auto px-4 py-8 text-center text-xs text-[var(--store-muted)] space-y-2">
           {meta.tagline && <p>{meta.tagline}</p>}
           <p>© {new Date().getFullYear()} {meta.name}</p>
-          <p className="opacity-60">
-            הקישורים בעמוד הם קישורי שותפים — רכישה דרכם עשויה לזכות אותנו בעמלה, בלי תוספת עלות לך.
-          </p>
         </div>
       </footer>
     </div>

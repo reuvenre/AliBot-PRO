@@ -6,6 +6,7 @@ import { User } from '../users/user.entity';
 import { LinksService } from '../links/links.service';
 import { nextFreeSlug, slugError } from './store-slug';
 import { storeTexts } from './store-defaults';
+import { brandDisplayName, storeCardName } from './product-name';
 
 /** One product as the public store shows it. */
 export interface StoreProduct {
@@ -251,21 +252,27 @@ export class StorefrontService {
       return [];
     });
 
-    return rows.map((r) => ({
-      id: `s:${r.id}`,
-      title: String(r.title || '').trim(),
-      // The supplier catalog's "description" is the brand remainder off the album title
-      // ("COACH") — exactly the label the card wants above the name.
-      brand: (r.description ? String(r.description).trim().slice(0, 30) : null) || null,
-      image: r.image_url || null,
-      gallery: this.parseGallery(r.gallery_json, r.image_url),
-      price: Number(r.price) || 0,
-      currency: r.currency || 'USD',
-      source: 'supplier' as const,
-      group: r.catalog ? String(r.catalog) : null,
-      at: r.last_posted_at || r.created_at
-        ? new Date(r.last_posted_at || r.created_at).toISOString() : null,
-    })).filter((p) => p.title && p.price > 0);
+    return rows.map((r) => {
+      // The supplier catalog's "description" is whatever was left of the album title after
+      // the code came out — which means it arrives carrying the wreckage ("POLO- -5349",
+      // "CHANEL $"). Cleaned here, or the brand FILTER becomes forty near-duplicates.
+      const brand = brandDisplayName(r.description) || null;
+      return {
+        id: `s:${r.id}`,
+        // A Yupoo album is titled with its stock code and wholesale price. The card needs
+        // a name a shopper recognises, not the warehouse label.
+        title: storeCardName(String(r.title || ''), brand),
+        brand,
+        image: r.image_url || null,
+        gallery: this.parseGallery(r.gallery_json, r.image_url),
+        price: Number(r.price) || 0,
+        currency: r.currency || 'USD',
+        source: 'supplier' as const,
+        group: r.catalog ? String(r.catalog) : null,
+        at: r.last_posted_at || r.created_at
+          ? new Date(r.last_posted_at || r.created_at).toISOString() : null,
+      };
+    }).filter((p) => p.title && p.price > 0);
   }
 
   private async postProducts(store: Storefront, id?: string): Promise<StoreProduct[]> {
@@ -293,8 +300,10 @@ export class StorefrontService {
 
     return rows.map((r) => ({
       id: `p:${r.id}`,
-      title: String(r.product_title || '').trim(),
-      brand: r.keyword ? String(r.keyword).trim().slice(0, 30) : null,
+      // An AliExpress title is written for AliExpress's own search box — a hundred and
+      // twenty characters of every phrase a buyer might type. Not a name.
+      title: storeCardName(String(r.product_title || ''), r.keyword),
+      brand: brandDisplayName(r.keyword) || null,
       image: r.product_image || null,
       gallery: this.parseGallery(r.gallery_json, r.product_image),
       price: Number(r.price_ils) || 0,

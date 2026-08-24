@@ -24,7 +24,7 @@ export class AddStorefronts1793700000000 implements MigrationInterface {
         whatsapp text,
         shipping_text text,
         details_text text,
-        sources text NOT NULL DEFAULT 'suppliers,posts',
+        sources text NOT NULL DEFAULT 'suppliers',
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       )`);

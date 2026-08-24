@@ -61,8 +61,14 @@ export class Storefront {
   /**
    * Which catalogs feed the store: 'suppliers' (the hidden-brand catalog), 'posts'
    * (everything published to the channels), or both. Stored as a comma list.
+   *
+   * Suppliers only by default. The two catalogs are not the same KIND of thing: the
+   * supplier shelf is a curated offering with a gallery, a brand and a stock flag, while
+   * the posts side is every deal that ever went out — a different product every day, at a
+   * price captured when it was published. Mixing them without being asked turns a
+   * boutique into a feed. An owner who wants both switches the second one on.
    */
-  @Column({ type: 'text', default: 'suppliers,posts' })
+  @Column({ type: 'text', default: 'suppliers' })
   sources: string;
 
   @CreateDateColumn()
