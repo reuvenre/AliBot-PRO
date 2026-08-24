@@ -265,6 +265,7 @@ export class StorefrontService {
        WHERE sp.user_id = $1 AND sp.status = 'active'
          AND sp.flylink_url IS NOT NULL AND sp.flylink_url <> ''
          AND sp.in_stock IS DISTINCT FROM false
+         AND sp.store_hidden IS DISTINCT FROM true
          ${id ? 'AND sp.id = $2' : ''}
        ORDER BY coalesce(sp.last_posted_at, sp.created_at) DESC
        LIMIT 500`,

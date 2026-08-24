@@ -26,7 +26,7 @@ import { RatesService } from '../rates/rates.service';
 // enrichment agent — it proposes, he decides, and the correction stands because
 // store_enriched_at keeps the agent from revisiting the product.
 const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'flylink_url', 'status', 'no_auto_post',
-  'store_name', 'store_category', 'store_brand'] as const;
+  'store_name', 'store_category', 'store_brand', 'store_hidden'] as const;
 
 /**
  * A FLYLINK product isn't re-posted until at least this long after its last post. FLYLINK

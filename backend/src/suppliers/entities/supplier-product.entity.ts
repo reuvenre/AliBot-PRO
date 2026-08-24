@@ -113,6 +113,17 @@ export class SupplierProduct {
   @Column({ type: 'timestamptz', nullable: true })
   store_enriched_at: Date | null;
 
+  /**
+   * Off the public shelf, and nothing else.
+   *
+   * Distinct from every neighbouring switch on purpose: `status` also drops the product
+   * from the campaign rotation, `no_auto_post` stops the autopilot but leaves it in the
+   * shop, and deleting loses the hand-generated FLYLINK link for good. This is the one
+   * that means only "not this one, in the shop".
+   */
+  @Column({ default: false })
+  store_hidden: boolean;
+
   @Column({ nullable: true })
   synced_at: Date;
 

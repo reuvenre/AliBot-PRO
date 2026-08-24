@@ -392,6 +392,8 @@ export interface SupplierProduct {
   store_brand?: string | null;
   /** When the agent last looked. Null = still in its queue. */
   store_enriched_at?: string | null;
+  /** true = off the public shelf. The campaign rotation and the FLYLINK link are untouched. */
+  store_hidden?: boolean;
 }
 
 // ─── Discovery ───────────────────────────────────────────────────────────────
