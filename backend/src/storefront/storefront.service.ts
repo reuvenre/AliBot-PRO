@@ -98,6 +98,23 @@ export class StorefrontService {
     return `${base}/s/${slug}`;
   }
 
+  /**
+   * The store's address and name for a post about to go out, or null when there is no
+   * live store to link to.
+   *
+   * Reads on the publish path, so it never creates a row the way `mine` does — a send is
+   * not the place to discover that a user has no storefront yet.
+   */
+  async liveStore(userId: string): Promise<{ url: string; name: string } | null> {
+    const store = await this.repo.findOne({ where: { user_id: userId, enabled: true } })
+      .catch(() => null);
+    if (!store) return null;
+    const url = this.storeUrl(store.slug);
+    // FRONTEND_URL unset would produce "/s/slug" — a relative path in a Telegram message
+    // is not a link, it is noise.
+    return /^https?:\/\//.test(url) ? { url, name: store.name } : null;
+  }
+
   // ── Public side ────────────────────────────────────────────────────────────
 
   /** A live store by its address, or 404. A disabled store does not exist publicly. */

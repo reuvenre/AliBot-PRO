@@ -19,9 +19,12 @@ import { CollageModule } from '../collage/collage.module';
 import { IncentiveModule } from '../incentive/incentive.module';
 import { PinterestModule } from '../pinterest/pinterest.module';
 import { UploadedImage } from './uploaded-image.entity';
+import { StorefrontModule } from '../storefront/storefront.module';
 
 @Module({
   imports: [
+    // The store line appended to every published post — see buildPostBody.
+    StorefrontModule,
     // Campaign is registered as a REPOSITORY (not CampaignsService) on purpose:
     // CampaignsModule already imports PostsModule, so injecting the service back
     // would close a circular dependency.

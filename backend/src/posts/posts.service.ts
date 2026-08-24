@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
 import { Repository, LessThan, MoreThan, In, Brackets } from 'typeorm';
@@ -55,6 +55,8 @@ import { LinksService } from '../links/links.service';
 import { ProductsService } from '../products/products.service';
 import { PinterestService } from '../pinterest/pinterest.service';
 import { IncentiveService } from '../incentive/incentive.service';
+import { StorefrontService } from '../storefront/storefront.service';
+import { hasStoreLine, storeLine } from '../storefront/store-line';
 import { UploadedImage } from './uploaded-image.entity';
 import {
   describeMissingScopes, isTierBlockError, parseGrantedScopes, PUBLISH_SCOPE,
@@ -219,6 +221,9 @@ export class PostsService {
     private readonly products: ProductsService,
     private readonly pinterest: PinterestService,
     private readonly incentive: IncentiveService,
+    // Optional so the existing unit specs — which construct this service positionally —
+    // keep working, and so a post still publishes if the storefront is ever unwired.
+    @Optional() private readonly storefront?: StorefrontService,
   ) {}
 
   /**
@@ -3592,6 +3597,16 @@ export class PostsService {
     // coupon rule above: source inferred from the link.
     if (isFlylinkPost(post.affiliate_url) && !body.includes(FLYLINK_TRUST_MARK)) {
       body = `${body}\n\n${flylinkTrustBlock()}`;
+    }
+
+    // The bridge from one product to the whole catalog. Attached at send time like the
+    // trust and price blocks, so a verbatim repost and an already-queued post get it too;
+    // added only when the owner actually switched a store on, and never twice.
+    if (this.storefront) {
+      const store = await this.storefront.liveStore(post.user_id).catch(() => null);
+      if (store && !hasStoreLine(body, store.url)) {
+        body = `${body}\n\n${storeLine({ url: store.url, name: store.name, hebrew: NON_LATIN_RE.test(body) })}`;
+      }
     }
 
     const footer = await this.resolveFooterText(post.user_id, creds, channelOverride);
