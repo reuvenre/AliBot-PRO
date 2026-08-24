@@ -386,6 +386,12 @@ export interface SupplierProduct {
   publish_status?: 'pending' | 'sent' | null;
   synced_at?: string;
   created_at: string;
+  /** What the enrichment agent named this product for the public store — editable. */
+  store_name?: string | null;
+  store_category?: string | null;
+  store_brand?: string | null;
+  /** When the agent last looked. Null = still in its queue. */
+  store_enriched_at?: string | null;
 }
 
 // ─── Discovery ───────────────────────────────────────────────────────────────
@@ -859,6 +865,8 @@ export interface StoreProduct {
   source: 'supplier' | 'post';
   /** The group / catalog it belongs to — the store's own filter. */
   group: string | null;
+  /** The shop category the enrichment agent decided, or the owner corrected. */
+  category: string | null;
   /** ISO date it was last published. */
   at: string | null;
 }
@@ -872,6 +880,7 @@ export interface StoreMeta {
   shipping_text: string | null;
   details_text: string | null;
   brands: string[];
+  categories: string[];
   groups: string[];
 }
 
@@ -880,6 +889,22 @@ export interface StorePage {
   total: number;
   page: number;
   pages: number;
+  /** The whole catalog's price span — the slider's ends, before any filter narrows it. */
+  priceRange: { min: number; max: number };
+}
+
+/** The orderings the store's filter panel offers. */
+export type StoreSort = 'newest' | 'oldest' | 'price_asc' | 'price_desc';
+
+export interface StoreQuery {
+  page?: number;
+  brand?: string;
+  category?: string;
+  group?: string;
+  q?: string;
+  min_price?: number;
+  max_price?: number;
+  sort?: StoreSort;
 }
 
 /** The owner's settings for their store. */

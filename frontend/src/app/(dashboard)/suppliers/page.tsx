@@ -21,6 +21,18 @@ const POST_LANGS: { value: string; label: string }[] = [
 ];
 const BUILTIN_DEFAULT_TEMPLATE: PostTemplate = { id: 'builtin_default', name: 'ברירת מחדל', icon: '✨', content: '', builtin: true };
 
+/**
+ * The shop's fixed categories — the same list the enrichment agent picks from
+ * (backend/src/storefront/store-categories.ts). Fixed rather than free text: four
+ * spellings of "shoes" split one shelf across four filter entries.
+ */
+const STORE_CATEGORIES = [
+  'נעליים', 'תיקים', 'ארנקים', 'שעונים', 'תכשיטים', 'משקפיים', 'בשמים', 'חולצות',
+  'טי-שירטים', 'ג\'קטים', 'מעילים', 'מכנסיים', 'חצאיות', 'שמלות', 'סטים', 'חליפות',
+  'הלבשה תחתונה', 'בגדי ים', 'גרביים', 'כובעים', 'חגורות', 'צעיפים', 'כפפות',
+  'מוצרי חשמל', 'ציוד ספורט', 'אביזרים',
+];
+
 const SYMS: Record<string, string> = { ILS: '₪', EUR: '€', GBP: '£', USD: '$' };
 const priceSym = (c: string) => SYMS[c] || '$';
 
@@ -255,6 +267,7 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
   const [loading, setLoading] = useState(true);
   const [linkInit, setLinkInit] = useState<{ catalogId?: string; yupooUrl?: string } | null>(null);
   const [bulk, setBulk] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   const [composing, setComposing] = useState<SupplierProduct | null>(null);
 
   const load = useCallback(async () => {
@@ -262,6 +275,25 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Run the enrichment agent now rather than waiting for the half-hourly sweep — what an
+   * owner presses after a bulk import instead of watching an unnamed shelf.
+   */
+  const runEnrich = async () => {
+    setEnriching(true);
+    try {
+      const res = await suppliersApi.enrich();
+      await load();
+      alert(res.reason
+        ? res.reason
+        : res.looked === 0
+          ? 'כל המוצרים כבר מקוטלגים.'
+          : `נבדקו ${res.looked} מוצרים, ${res.named} קוטלגו. אם נשארו — לחץ שוב.`);
+    } catch {
+      alert('הקיטלוג נכשל — נסה שוב.');
+    } finally { setEnriching(false); }
+  };
 
   const catName = (id: string) => catalogs.find((c) => c.id === id)?.name || 'ספק';
   const catChannel = (id: string) => catalogs.find((c) => c.id === id)?.target_channel_id || '';
@@ -279,6 +311,12 @@ function ProductsTab({ catalogs, channels }: { catalogs: SupplierCatalog[]; chan
         </div>
         {mode === 'mine' && (
           <div className="flex items-center gap-2">
+            <button onClick={runEnrich} disabled={enriching || catalogs.length === 0}
+              className="flex items-center gap-2 px-4 py-2.5 bg-surface-secondary border border-edge-hover hover:border-blue-500/40 disabled:opacity-50 text-white/80 text-sm font-medium rounded-xl transition-all"
+              title="מסתכל על תמונת המוצר וקובע שם בעברית, קטגוריה ומותג לאתר">
+              {enriching ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {enriching ? 'מקטלג…' : 'קטלג לאתר'}
+            </button>
             <button onClick={() => setBulk(true)} disabled={catalogs.length === 0}
               className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all">
               <Layers size={15} /> ייבוא מרוכז
@@ -1162,7 +1200,12 @@ function SupplierRow({ product, catalogName, onCompose, onEdit, reload }: {
 }
 
 function SupplierEditModal({ product, onClose, onSaved }: { product: SupplierProduct; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ title: product.title || '', price: String(product.price ?? ''), flylink_url: product.flylink_url || '', description: product.description || '' });
+  const [form, setForm] = useState({
+    title: product.title || '', price: String(product.price ?? ''),
+    flylink_url: product.flylink_url || '', description: product.description || '',
+    store_name: product.store_name || '', store_category: product.store_category || '',
+    store_brand: product.store_brand || '',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -1171,6 +1214,7 @@ function SupplierEditModal({ product, onClose, onSaved }: { product: SupplierPro
     try {
       await suppliersApi.updateProduct(product.id, {
         title: form.title, price: parseFloat(form.price) || 0, flylink_url: form.flylink_url, description: form.description,
+        store_name: form.store_name, store_category: form.store_category, store_brand: form.store_brand,
       } as any);
       onSaved();
     } catch (e: any) { setError(e?.response?.data?.message || 'שמירה נכשלה'); }
@@ -1195,6 +1239,24 @@ function SupplierEditModal({ product, onClose, onSaved }: { product: SupplierPro
             <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3}
               className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-blue-500/50 resize-none" dir="rtl" />
           </Field>
+          {/* What the shop shows, as opposed to how the album is filed. The agent fills
+              these in from the photograph; everything here overrules it. */}
+          <div className="pt-3 mt-1 border-t border-edge space-y-3.5">
+            <p className="text-2xs text-white/35">
+              תצוגה באתר {product.store_enriched_at ? '· הסוכן כבר עבר על המוצר' : '· ממתין לסוכן'}
+            </p>
+            <Field label="שם באתר" hint="השם שהקונה רואה. ריק = נגזר אוטומטית מכותרת הספק.">
+              <Input value={form.store_name} onChange={(v) => setForm((f) => ({ ...f, store_name: v }))} />
+            </Field>
+            <Field label="קטגוריה">
+              <select value={form.store_category} onChange={(e) => setForm((f) => ({ ...f, store_category: e.target.value }))}
+                className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white/80 outline-none focus:border-blue-500/50">
+                <option value="">— ללא —</option>
+                {STORE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="מותג"><Input value={form.store_brand} onChange={(v) => setForm((f) => ({ ...f, store_brand: v }))} dir="ltr" /></Field>
+          </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="flex gap-2 mt-5">

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import axios from 'axios';
 import { SupplierProduct } from './entities/supplier-product.entity';
 import { SupplierCatalog } from './entities/supplier-catalog.entity';
@@ -12,15 +12,21 @@ import { coverFirst } from './gallery-order';
 import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
 import { handPickedElsewhere } from './hand-picked-lock';
 import { codeFromResolvedUrl, codesFromTitle, parseBulkLinks, titleFromHtml } from './flylink-bulk';
+import { EMPTY_ENRICHMENT, Enrichment, hasAnything, parseEnrichment } from './store-enrich-parse';
+import { CATEGORY_LIST_PROMPT } from '../storefront/store-categories';
 import { PostsService, CampaignRunResult } from '../posts/posts.service';
 import { FLYLINK_VARIANTS, pickVariant, variantHint } from '../posts/copy-variants';
 import { Campaign } from '../campaigns/campaign.entity';
 import { AiService, GenerateImage } from '../ai/ai.service';
-import { CredentialsService } from '../credentials/credentials.service';
+import { CredentialsService, DecryptedCredentials } from '../credentials/credentials.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { RatesService } from '../rates/rates.service';
 
-const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'flylink_url', 'status', 'no_auto_post'] as const;
+// store_name / store_category / store_brand are here so the owner can overrule the
+// enrichment agent — it proposes, he decides, and the correction stands because
+// store_enriched_at keeps the agent from revisiting the product.
+const EDITABLE = ['title', 'description', 'image_url', 'price', 'currency', 'flylink_url', 'status', 'no_auto_post',
+  'store_name', 'store_category', 'store_brand'] as const;
 
 /**
  * A FLYLINK product isn't re-posted until at least this long after its last post. FLYLINK
@@ -41,6 +47,9 @@ const MAX_BULK_LINKS = 200;
 
 /** Album pages scanned to build the code index — 100 albums a page, so 2,000 products. */
 const MAX_ALBUM_PAGES = 20;
+
+/** Products the enrichment agent looks at per run — one vision call each. */
+const STORE_ENRICH_BATCH = 12;
 
 /** A code that two different albums share: matched to neither, on purpose. */
 const AMBIGUOUS = Symbol('ambiguous-code');
@@ -422,6 +431,94 @@ export class SupplierProductsService {
       if (!res.hasMore) break;
     }
     return index;
+  }
+
+  /**
+   * The enrichment agent: look at the photograph once, and write down what the product
+   * is CALLED, what it IS, and whose it is.
+   *
+   * A Yupoo album is titled for the warehouse (`6380-42.66-LHYF-High quality…`) and the
+   * only thing that reliably says what is in the box is the picture. Vision is not an
+   * optimisation here, it is the whole method — which is also why the run stops when no
+   * image can be fetched rather than guessing from the title it already knows is useless.
+   *
+   * Never throws: this runs over a whole catalog on a cron, and one product that cannot
+   * be read must cost that product, not the batch.
+   */
+  async enrichForStore(userId: string, limit = STORE_ENRICH_BATCH): Promise<{
+    looked: number; named: number; reason?: string;
+  }> {
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    if (!creds) return { looked: 0, named: 0, reason: 'אין הגדרות חשבון' };
+
+    const pending = await this.repo.find({
+      where: { user_id: userId, store_enriched_at: IsNull(), status: 'active' },
+      order: { created_at: 'ASC' },
+      take: Math.min(Math.max(limit, 1), 60),
+    }).catch(() => [] as SupplierProduct[]);
+    if (!pending.length) return { looked: 0, named: 0 };
+
+    let named = 0;
+    for (const product of pending) {
+      const enrichment = await this.enrichOne(product, creds).catch((err: any) => {
+        this.logger.warn(`store enrich ${product.id} failed: ${err?.message}`);
+        return EMPTY_ENRICHMENT;
+      });
+
+      // Stamped either way. A product the agent could not read is not retried forever,
+      // and the stamp is also what keeps the agent off one the owner has since corrected.
+      const patch: Partial<SupplierProduct> = { store_enriched_at: new Date() };
+      if (enrichment.name) patch.store_name = enrichment.name;
+      if (enrichment.category) patch.store_category = enrichment.category;
+      if (enrichment.brand) patch.store_brand = enrichment.brand;
+      await this.repo.update({ id: product.id }, patch).catch(() => {});
+      if (hasAnything(enrichment)) named++;
+    }
+
+    this.logger.log(`store enrich: ${named}/${pending.length} named for ${userId}`);
+    return { looked: pending.length, named };
+  }
+
+  /** Owners with products the store has not named yet — the cron's work list. */
+  async usersWithUnnamedProducts(limit = 20): Promise<string[]> {
+    const rows: Array<{ user_id: string }> = await this.repo.query(
+      `SELECT DISTINCT user_id FROM supplier_products
+       WHERE store_enriched_at IS NULL AND status = 'active'
+         AND flylink_url IS NOT NULL AND flylink_url <> ''
+       LIMIT $1`,
+      [limit],
+    ).catch(() => []);
+    return rows.map((r) => String(r.user_id));
+  }
+
+  /** One product, through the model's eyes. */
+  private async enrichOne(p: SupplierProduct, creds: DecryptedCredentials): Promise<Enrichment> {
+    const images = await this.fetchImagesBase64([p.image_url || ''].filter(Boolean), 1);
+    if (!images.length) return EMPTY_ENRICHMENT;
+
+    const res = await this.ai.generate(creds, {
+      system: [
+        'אתה מקטלג מוצרים בחנות אונליין ישראלית.',
+        'אתה מקבל תמונה של מוצר ומחזיר JSON בלבד, בלי טקסט נוסף:',
+        '{"name": "...", "category": "...", "brand": "..."}',
+        '',
+        'name — שם קצר בעברית שקונה היה מחפש, עד 6 מילים. לדוגמה: "נעלי ניו באלנס 9060", "תיק כתף קואץ\'".',
+        `category — בדיוק אחת מהאפשרויות: ${CATEGORY_LIST_PROMPT}`,
+        'brand — שם המותג באנגלית אם הוא נראה בתמונה או בכותרת. אם אינך רואה מותג — החזר מחרוזת ריקה.',
+        '',
+        'אל תמציא. אם אינך יודע שדה — החזר עבורו מחרוזת ריקה.',
+      ].join('\n'),
+      prompt: [
+        'קטלג את המוצר שבתמונה.',
+        p.title ? `כותרת הספק (עשויה להכיל קוד מק"ט ומחיר סיטונאי — התעלם מהם): ${p.title}` : '',
+        p.description ? `רמז נוסף מהספק: ${p.description}` : '',
+      ].filter(Boolean).join('\n'),
+      images,
+      maxTokens: 220,
+      temperature: 0.2,
+    });
+
+    return res?.text ? parseEnrichment(res.text) : EMPTY_ENRICHMENT;
   }
 
   async update(userId: string, id: string, dto: any): Promise<SupplierProduct> {

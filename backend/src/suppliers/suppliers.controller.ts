@@ -86,6 +86,16 @@ export class SuppliersController {
     return this.products.bulkLink(this.uid(req), dto?.catalogId, dto?.text || '');
   }
 
+  /**
+   * Run the enrichment agent now instead of waiting for the half-hourly sweep — the
+   * button an owner presses after a bulk import rather than watching an unnamed shelf.
+   */
+  @Post('products/enrich')
+  @HttpCode(200)
+  enrich(@Req() req: Request) {
+    return this.products.enrichForStore(this.uid(req));
+  }
+
   @Patch('products/:id')
   updateProduct(@Req() req: Request, @Param('id') id: string, @Body() dto: any) {
     return this.products.update(this.uid(req), id, dto);

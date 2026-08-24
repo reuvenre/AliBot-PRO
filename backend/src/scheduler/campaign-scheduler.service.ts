@@ -59,6 +59,35 @@ export class CampaignSchedulerService {
   }
 
   /**
+   * Every half hour — names the supplier products the store has not shown yet.
+   *
+   * The whole point of the agent is that the shelf keeps itself: a catalog linked today,
+   * and every catalog linked from now on, becomes browsable without anyone going back to
+   * name things. A small batch per tick because each product is a vision call on the
+   * owner's own key — enough to drain a fresh import within the hour, not enough to spend
+   * a day's budget in one go.
+   */
+  @Cron('0 15 * * * *')
+  async enrichStoreProducts() {
+    if (!this.supplierProducts || this.enrichingStore) return;
+    this.enrichingStore = true;
+    try {
+      for (const userId of await this.supplierProducts.usersWithUnnamedProducts()) {
+        try {
+          await this.supplierProducts.enrichForStore(userId);
+        } catch (err: any) {
+          this.logger.warn(`store enrich failed for ${userId}: ${err.message}`);
+        }
+      }
+    } finally {
+      this.enrichingStore = false;
+    }
+  }
+
+  /** Guards the enrichment sweep against overlapping ticks — a vision batch outlives one. */
+  private enrichingStore = false;
+
+  /**
    * Runs every 6 hours — refreshes supplier-product prices from Yupoo and checks
    * FLYLINK link liveness (→ in_stock). Small sequential batches per tick to bound
    * RAM on the 512MB host; per-row try/catch so one dead URL never aborts the run.

@@ -7,6 +7,7 @@ import { LinksService } from '../links/links.service';
 import { nextFreeSlug, slugError } from './store-slug';
 import { storeTexts } from './store-defaults';
 import { brandDisplayName, storeCardName } from './product-name';
+import { priceBounds, sorter } from './store-sort';
 
 /** One product as the public store shows it. */
 export interface StoreProduct {
@@ -21,6 +22,8 @@ export interface StoreProduct {
   source: 'supplier' | 'post';
   /** Group it was published to, when it was — the store's own filter. */
   group: string | null;
+  /** The shop category the enrichment agent decided, or the owner corrected. */
+  category: string | null;
   /** ISO date it was last published, newest-first ordering. */
   at: string | null;
 }
@@ -129,10 +132,10 @@ export class StorefrontService {
   /** The store's header, and the filter values that actually have products behind them. */
   async publicMeta(slug: string) {
     const store = await this.bySlug(slug);
-    const [brands, groups] = await Promise.all([
-      this.distinctBrands(store),
-      this.distinctGroups(store),
-    ]);
+    const catalog = await this.publicCatalog(store);
+    const values = (pick: (p: StoreProduct) => string | null) => Array
+      .from(new Set(catalog.map(pick).filter((v): v is string => !!v)))
+      .sort((a, b) => a.localeCompare(b, 'he'));
     // The two accordions always have content — the owner's where they wrote one, the
     // standing default where they didn't. A product page must never ship with its two
     // most-read sections blank.
@@ -144,8 +147,9 @@ export class StorefrontService {
       whatsapp: store.whatsapp,
       shipping_text: texts.shipping_text,
       details_text: texts.details_text,
-      brands,
-      groups,
+      brands: values((p) => p.brand),
+      categories: values((p) => p.category),
+      groups: values((p) => p.group),
     };
   }
 
@@ -157,8 +161,12 @@ export class StorefrontService {
    * merge shows a customer the wrong price. Merged and paged here, where it is readable.
    */
   async publicProducts(slug: string, opts: {
-    page?: number; brand?: string; group?: string; q?: string;
-  } = {}): Promise<{ products: StoreProduct[]; total: number; page: number; pages: number }> {
+    page?: number; brand?: string; group?: string; category?: string; q?: string;
+    minPrice?: number; maxPrice?: number; sort?: string;
+  } = {}): Promise<{
+    products: StoreProduct[]; total: number; page: number; pages: number;
+    priceRange: { min: number; max: number };
+  }> {
     const store = await this.bySlug(slug);
     const sources = store.sources.split(',');
     const all: StoreProduct[] = [];
@@ -176,13 +184,25 @@ export class StorefrontService {
       return true;
     });
 
+    // The slider's ends come from the WHOLE catalog, before any filter — bounds that
+    // moved every time the shopper narrowed something would make the control unusable.
+    const priceRange = priceBounds(merged);
+
     const q = (opts.q || '').trim().toLowerCase();
     if (q) merged = merged.filter((p) => p.title.toLowerCase().includes(q)
       || (p.brand || '').toLowerCase().includes(q));
-    if (opts.brand) merged = merged.filter((p) => (p.brand || '') === opts.brand);
+    // Brand matching is case-insensitive: the same brand reaches the store in whatever
+    // case the seller typed, and the chip the shopper clicked is only one of those.
+    if (opts.brand) {
+      const want = opts.brand.trim().toLowerCase();
+      merged = merged.filter((p) => (p.brand || '').toLowerCase() === want);
+    }
     if (opts.group) merged = merged.filter((p) => (p.group || '') === opts.group);
+    if (opts.category) merged = merged.filter((p) => (p.category || '') === opts.category);
+    if (Number.isFinite(opts.minPrice)) merged = merged.filter((p) => p.price >= (opts.minPrice as number));
+    if (Number.isFinite(opts.maxPrice)) merged = merged.filter((p) => p.price <= (opts.maxPrice as number));
 
-    merged.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+    merged.sort(sorter(opts.sort));
 
     const page = Math.max(1, Number(opts.page) || 1);
     const pages = Math.max(1, Math.ceil(merged.length / PAGE_SIZE));
@@ -191,6 +211,7 @@ export class StorefrontService {
       total: merged.length,
       page,
       pages,
+      priceRange,
     };
   }
 
@@ -237,7 +258,8 @@ export class StorefrontService {
   private async supplierProducts(store: Storefront, id?: string): Promise<StoreProduct[]> {
     const rows: any[] = await this.repo.query(
       `SELECT sp.id, sp.title, sp.description, sp.image_url, sp.gallery_json, sp.price,
-              sp.currency, sp.last_posted_at, sp.created_at, sc.name AS catalog
+              sp.currency, sp.last_posted_at, sp.created_at, sc.name AS catalog,
+              sp.store_name, sp.store_category, sp.store_brand
        FROM supplier_products sp
        LEFT JOIN supplier_catalogs sc ON sc.id = sp.supplier_catalog_id
        WHERE sp.user_id = $1 AND sp.status = 'active'
@@ -256,13 +278,19 @@ export class StorefrontService {
       // The supplier catalog's "description" is whatever was left of the album title after
       // the code came out — which means it arrives carrying the wreckage ("POLO- -5349",
       // "CHANEL $"). Cleaned here, or the brand FILTER becomes forty near-duplicates.
-      const brand = brandDisplayName(r.description) || null;
+      // What the agent decided (or the owner corrected) always wins. The derived values
+      // below are the fallback for a product it has not reached yet — a catalog does not
+      // have to wait for the whole queue to drain before its shelf is readable.
+      const brand = (r.store_brand ? String(r.store_brand).trim() : '')
+        || brandDisplayName(r.description) || null;
       return {
         id: `s:${r.id}`,
         // A Yupoo album is titled with its stock code and wholesale price. The card needs
         // a name a shopper recognises, not the warehouse label.
-        title: storeCardName(String(r.title || ''), brand),
+        title: (r.store_name ? String(r.store_name).trim() : '')
+          || storeCardName(String(r.title || ''), brand),
         brand,
+        category: (r.store_category ? String(r.store_category).trim() : '') || null,
         image: r.image_url || null,
         gallery: this.parseGallery(r.gallery_json, r.image_url),
         price: Number(r.price) || 0,
@@ -304,6 +332,7 @@ export class StorefrontService {
       // twenty characters of every phrase a buyer might type. Not a name.
       title: storeCardName(String(r.product_title || ''), r.keyword),
       brand: brandDisplayName(r.keyword) || null,
+      category: null,
       image: r.product_image || null,
       gallery: this.parseGallery(r.gallery_json, r.product_image),
       price: Number(r.price_ils) || 0,
@@ -324,17 +353,7 @@ export class StorefrontService {
     return list.slice(0, 12);
   }
 
-  private async distinctBrands(store: Storefront): Promise<string[]> {
-    const products = await this.publicCatalog(store);
-    return Array.from(new Set(products.map((p) => p.brand).filter((b): b is string => !!b)))
-      .sort((a, b) => a.localeCompare(b, 'he'));
-  }
 
-  private async distinctGroups(store: Storefront): Promise<string[]> {
-    const products = await this.publicCatalog(store);
-    return Array.from(new Set(products.map((p) => p.group).filter((g): g is string => !!g)))
-      .sort((a, b) => a.localeCompare(b, 'he'));
-  }
 
   private async publicCatalog(store: Storefront): Promise<StoreProduct[]> {
     const sources = store.sources.split(',');

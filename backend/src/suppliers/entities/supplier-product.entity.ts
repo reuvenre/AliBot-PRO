@@ -85,6 +85,34 @@ export class SupplierProduct {
   @Column({ type: 'timestamptz', nullable: true })
   last_posted_at: Date | null;
 
+  /**
+   * What this product is CALLED in the public store, as opposed to how it is filed.
+   *
+   * The album title is written for the warehouse and the only thing that reliably says
+   * what the product IS is the photograph, so an agent looks at the photo once and writes
+   * these three down. Separate from title/description on purpose: the original is the key
+   * that matches the album back to the seller's catalog on every re-sync.
+   *
+   * All three are freely editable by the owner — the agent proposes, he decides.
+   */
+  @Column({ type: 'text', nullable: true })
+  store_name: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  store_category: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  store_brand: string | null;
+
+  /**
+   * When the agent last looked at this product. NULL is its work queue.
+   *
+   * Set even when the agent could not decide, so a product it failed on is not retried
+   * forever — and it is what keeps the agent off a product the owner has corrected.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  store_enriched_at: Date | null;
+
   @Column({ nullable: true })
   synced_at: Date;
 

@@ -47,6 +47,7 @@ import type {
   StoreMeta,
   StorePage,
   StoreProduct,
+  StoreQuery,
   StorefrontSettings,
   AiUsageSummary,
   CustomPost,
@@ -949,7 +950,7 @@ export const storeApi = {
   meta: (slug: string) =>
     axios.get<StoreMeta>(`${BASE_URL}/store/${encodeURIComponent(slug)}`).then((r) => r.data),
 
-  products: (slug: string, params: { page?: number; brand?: string; group?: string; q?: string } = {}) =>
+  products: (slug: string, params: StoreQuery = {}) =>
     axios.get<StorePage>(`${BASE_URL}/store/${encodeURIComponent(slug)}/products`, { params })
       .then((r) => r.data),
 
@@ -1058,6 +1059,13 @@ export const suppliersApi = {
    */
   bulkLink: (catalogId: string, text: string) =>
     http.post<BulkLinkResult>('/suppliers/products/bulk-link', { catalogId, text }, { timeout: 300_000 }).then(extract),
+  /**
+   * Run the enrichment agent now. Each product is a vision call, so this outlives the
+   * default timeout the way the optimizer's manual run does.
+   */
+  enrich: () => http.post<{ looked: number; named: number; reason?: string }>(
+    '/suppliers/products/enrich', {}, { timeout: 300_000 },
+  ).then(extract),
   updateProduct: (id: string, data: Partial<SupplierProduct>) =>
     http.patch<SupplierProduct>(`/suppliers/products/${id}`, data).then(extract),
   deleteProduct: (id: string) => http.delete(`/suppliers/products/${id}`).then(extract),

@@ -27,8 +27,18 @@ export class PublicStorefrontController {
       @Query('brand') brand?: string,
       @Query('group') group?: string,
       @Query('q') q?: string,
+      @Query('min_price') minPrice?: string,
+      @Query('max_price') maxPrice?: string,
+      @Query('sort') sort?: string,
   ) {
-    return this.store.publicProducts(slug, { page: Number(page) || 1, brand, group, q });
+    // A blank or non-numeric bound is "no bound", never NaN — NaN passed into a
+    // comparison is silently false and would empty the shelf.
+    const bound = (v?: string) => (v !== undefined && v !== '' && Number.isFinite(Number(v))
+      ? Number(v) : undefined);
+    return this.store.publicProducts(slug, {
+      page: Number(page) || 1, brand, group, q, sort,
+      minPrice: bound(minPrice), maxPrice: bound(maxPrice),
+    });
   }
 
   @Get(':slug/products/:id')

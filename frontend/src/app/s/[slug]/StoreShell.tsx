@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, X, Menu } from 'lucide-react';
+import { ChevronDown, Search, X, Menu } from 'lucide-react';
 import { useState } from 'react';
 import type { StoreMeta } from '@/types';
 
@@ -36,14 +36,41 @@ export function StoreShell({
           <button
             onClick={() => setMenu(true)}
             aria-label="תפריט"
-            className="p-2 -mr-2 text-[var(--store-ink)]"
+            className="p-2 -mr-2 text-[var(--store-ink)] lg:hidden"
           >
             <Menu size={22} />
           </button>
-          <Link href={`/s/${meta.slug}`} className="store-wordmark text-xl sm:text-2xl font-bold">
+
+          {/* On a wide screen the search box is the middle of the bar rather than a thing
+              hidden behind a hamburger — a catalog is searched far more than it is browsed. */}
+          <form onSubmit={submit} className="hidden lg:block relative flex-1 max-w-md mx-8">
+            <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--store-muted)]" />
+            <input
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder="חיפוש מוצרים…"
+              className="w-full bg-[var(--store-card)] border border-[var(--store-line)] rounded-full py-2 pr-9 pl-3 text-sm outline-none focus:border-[var(--store-gold)]"
+            />
+          </form>
+
+          <Link href={`/s/${meta.slug}`} className="store-wordmark text-xl sm:text-2xl font-bold shrink-0">
             {meta.name}
           </Link>
         </div>
+
+        {/* The nav row: the catalog's own shape, one tap from anywhere. Categories and
+            brands appear only once the enrichment agent has given them something to list. */}
+        <nav className="hidden lg:block border-t border-[var(--store-line)]">
+          <div className="max-w-6xl mx-auto px-4 h-11 flex items-center justify-end gap-6 text-sm">
+            {meta.brands.length > 0 && (
+              <Dropdown label="חיפוש לפי מותג" items={meta.brands} slug={meta.slug} param="brand" />
+            )}
+            {meta.categories.length > 0 && (
+              <Dropdown label="חיפוש לפי קטגוריה" items={meta.categories} slug={meta.slug} param="category" />
+            )}
+            <Link href={`/s/${meta.slug}`} className="hover:text-[var(--store-gold)]">כל המוצרים</Link>
+          </div>
+        </nav>
       </header>
 
       {menu && (
@@ -72,14 +99,14 @@ export function StoreShell({
               <Link href={`/s/${meta.slug}`} onClick={() => setMenu(false)} className="block py-2.5">
                 כל המוצרים
               </Link>
-              {meta.brands.slice(0, 12).map((b) => (
+              {meta.categories.slice(0, 14).map((c) => (
                 <Link
-                  key={b}
-                  href={`/s/${meta.slug}?brand=${encodeURIComponent(b)}`}
+                  key={c}
+                  href={`/s/${meta.slug}?category=${encodeURIComponent(c)}`}
                   onClick={() => setMenu(false)}
                   className="block py-2.5 text-[var(--store-muted)]"
                 >
-                  {b}
+                  {c}
                 </Link>
               ))}
             </div>
@@ -106,6 +133,44 @@ export function StoreShell({
           <p>© {new Date().getFullYear()} {meta.name}</p>
         </div>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * One nav dropdown. Opens on click rather than hover: this same bar is read on a laptop
+ * with a trackpad and on a tablet, and a hover menu is unreachable on the second.
+ */
+function Dropdown({ label, items, slug, param }: {
+  label: string; items: string[]; slug: string; param: 'brand' | 'category';
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 hover:text-[var(--store-gold)]">
+        <ChevronDown size={14} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        {label}
+      </button>
+      {open && (
+        <>
+          {/* A click anywhere else closes it — without this the menu stays open behind
+              whatever the shopper does next. */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full right-0 mt-2 z-20 w-56 max-h-96 overflow-y-auto rounded-xl border border-[var(--store-line)] bg-[var(--store-card)] shadow-lg py-2">
+            {items.map((item) => (
+              <Link
+                key={item}
+                href={`/s/${slug}?${param}=${encodeURIComponent(item)}`}
+                onClick={() => setOpen(false)}
+                className="block px-4 py-2 text-sm hover:bg-black/[0.04]"
+                dir="auto"
+              >
+                {item}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
