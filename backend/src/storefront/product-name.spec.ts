@@ -42,6 +42,19 @@ describe('productDisplayName — a title turned into a name', () => {
     expect(productDisplayName('Canvas Sneakers')).toBe('Canvas Sneakers');
   });
 
+  it('strips a price whose symbol trails the number', () => {
+    // Straight off a store card: "Rolex--6128-79.9$". The leading-symbol pattern alone
+    // left the whole thing on screen.
+    expect(productDisplayName('Rolex--6128-79.9$')).toBe('Rolex 6128');
+    expect(productDisplayName('Canvas Sneakers 41.99$')).toBe('Canvas Sneakers');
+    expect(productDisplayName('MM-26052602S-$60', 'PRADA')).toBe('');
+  });
+
+  it('treats a RUN of dashes as a separator and a single one as part of a word', () => {
+    expect(productDisplayName('Rolex--6128')).toBe('Rolex 6128');
+    expect(productDisplayName('long-sleeved shirt')).toBe('long-sleeved shirt');
+  });
+
   it('returns nothing when the title was only ever a code', () => {
     expect(productDisplayName('MM-2642001DP')).toBe('');
     expect(productDisplayName('   ')).toBe('');

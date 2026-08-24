@@ -20,24 +20,31 @@ export class PublicStorefrontController {
     return this.store.publicMeta(slug);
   }
 
+  /**
+   * The whole query object rather than a parameter per filter.
+   *
+   * Listing them one by one is how the category filter shipped broken: the panel sent
+   * `?category=נעליים`, nothing here read it, and the shelf came back unfiltered with the
+   * chip showing — a filter that looks applied and isn't. Reading the object means adding
+   * a filter to the service is the only place it can be forgotten.
+   */
   @Get(':slug/products')
-  products(
-    @Param('slug') slug: string,
-      @Query('page') page?: string,
-      @Query('brand') brand?: string,
-      @Query('group') group?: string,
-      @Query('q') q?: string,
-      @Query('min_price') minPrice?: string,
-      @Query('max_price') maxPrice?: string,
-      @Query('sort') sort?: string,
-  ) {
-    // A blank or non-numeric bound is "no bound", never NaN — NaN passed into a
-    // comparison is silently false and would empty the shelf.
+  products(@Param('slug') slug: string, @Query() query: Record<string, string> = {}) {
+    // A blank or non-numeric bound is "no bound", never NaN — NaN in a comparison is
+    // silently false and would empty the shelf.
     const bound = (v?: string) => (v !== undefined && v !== '' && Number.isFinite(Number(v))
       ? Number(v) : undefined);
+    const text = (v?: string) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+
     return this.store.publicProducts(slug, {
-      page: Number(page) || 1, brand, group, q, sort,
-      minPrice: bound(minPrice), maxPrice: bound(maxPrice),
+      page: Number(query.page) || 1,
+      brand: text(query.brand),
+      category: text(query.category),
+      group: text(query.group),
+      q: text(query.q),
+      sort: text(query.sort),
+      minPrice: bound(query.min_price),
+      maxPrice: bound(query.max_price),
     });
   }
 

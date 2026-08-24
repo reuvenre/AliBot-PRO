@@ -16,8 +16,22 @@
 /** How long a card's name may be before it is cut on a word boundary. */
 export const NAME_MAX = 52;
 
-/** `$56.99`, `42.66`, `₪129.28` — a price that rode along in the title. */
-const PRICE_RE = /(?:^|[\s\-_[({])(?:[$₪€£]\s?\d{1,6}(?:[.,]\d{1,2})?|\d{1,6}[.,]\d{2})(?=$|[\s\-_\])}])/g;
+/**
+ * A price that rode along in the title, on either side of its symbol.
+ *
+ * Sellers write both — `$60` and `79.9$` — and the trailing form is the common one in
+ * this catalog, so a pattern that only knew the leading one left "Rolex--6128-79.9$" on
+ * a product card.
+ */
+const PRICE_RE = new RegExp(
+  '(?:^|[\\s\\-_[({])'
+  + '(?:'
+  + '[$₪€£]\\s?\\d{1,6}(?:[.,]\\d{1,2})?'   // $60, ₪129.28
+  + '|\\d{1,6}(?:[.,]\\d{1,2})?\\s?[$₪€£]'  // 79.9$, 60 ₪
+  + '|\\d{1,6}[.,]\\d{2}'                   // 42.66 — two decimals is a price, not a model
+  + ')(?=$|[\\s\\-_\\])}])',
+  'g',
+);
 
 /** `size:36-45`, `Size 36-45`, `尺码36-45` — a variant hint, not part of the name. */
 const SIZE_RE = /\b(?:size|sizes|尺码|码)\s*[:：]?\s*\d{1,3}\s*[-–]\s*\d{1,3}\b/gi;
@@ -70,7 +84,11 @@ export function productDisplayName(raw: string, brand?: string | null, max = NAM
   if (!source.trim()) return '';
 
   // The `CODE-PRICE-…` prefix goes first and whole; what follows is the actual title.
-  let text = source.replace(LEAD_CODE_PRICE_RE, '$1');
+  let text = source.replace(LEAD_CODE_PRICE_RE, '$1')
+    // A RUN of dashes is punctuation the seller used as a separator ("Rolex--6128"), so
+    // it becomes a space. A SINGLE hyphen between letters is part of a word and stays —
+    // "long-sleeved" must survive this.
+    .replace(/[-–—]{2,}/g, ' ');
 
   // The brand often opens that remainder, hyphen-joined to the first word ("LHYF-High
   // quality…"). Strip it here, where it is still anchored — once the hyphen is gone it is
