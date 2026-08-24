@@ -38,6 +38,7 @@ import { WatchdogModule } from './watchdog/watchdog.module';
 import { RecoveryModule } from './recovery/recovery.module';
 import { PaymentsModule } from './payments/payments.module';
 import { OptimizerModule } from './optimizer/optimizer.module';
+import { StorefrontModule } from './storefront/storefront.module';
 import { SecurityModule } from './security/security.module';
 import { StatsModule } from './stats/stats.module';
 import { HealthController } from './health.controller';
@@ -120,6 +121,7 @@ import { HealthController } from './health.controller';
     RecoveryModule,
     PaymentsModule,
     OptimizerModule,
+    StorefrontModule,
     SecurityModule,
     StatsModule,
   ],

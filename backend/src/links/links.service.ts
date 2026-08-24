@@ -68,6 +68,35 @@ export class LinksService {
   }
 
   /**
+   * A durable short code for a URL that has no post behind it — the storefront's buy
+   * buttons, where the product may never have been published to a channel.
+   *
+   * Idempotent per (owner, url): the store re-renders on every visit, and minting a fresh
+   * code each time would fill link_targets with thousands of aliases for one product and
+   * scatter its clicks across all of them.
+   */
+  async mintTarget(url: string, userId?: string | null): Promise<string | null> {
+    const dest = (url || '').trim();
+    if (!dest) return null;
+    const existing = await this.targets.findOne({
+      where: { url: dest, user_id: userId ?? null },
+    }).catch(() => null);
+    if (existing) return existing.code;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = this.generateCode();
+      try {
+        await this.targets.insert({ code, url: dest, user_id: userId ?? null });
+        return code;
+      } catch {
+        // unique-index collision (astronomically rare at 8 chars) — try another code
+      }
+    }
+    this.logger.warn(`could not mint a target code for ${dest.slice(0, 80)}`);
+    return null;
+  }
+
+  /**
    * Resolve a code to its destination and record the click (fire-and-forget — the
    * visitor's redirect must never wait on our bookkeeping). Returns null for unknown codes.
    */
