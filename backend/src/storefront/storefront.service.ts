@@ -5,6 +5,7 @@ import { Storefront } from './storefront.entity';
 import { User } from '../users/user.entity';
 import { LinksService } from '../links/links.service';
 import { nextFreeSlug, slugError } from './store-slug';
+import { storeTexts } from './store-defaults';
 
 /** One product as the public store shows it. */
 export interface StoreProduct {
@@ -131,13 +132,17 @@ export class StorefrontService {
       this.distinctBrands(store),
       this.distinctGroups(store),
     ]);
+    // The two accordions always have content — the owner's where they wrote one, the
+    // standing default where they didn't. A product page must never ship with its two
+    // most-read sections blank.
+    const texts = storeTexts(store);
     return {
       slug: store.slug,
       name: store.name,
       tagline: store.tagline,
       whatsapp: store.whatsapp,
-      shipping_text: store.shipping_text,
-      details_text: store.details_text,
+      shipping_text: texts.shipping_text,
+      details_text: texts.details_text,
       brands,
       groups,
     };

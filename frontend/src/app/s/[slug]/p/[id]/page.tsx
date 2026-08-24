@@ -25,15 +25,45 @@ function priceLabel(p: StoreProduct): string {
   return symbol ? `${symbol} ${value}` : `${value} ${p.currency}`;
 }
 
-function Accordion({ title, body }: { title: string; body: string }) {
-  const [open, setOpen] = useState(false);
+/**
+ * The shipping text points buyers at their tracking page. Left as plain text those
+ * addresses are something to retype by hand off a phone screen — the one moment the
+ * section exists for is the moment it stops being useful.
+ */
+function linkify(text: string): React.ReactNode[] {
+  return String(text || '').split(/(https?:\/\/[^\s<>"')\]]+)/g).map((part, i) => (
+    /^https?:\/\//.test(part)
+      ? (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[var(--store-gold)] underline break-all"
+          dir="ltr"
+        >
+          {part}
+        </a>
+      )
+      : <span key={i}>{part}</span>
+  ));
+}
+
+function Accordion({ title, body, defaultOpen = false }: {
+  title: string; body: string; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-t border-[var(--store-line)]">
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between py-4 text-right">
         <ChevronDown size={18} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
         <span className="font-medium">{title}</span>
       </button>
-      {open && <p className="pb-4 text-sm leading-relaxed text-[var(--store-muted)] whitespace-pre-line">{body}</p>}
+      {open && (
+        <p className="pb-4 text-sm leading-relaxed text-[var(--store-muted)] whitespace-pre-line">
+          {linkify(body)}
+        </p>
+      )}
     </div>
   );
 }
@@ -165,8 +195,12 @@ export default function StoreProductPage() {
             </a>
           </div>
 
+          {/* Both sections always have content — the API falls back to the standing
+              defaults — so a product page can never ship with them missing. "פרטי מוצר"
+              opens by default: what am I actually getting is the question a buyer of a
+              hidden-brand product has before any other. */}
           {meta.shipping_text && <Accordion title="משלוח" body={meta.shipping_text} />}
-          {meta.details_text && <Accordion title="פרטי מוצר" body={meta.details_text} />}
+          {meta.details_text && <Accordion title="פרטי מוצר" body={meta.details_text} defaultOpen />}
         </div>
       </div>
     </StoreShell>

@@ -12,10 +12,32 @@ import type { StorefrontSettings } from '@/types';
  * prices to anyone with the link, and that is not a thing to start doing by default.
  */
 
-const DEFAULT_SHIPPING = `משלוח מהיר עד לדואר הקרוב אליכם. מעקב הזמנה זמין.
-לאחר ביצוע הרכישה תקבלו אישור הזמנה עם מספר הזמנה, ובהמשך מספר מעקב למייל שהוזן בעת הקנייה.`;
+/**
+ * The same defaults the API falls back to (backend/src/storefront/store-defaults.ts).
+ * Repeated here so the box shows the owner the real text he is about to publish rather
+ * than a grey placeholder he has to guess at — and so "reset" has something to restore.
+ */
+const DEFAULT_SHIPPING = [
+  'משלוח מהיר עד הדואר הקרוב אליכם. משלוחים מותאמים אישית בהתאם לפלטפורמה הנבחרת. מעקב הזמנה זמין.',
+  '',
+  'שאלה: איך ניתן לבדוק את סטטוס המשלוח שלי?',
+  'תשובה: לאחר ביצוע הרכישה תקבלו אישור הזמנה עם מספר הזמנה. בהמשך יישלח אליכם מספר מעקב למייל שהוזן בעת הקנייה.',
+  '',
+  'אם לאחר כמה ימים לא קיבלתם מייל עם פרטי המעקב, כדאי לבדוק בתיקיית הספאם, או להיכנס לאזור האישי באתר https://my.flylinking.com/ ולבדוק אם מספר המעקב כבר מופיע שם.',
+  '',
+  'ניתן לעקוב אחר מצב החבילה באמצעות הזנת מספר המעקב באתר https://www.17track.net/en',
+].join('\n');
 
-const DEFAULT_DETAILS = `שימו לב שאתם בוחרים את הדגם והמידה הנכונה — לא יינתנו החזרים עקב טעות בבחירה.`;
+const DEFAULT_DETAILS =
+  'איכות זהה למקור. שימו לב שאתם בוחרים את הדגם והמידה הנכונה — לא יינתנו החזרים עקב טעות בבחירה.';
+
+function ResetToDefault({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="mt-1.5 text-2xs text-white/35 hover:text-white/70 underline">
+      החזר לנוסח ברירת המחדל
+    </button>
+  );
+}
 
 export function StorefrontForm() {
   const [store, setStore] = useState<StorefrontSettings | null>(null);
@@ -167,16 +189,24 @@ export function StorefrontForm() {
         </div>
       </Field>
 
-      <Field label="טקסט משלוח" hint="נפתח באקורדיון בדף המוצר">
-        <textarea value={store.shipping_text || ''} onChange={(e) => set('shipping_text', e.target.value)}
-          rows={4} placeholder={DEFAULT_SHIPPING}
+      <Field
+        label="טקסט משלוח"
+        hint="נפתח באקורדיון בכל דף מוצר. אם תשאיר ריק — יוצג נוסח ברירת המחדל שמופיע כאן."
+      >
+        <textarea value={store.shipping_text ?? DEFAULT_SHIPPING} onChange={(e) => set('shipping_text', e.target.value)}
+          rows={8}
           className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white/80 outline-none focus:border-blue-500/50" />
+        <ResetToDefault onClick={() => set('shipping_text', DEFAULT_SHIPPING)} />
       </Field>
 
-      <Field label="פרטי מוצר" hint="איכות, מידות, מדיניות החזרות">
-        <textarea value={store.details_text || ''} onChange={(e) => set('details_text', e.target.value)}
-          rows={3} placeholder={DEFAULT_DETAILS}
+      <Field
+        label="פרטי מוצר"
+        hint="איכות, מידות ומדיניות החזרות. נפתח פתוח בדף המוצר — זו השאלה הראשונה של קונה."
+      >
+        <textarea value={store.details_text ?? DEFAULT_DETAILS} onChange={(e) => set('details_text', e.target.value)}
+          rows={3}
           className="w-full bg-white/5 border border-edge-hover rounded-lg px-3 py-2.5 text-sm text-white/80 outline-none focus:border-blue-500/50" />
+        <ResetToDefault onClick={() => set('details_text', DEFAULT_DETAILS)} />
       </Field>
 
       {error && <div className="flex items-center gap-2 text-xs text-red-400"><AlertTriangle size={13} /> {error}</div>}
