@@ -916,6 +916,8 @@ export interface StorefrontSettings {
   name: string;
   tagline: string | null;
   enabled: boolean;
+  /** false = outgoing posts go out without the store line. The store itself stays live. */
+  link_in_posts: boolean;
   whatsapp: string | null;
   shipping_text: string | null;
   details_text: string | null;

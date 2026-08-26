@@ -88,6 +88,7 @@ export class StorefrontService {
       if (dto[key] !== undefined) (store as any)[key] = (String(dto[key] ?? '').trim() || null);
     }
     if (dto.enabled !== undefined) store.enabled = !!dto.enabled;
+    if (dto.link_in_posts !== undefined) store.link_in_posts = !!dto.link_in_posts;
     if (dto.sources !== undefined) {
       const wanted = String(dto.sources || '').split(',').map((s) => s.trim())
         .filter((s) => s === 'suppliers' || s === 'posts');
@@ -109,9 +110,13 @@ export class StorefrontService {
    *
    * Reads on the publish path, so it never creates a row the way `mine` does — a send is
    * not the place to discover that a user has no storefront yet.
+   *
+   * Two switches have to agree: the store has to be live, and its owner has to want the
+   * channels advertising it. Either one off means the post goes out without the line.
    */
   async liveStore(userId: string): Promise<{ url: string; name: string } | null> {
-    const store = await this.repo.findOne({ where: { user_id: userId, enabled: true } })
+    const store = await this.repo
+      .findOne({ where: { user_id: userId, enabled: true, link_in_posts: true } })
       .catch(() => null);
     if (!store) return null;
     const url = this.storeUrl(store.slug);

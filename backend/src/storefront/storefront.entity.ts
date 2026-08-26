@@ -46,6 +46,18 @@ export class Storefront {
   @Column({ type: 'boolean', default: false })
   enabled: boolean;
 
+  /**
+   * Whether an outgoing post carries the store's address.
+   *
+   * Separate from `enabled` because they answer different questions. `enabled` is whether
+   * the shop exists at all; this is whether the channels advertise it. An owner running a
+   * campaign for one group, or testing the shop before he shows it to anyone, wants the
+   * shop up and the posts clean — and turning the whole store off to get that would break
+   * every address already printed in older posts.
+   */
+  @Column({ type: 'boolean', default: true })
+  link_in_posts: boolean;
+
   /** WhatsApp number for the "ask about this product" button (digits, country code). */
   @Column({ type: 'text', nullable: true })
   whatsapp: string | null;

@@ -71,6 +71,7 @@ export function StorefrontForm() {
         name: store.name,
         tagline: store.tagline,
         enabled: store.enabled,
+        link_in_posts: store.link_in_posts,
         whatsapp: store.whatsapp,
         shipping_text: store.shipping_text,
         details_text: store.details_text,
@@ -130,7 +131,25 @@ export function StorefrontForm() {
         />
         <div className="text-right">
           <div className="text-sm font-medium text-white">החנות פעילה</div>
-          <div className="text-xs text-white/40">כשכבויה, הכתובת מחזירה &quot;החנות לא נמצאה&quot;</div>
+          <div className="text-xs text-white/40">כשכבויה, הכתובת מחזירה &quot;החנות לא נמצאה&quot; והקישור יורד מהפוסטים</div>
+        </div>
+      </label>
+
+      {/* Two decisions, two switches: whether the shop exists, and whether the channels
+          advertise it. Turning the shop off to get clean posts would also break every
+          address already printed in older posts. */}
+      <label className="flex items-center justify-between rounded-xl border border-edge bg-surface-secondary p-4 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={store.link_in_posts !== false}
+          onChange={(e) => set('link_in_posts', e.target.checked)}
+          className="w-5 h-5 accent-blue-600"
+        />
+        <div className="text-right">
+          <div className="text-sm font-medium text-white">הוסף קישור לחנות בפוסטים</div>
+          <div className="text-xs text-white/40">
+            כשכבוי, הפוסטים יוצאים בלי שורת החנות — החנות עצמה נשארת פעילה ופתוחה בכתובת שלה
+          </div>
         </div>
       </label>
 
