@@ -21,7 +21,7 @@ import { soloCampaignSlot } from './solo-campaign-slot';
 import { manualQueueTurn } from './queue-fairness';
 import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
-import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost } from './flylink-trust';
+import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost, PostPlatform } from './flylink-trust';
 import { BRAND_PLUS_MARK, brandPlusLine } from './brand-plus';
 import { mergeDeliveredChannels } from './delivered-channels';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
@@ -3543,7 +3543,9 @@ export class PostsService {
 
   /** Composes the final message body: affiliate link + per-channel footer + HTML
    *  normalisation. Shared by the publisher and the failed-channel retry. */
-  private async buildPostBody(post: Post, creds: DecryptedCredentials, channelOverride?: string): Promise<string> {
+  private async buildPostBody(
+    post: Post, creds: DecryptedCredentials, channelOverride?: string, platform?: PostPlatform,
+  ): Promise<string> {
     // Trackable short link: the body carries our /r/<code> URL instead of the raw
     // affiliate link, so every shopper click is recorded (minutes-fast feedback + the
     // attribution weighting signal). Pinterest is unaffected — its Pin link rides the
@@ -3594,9 +3596,10 @@ export class PostsService {
     // FLYLINK trust trailer — the hesitation on hidden products is trust, not interest.
     // Code-built like the price block (fixed wording, can never over-promise), attached at
     // send time so verbatim re-posts and already-queued posts get it too. Mirrors the
-    // coupon rule above: source inferred from the link.
+    // coupon rule above: source inferred from the link. The block's replica line rides
+    // along on the owner's own group channels only (see flylink-trust.ts).
     if (isFlylinkPost(post.affiliate_url) && !body.includes(FLYLINK_TRUST_MARK)) {
-      body = `${body}\n\n${flylinkTrustBlock()}`;
+      body = `${body}\n\n${flylinkTrustBlock(platform)}`;
     }
 
     // The bridge from one product to the whole catalog. Attached at send time like the
@@ -3728,7 +3731,7 @@ export class PostsService {
       tasks.push((async () => {
         for (const target of targets) {
           if (!groupFailed(target)) continue;
-          const body = await this.buildPostBody(post, creds, target);
+          const body = await this.buildPostBody(post, creds, target, 'telegram');
           const label = await this.targetLabel(userId, target, multi);
           try { await this.sendToTelegramChannel(post, creds, body, target, media); }
           catch (err: any) { errors.push(`Telegram: ${label}${telegramErrorText(err)}`); }
@@ -3740,7 +3743,7 @@ export class PostsService {
       const pages = await this.resolvePages(userId, targets, creds);
       for (const [pageId, target] of pages) {
         if (!groupFailed(target)) continue;
-        const body = await this.buildPostBody(post, creds, target);
+        const body = await this.buildPostBody(post, creds, target, 'facebook');
         const label = await this.targetLabel(userId, target, multi && pages.size > 1);
         if ((failed('Facebook') && !wantMake)) {
           const token = await this.resolveFacebookPageToken(userId, target, creds);
@@ -3756,7 +3759,7 @@ export class PostsService {
     if (failed('Instagram')) {
       const ig = await this.instagramTargetFor(userId, targets, creds);
       if (ig) {
-        const body = await this.buildPostBody(post, creds, ig.target);
+        const body = await this.buildPostBody(post, creds, ig.target, 'instagram');
         tasks.push(this.sendToInstagram(post, creds, body, userId, ig.target)
           .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
       }
@@ -3817,7 +3820,7 @@ export class PostsService {
     if (want.has('telegram')) {
       tasks.push((async () => {
         for (const target of targetList) {
-          const body = await this.buildPostBody(post, creds, target);
+          const body = await this.buildPostBody(post, creds, target, 'telegram');
           const label = await this.targetLabel(userId, target, multi);
           try {
             await this.sendToTelegramChannel(post, creds, body, target, media);
@@ -3836,7 +3839,7 @@ export class PostsService {
       }
       tasks.push((async () => {
         for (const [pageId, target] of pages) {
-          const body = await this.buildPostBody(post, creds, target);
+          const body = await this.buildPostBody(post, creds, target, 'facebook');
           const label = await this.targetLabel(userId, target, multi && pages.size > 1);
           try {
             if (wantMake) await this.sendToMakeWebhook(post, creds, body, pageId);
@@ -3852,7 +3855,7 @@ export class PostsService {
     if (want.has('instagram')) {
       const ig = await this.instagramTargetFor(userId, targetList, creds);
       if (ig) {
-        const body = await this.buildPostBody(post, creds, ig.target);
+        const body = await this.buildPostBody(post, creds, ig.target, 'instagram');
         tasks.push(this.sendToInstagram(post, creds, body, userId, ig.target)
           .then(() => { anySuccess = true; markDelivered(ig.target); })
           .catch((err: any) => { errors.push(`Instagram: ${facebookErrorText(err, 'instagram')}`); }));
@@ -3873,7 +3876,7 @@ export class PostsService {
         })
         : undefined;
       if (!(opts?.pinterestRewrite && !rewrite)) {
-        const body = rewrite?.text ?? await this.buildPostBody(post, creds, targetList[0]);
+        const body = rewrite?.text ?? await this.buildPostBody(post, creds, targetList[0], 'pinterest');
         tasks.push(this.sendToPinterest(post, creds, body, rewrite
           ? { titleFromMessage: true, priceLabel: rewrite.priceLabel }
           : undefined)
@@ -3882,7 +3885,7 @@ export class PostsService {
       }
     }
     if (want.has('whatsapp')) {
-      const body = await this.buildPostBody(post, creds, targetList[0]);
+      const body = await this.buildPostBody(post, creds, targetList[0], 'whatsapp');
       tasks.push(this.sendToWhatsApp(post, creds, body)
         .then(() => { anySuccess = true; })
         .catch((err: any) => { errors.push(`WhatsApp: ${err?.response?.data?.error?.message || err?.response?.data?.message || err.message}`); }));
@@ -4221,7 +4224,7 @@ export class PostsService {
     if (wantTelegram) {
       tasks.push((async () => {
         for (const target of targets) {
-          const body = await this.buildPostBody(post, creds, target);
+          const body = await this.buildPostBody(post, creds, target, 'telegram');
           const label = await this.targetLabel(post.user_id, target, multi);
           try {
             await this.sendToTelegramChannel(post, creds, body, target, media);
@@ -4249,7 +4252,7 @@ export class PostsService {
           const last = await this.channels.getFacebookLastSent(post.user_id, target).catch(() => null);
           if (last && Date.now() - last.getTime() < fbIntervalMs) continue; // throttled — skip FB for this page
         }
-        const body = await this.buildPostBody(post, creds, target);
+        const body = await this.buildPostBody(post, creds, target, 'facebook');
         const label = await this.targetLabel(post.user_id, target, multi && pages.size > 1);
         const ownToken = target ? await this.channels.getFacebookPageToken(post.user_id, target) : null;
         // Advance the page's FB clock only on a successful publish, so the next post's throttle
@@ -4301,7 +4304,7 @@ export class PostsService {
     if (wantInstagram && hasImage) {
       const ig = await this.instagramTargetFor(post.user_id, targets, creds);
       if (ig) {
-        const body = await this.buildPostBody(post, creds, ig.target);
+        const body = await this.buildPostBody(post, creds, ig.target, 'instagram');
         tasks.push(
           this.sendToInstagram(post, creds, body, post.user_id, ig.target)
             .then(() => { anySuccess = true; })
@@ -4319,7 +4322,7 @@ export class PostsService {
       const dedicated = !!only && only.size === 1 && only.has('pinterest');
       const body = dedicated
         ? mdBoldToHtml(post.generated_text)
-        : await this.buildPostBody(post, creds, targets[0]);
+        : await this.buildPostBody(post, creds, targets[0], 'pinterest');
       tasks.push(
         this.sendToPinterest(post, creds, body, { titleFromMessage: dedicated })
           .then(() => {
@@ -4341,7 +4344,7 @@ export class PostsService {
 
     // WhatsApp: a single target group (Green API) — no per-Telegram-group fan-out.
     if (wantWhatsapp) {
-      const body = await this.buildPostBody(post, creds, targets[0]);
+      const body = await this.buildPostBody(post, creds, targets[0], 'whatsapp');
       tasks.push(
         this.sendToWhatsApp(post, creds, body)
           .then(() => { anySuccess = true; })

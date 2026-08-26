@@ -26,10 +26,37 @@ export function isFlylinkPost(affiliateUrl: string | null | undefined): boolean 
 /** First line doubles as the dedup marker in buildPostBody — keep it stable. */
 export const FLYLINK_TRUST_MARK = '📸 מהמפעל ישירות לצרכן';
 
+/** Where a post is going. Decides whether the replica line rides along. */
+export type PostPlatform = 'telegram' | 'whatsapp' | 'facebook' | 'instagram' | 'pinterest';
+
+/**
+ * The owner's own wording. Says the thing out loud rather than letting a buyer discover
+ * it after payment — the single biggest source of "this isn't what I ordered".
+ */
+export const FLYLINK_REPLICA_LINE = '🏷️ המוצר הינו רפליקה של המקור באיכות גבוהה';
+
+/**
+ * Which platforms carry the replica line.
+ *
+ * Only the owner's own group channels. Meta and Pinterest prohibit counterfeit and
+ * replica goods outright, and a post that says "רפליקה" in plain Hebrew is the easiest
+ * possible match for their automated enforcement — the line meant to protect the buyer
+ * would be the thing that costs him the page. Unknown platform is treated as one of
+ * those: the safe answer when we cannot tell where a post is going.
+ */
+const REPLICA_PLATFORMS = new Set<PostPlatform>(['telegram', 'whatsapp']);
+
+export function showsReplicaLine(platform?: PostPlatform): boolean {
+  return !!platform && REPLICA_PLATFORMS.has(platform);
+}
+
 /** The owner's wording (19.08) — questions go to DM. */
-export function flylinkTrustBlock(): string {
+export function flylinkTrustBlock(platform?: PostPlatform): string {
   return [
     `${FLYLINK_TRUST_MARK} — מה שרואים בתמונות זה מה שמגיע`,
+    // Right after the photo promise and before logistics: this is where a buyer decides
+    // what he is actually buying.
+    ...(showsReplicaLine(platform) ? [FLYLINK_REPLICA_LINE] : []),
     '📦 קבלת מספר מעקב ישירות למייל ומשלוח מהיר',
     '💬 מתלבטים? שלחו הודעה לפרטי לפני ההזמנה ונסייע בשמחה',
   ].join('\n');
