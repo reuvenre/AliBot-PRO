@@ -47,7 +47,12 @@ export const SEASONAL_EVENTS: SeasonalEvent[] = [
   {
     key: 'tishrei', name: 'חגי תשרי', emoji: '🍎', audience: 'il',
     start: { m: 8, d: 25 }, end: { m: 10, d: 10 },
-    keywords_he: ['מתנות לחג', 'כלי הגשה לשולחן חג', 'ארגון המטבח לחג'],
+    // Concrete objects, not occasions. Hebrew queries are machine-translated before they
+    // reach AliExpress, and "מתנות לחג" became "holiday gifts" — a query that matches half
+    // the catalog and returns nothing a shopper reads as a holiday product. A serving
+    // platter, a tablecloth and a string of sukkah lights each translate to something the
+    // catalog actually indexes.
+    keywords_he: ['מגשי הגשה ופלטות', 'מפות שולחן לאירוח', 'שרשראות תאורה לסוכה'],
     keywords_en: [],
     hint_he: 'הקשר: חגי תשרי מתקרבים — כשזה מתאים, חבר את המוצר לאירוח, לשולחן החג או למתנה לחג. אל תמציא הנחות.',
     hint_en: '',
