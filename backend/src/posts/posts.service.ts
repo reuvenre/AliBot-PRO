@@ -4634,10 +4634,17 @@ export class PostsService {
     }
     const url = `https://api.telegram.org/bot${token}/sendPhoto`;
     try {
+      // `photo` is a URL, so Telegram fetches the file from the supplier's CDN before it
+      // answers — the same server-side round trip the video path already budgets 45s for.
+      // This path was left at 15s, which is not the time WE need but the time TELEGRAM
+      // needs, and a slow CDN aborted the send into the one outcome the system cannot
+      // resolve by itself: a top-level ETIMEDOUT, where the post may or may not be live and
+      // a retry may or may not duplicate it. Waiting longer costs a slow run; aborting early
+      // costs a post nobody can safely re-send.
       const res = await this.tgRetryOnce('photo', () => axios.post(
         url,
         { chat_id: channel, photo: image, caption: mediaCaption, parse_mode: 'HTML' },
-        { timeout: 15000 },
+        { timeout: 45_000 },
       ));
       this.assertTelegramDelivered(res, 'photo');
       post.telegram_message_id = res.data?.result?.message_id;
@@ -4652,7 +4659,7 @@ export class PostsService {
         const res = await axios.post(
           url,
           { chat_id: channel, photo: image, caption: plain },
-          { timeout: 15000 },
+          { timeout: 45_000 },   // same server-side CDN fetch as the attempt above
         );
         this.assertTelegramDelivered(res, 'photo');
         post.telegram_message_id = res.data?.result?.message_id;
@@ -4764,7 +4771,10 @@ export class PostsService {
       ...(i === 0 ? { caption, ...(withHtml ? { parse_mode: 'HTML' } : {}) } : {}),
     }));
     try {
-      const res = await this.tgRetryOnce('album', () => axios.post(url, { chat_id: channel, media: build(true) }, { timeout: 20000 }));
+      // Telegram fetches EVERY image in the album from the supplier's CDN before answering,
+      // so this path is the most exposed of the three to a slow CDN — up to ten fetches on
+      // a budget that was shorter than the single-photo one needs.
+      const res = await this.tgRetryOnce('album', () => axios.post(url, { chat_id: channel, media: build(true) }, { timeout: 60_000 }));
       this.assertTelegramDelivered(res, 'album');
       post.telegram_message_id = res.data?.result?.[0]?.message_id;
     } catch (err: any) {
@@ -4773,7 +4783,7 @@ export class PostsService {
       if (err?.response?.status === 400 && /parse|entit|tag/i.test(desc)) {
         const plainCaption = caption.replace(/<[^>]+>/g, '');
         const media = images.map((img, i) => ({ type: 'photo', media: img, ...(i === 0 ? { caption: plainCaption } : {}) }));
-        const res = await axios.post(url, { chat_id: channel, media }, { timeout: 20000 });
+        const res = await axios.post(url, { chat_id: channel, media }, { timeout: 60_000 });
         this.assertTelegramDelivered(res, 'album');
         post.telegram_message_id = res.data?.result?.[0]?.message_id;
         return;
