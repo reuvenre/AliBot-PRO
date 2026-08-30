@@ -70,10 +70,12 @@ export function weightedRotation(
   const unique = Array.from(new Set(keywords.map((k) => k?.trim()).filter(Boolean)));
   if (!unique.length) return [];
 
-  // BOOSTED keywords (a live AliExpress bonus pool) are worth more PER SALE than anything
-  // else this campaign could publish, so they get a proven keyword's emphasis instead of an
-  // unproven one's floor — otherwise a freshly added pool sits one slot deep in a long
-  // cycle and the owner sees no change for days, which is most of a monthly pool's life.
+  // BOOSTED keywords are worth more than usual RIGHT NOW and only for a bounded time: a
+  // live AliExpress bonus pool (worth more per sale than anything else this campaign could
+  // publish) and a seasonal term inside its window (the shortest, highest-intent weeks of
+  // the year). Both are unproven by history, so they get a proven keyword's emphasis
+  // instead of an unproven one's floor — otherwise they sit one slot deep in a long cycle
+  // and the owner sees no change for days, which is most of the window's life.
   // Bounded on purpose: a boost, never a takeover — a keyword that actually EARNS still
   // outranks it, and every other keyword keeps its slot.
   const boost = new Set(Array.from(boosted || []).map((k) => k.trim().toLowerCase()));

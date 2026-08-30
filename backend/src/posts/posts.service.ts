@@ -65,6 +65,7 @@ import {
 import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
 import { seasonalKeywords, seasonalHint } from '../common/seasonal';
+import { seasonalPostsPerRun } from './seasonal-boost';
 import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
 import { facebookErrorText, isTransientFacebookError, isMetaConnectionError } from '../common/facebook-errors';
@@ -2541,11 +2542,16 @@ export class PostsService {
     // A campaign that wants seasonal stock sets `seasonal_keywords`; the hint costs nothing
     // either way, because it only angles the wording of a product the campaign chose itself.
     let seasonHint: string | null = null;
+    // The seasonal terms actually in this run's rotation. They earn a boost below — an
+    // extra post and a proven keyword's emphasis — because the window is short and the
+    // intent inside it is the highest of the year (see seasonal-boost.ts).
+    const seasonalInRotation: string[] = [];
     if (creds.seasonal_enabled !== false
       && (await this.subscription.allows(userId, 'seasonal_calendar').catch(() => true))) {
       if (campaign.seasonal_keywords) {
         for (const kw of seasonalKeywords(campaign.language || 'he')) {
           if (!kwList.includes(kw)) kwList.push(kw);
+          seasonalInRotation.push(kw);
         }
       }
       seasonHint = seasonalHint(campaign.language || 'he');
@@ -2569,7 +2575,14 @@ export class PostsService {
     // Which keywords are bonus-pool ones, for the per-post copy angle below.
     const bonusKeywordSet = new Set(bonus.keywords.map((k) => k.trim().toLowerCase()));
 
-    const perPost = Math.max(1, campaign.posts_per_run);
+    // An open event window buys one extra post per run — the owner's own posts_per_run is
+    // never touched, so the optimizer's ±1-from-owner bound stays honest and the boost ends
+    // with the window.
+    const perPost = seasonalPostsPerRun(campaign.posts_per_run, seasonalInRotation.length > 0);
+    if (perPost !== Math.max(1, campaign.posts_per_run)) {
+      this.logger.log(`campaign ${campaign.id}: seasonal window open — ${perPost} posts this run`
+        + ` (owner's ${campaign.posts_per_run}) · ${seasonalInRotation.join(', ')}`);
+    }
     const baseCursor = campaign.keyword_cursor ?? 0;
     this.campaignRepo.increment({ id: campaign.id }, 'keyword_cursor', perPost).catch(() => {});
 
@@ -2595,8 +2608,12 @@ export class PostsService {
     // A pool that has SOLD inside its window outranks even a proven earner: it earns AND
     // pays the bonus percentage on top of every further sale, so it gets more of the run's
     // product slots for as long as its window is open.
+    // Boosted = worth more than usual RIGHT NOW, for a bounded time: a live bonus pool, and
+    // a seasonal term inside its window. Both are unproven by history and would otherwise
+    // sit one slot deep in a long cycle — which, for a three-week holiday, means the group
+    // sees the holiday twice and then it is over.
     const rotation = weightedRotation(
-      kwEffective, perf, new Set(bonus.keywords), new Set(bonus.proven),
+      kwEffective, perf, new Set([...bonus.keywords, ...seasonalInRotation]), new Set(bonus.proven),
     );
     const rotationList = rotation.length ? rotation : kwEffective;
 
