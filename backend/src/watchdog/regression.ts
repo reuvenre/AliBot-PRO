@@ -24,6 +24,29 @@ export interface CampaignCtr {
   recentClicks: number;
   baselinePosts: number;
   baselineClicks: number;
+  /** The campaign's `target_platforms` JSON, verbatim. See `clicksMeasurable`. */
+  targetPlatforms?: string | null;
+}
+
+/**
+ * Whether a click on this campaign's posts can reach our counter at all.
+ *
+ * A Pinterest pin carries the affiliate link in its own `link` field, pointing STRAIGHT at
+ * AliExpress — a redirect there risks the pin being rejected, and the description has every
+ * URL line stripped out of it. So a shopper who clicks a pin never passes through /r/<code>,
+ * and a Pinterest-only campaign reads as exactly zero clicks per post no matter how well it
+ * is doing.
+ *
+ * That is a measurement boundary, not a business collapse, and reporting it as "-100%"
+ * teaches the owner that the watchdog cries wolf — which costs more than the check is worth.
+ * A campaign that ALSO publishes to Telegram or WhatsApp stays in scope: those posts carry
+ * the tracked link, so their clicks are real and a fall in them means something.
+ */
+export function clicksMeasurable(targetPlatforms: string | null | undefined): boolean {
+  let list: unknown;
+  try { list = JSON.parse(String(targetPlatforms || '[]')); } catch { return true; }
+  if (!Array.isArray(list) || !list.length) return true;   // null/[] = the global toggles
+  return !list.every((p) => String(p).trim().toLowerCase() === 'pinterest');
 }
 
 /** A confirmed drop, with the numbers that justify calling it one. */
@@ -94,6 +117,8 @@ export function detectCtrRegressions(rows: CampaignCtr[]): CtrRegression[] {
 
   for (const r of rows || []) {
     if (!r || !r.campaignId) continue;
+    // A campaign whose clicks cannot be counted has no rate to fall — see clicksMeasurable.
+    if (!clicksMeasurable(r.targetPlatforms)) continue;
     if (r.recentPosts < MIN_POSTS_PER_WINDOW || r.baselinePosts < MIN_POSTS_PER_WINDOW) continue;
     if (r.baselineClicks < MIN_BASELINE_CLICKS) continue;
 

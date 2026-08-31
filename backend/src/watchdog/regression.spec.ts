@@ -1,6 +1,6 @@
 import {
   CampaignCtr, MIN_BASELINE_CLICKS, MIN_DROP_PERCENT, MIN_POSTS_PER_WINDOW,
-  detectCtrRegressions, regressionLine, windowsComparable,
+  clicksMeasurable, detectCtrRegressions, regressionLine, windowsComparable,
 } from './regression';
 
 const row = (over: Partial<CampaignCtr> = {}): CampaignCtr => ({
@@ -112,5 +112,36 @@ describe('windowsComparable', () => {
     const boundary = new Date(FILTER.getTime() + 28 * 24 * 3600_000);
     expect(windowsComparable(new Date(boundary.getTime() - 60_000), 7, 21, FILTER)).toBe(false);
     expect(windowsComparable(boundary, 7, 21, FILTER)).toBe(true);
+  });
+});
+
+/**
+ * The real alert behind these tests: a Pinterest-only campaign reported "-100%" on 42 posts
+ * with zero clicks. Nothing was broken — a pin links straight to AliExpress, so a click on
+ * it never passes through our redirect and the rate is zero by construction.
+ */
+describe('clicksMeasurable — campaigns whose clicks can never reach the counter', () => {
+  it('leaves a Pinterest-only campaign out of the scan entirely', () => {
+    expect(clicksMeasurable('["pinterest"]')).toBe(false);
+    expect(detectCtrRegressions([row({
+      targetPlatforms: '["pinterest"]', recentPosts: 42, recentClicks: 0,
+      baselinePosts: 55, baselineClicks: 13,
+    })])).toEqual([]);
+  });
+
+  it('keeps a campaign that ALSO publishes where clicks ARE counted', () => {
+    expect(clicksMeasurable('["pinterest","telegram"]')).toBe(true);
+    expect(detectCtrRegressions([row({ targetPlatforms: '["telegram","pinterest"]' })]).length).toBe(1);
+  });
+
+  it('treats an unset platform list as measurable — that is the global fan-out', () => {
+    expect(clicksMeasurable(null)).toBe(true);
+    expect(clicksMeasurable('[]')).toBe(true);
+    expect(clicksMeasurable(undefined)).toBe(true);
+    expect(detectCtrRegressions([row()]).length).toBe(1);
+  });
+
+  it('does not let malformed JSON silence a real regression', () => {
+    expect(clicksMeasurable('not json')).toBe(true);
   });
 });

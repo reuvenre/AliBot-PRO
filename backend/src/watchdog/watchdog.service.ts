@@ -297,6 +297,7 @@ export class WatchdogService implements OnModuleInit {
       `SELECT c.id                                                        AS "campaignId",
               c.name                                                      AS "campaignName",
               c.user_id                                                   AS "userId",
+              c.target_platforms                                          AS "targetPlatforms",
               count(*) FILTER (WHERE p.sent_at > now() - ($1 || ' days')::interval)::int
                                                                           AS "recentPosts",
               coalesce(sum(p.clicks_count) FILTER (
@@ -311,7 +312,7 @@ export class WatchdogService implements OnModuleInit {
        JOIN posts p ON p.campaign_id = c.id AND p.status = 'sent'
        WHERE c.status = 'active'
          AND p.sent_at > now() - ($2 || ' days')::interval
-       GROUP BY c.id, c.name, c.user_id`,
+       GROUP BY c.id, c.name, c.user_id, c.target_platforms`,
       [String(RECENT_DAYS), String(RECENT_DAYS + BASELINE_DAYS)],
     );
     return detectCtrRegressions(rows.map((r) => ({
@@ -322,6 +323,7 @@ export class WatchdogService implements OnModuleInit {
       recentClicks: Number(r.recentClicks) || 0,
       baselinePosts: Number(r.baselinePosts) || 0,
       baselineClicks: Number(r.baselineClicks) || 0,
+      targetPlatforms: r.targetPlatforms ?? null,
     })));
   }
 
