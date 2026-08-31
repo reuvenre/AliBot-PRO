@@ -62,3 +62,48 @@ describe('CustomPostsService.update — re-arming a fired one-off', () => {
     expect(out.enabled).toBe(false);
   });
 });
+
+/**
+ * A hand-written post used to publish with an empty `affiliate_url`, which is the field the
+ * publish path turns into a tracked /r/<code>. So it went out fine and then counted for
+ * nothing — no clicks, nothing for the learning brain, on exactly the posts the owner writes
+ * himself for a holiday push.
+ */
+describe('CustomPostsService.dispatchDue — the body\'s link is the post\'s link', () => {
+  const dispatch = async (body: string) => {
+    const row: any = {
+      id: 'cp1', user_id: 'u1', body, repeat: 'none',
+      enabled: true, next_send_at: new Date('2020-01-01T00:00:00.000Z'),
+      target_channels: ['-100123'], image_urls: [],
+    };
+    const createQueuedPost = jest.fn(async (..._args: any[]) => ({}));
+    const module = await Test.createTestingModule({
+      providers: [
+        CustomPostsService,
+        {
+          provide: getRepositoryToken(CustomPost),
+          useValue: { find: jest.fn(async () => [row]), save: jest.fn(async (cp: any) => cp) },
+        },
+        {
+          provide: PostsService,
+          useValue: {
+            nextGroupSlot: jest.fn(async () => ({ slot: new Date() })),
+            createQueuedPost,
+          },
+        },
+      ],
+    }).compile();
+    await module.get(CustomPostsService).dispatchDue();
+    return createQueuedPost.mock.calls[0]?.[1] as any;
+  };
+
+  it('carries the promo link through as the post\'s destination', async () => {
+    const product = await dispatch('🍎 שנה טובה\n\nhttps://s.click.aliexpress.com/e/_c3WHSgdt');
+    expect(product.affiliate_url).toBe('https://s.click.aliexpress.com/e/_c3WHSgdt');
+  });
+
+  it('publishes a link-less announcement exactly as before', async () => {
+    const product = await dispatch('הקבוצה יוצאת לחופשה עד אחרי החג 🍎');
+    expect(product.affiliate_url).toBe('');
+  });
+});

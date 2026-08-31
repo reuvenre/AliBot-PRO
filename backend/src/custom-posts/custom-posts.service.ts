@@ -4,6 +4,7 @@ import { LessThanOrEqual, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CustomPost, CustomPostRepeat } from './custom-post.entity';
 import { PostsService } from '../posts/posts.service';
+import { firstLink } from './post-link';
 
 const REPEATS: CustomPostRepeat[] = ['none', 'daily', 'weekly'];
 
@@ -111,6 +112,12 @@ export class CustomPostsService {
         try {
           const channels = cp.target_channels || [];
           const images = cp.image_urls || [];
+          // The body's first link becomes the post's destination, which is what earns it a
+          // tracked code on the publish path. Without it a hand-written post published fine
+          // and then counted for nothing — see post-link.ts. The publish path lifts the raw
+          // URL out of the text and re-attaches it as the standard "🔗" line, so the link
+          // ends up where every other post keeps it.
+          const link = firstLink(cp.body) || '';
           for (const group of channels) {
             // Land in the group's next free slot (spaced by its interval from pending posts),
             // at or after now — so it never lands on top of an autopilot post.
@@ -121,7 +128,7 @@ export class CustomPostsService {
                 product_id: `custom-${cp.id}`,
                 title: cp.name || 'פוסט מתוזמן',
                 image_url: images[0] || '',
-                affiliate_url: '',
+                affiliate_url: link,
                 sale_price: 0, original_price: 0, currency: 'ILS',
                 discount_percent: 0, orders_count: 0, rating: 0,
               },
