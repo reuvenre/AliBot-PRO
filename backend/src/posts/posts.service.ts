@@ -5036,24 +5036,28 @@ export class PostsService {
 
     if (!igId || !token) throw new Error('Missing Instagram credentials');
 
+    // The supplier's own photo, straight off its CDN. Kept aside as the fallback for #9004
+    // below: every other candidate we hand Instagram is a URL WE serve (a designed frame,
+    // a letterboxed variant), and #9004 means the fetch did not yield an image at all.
+    let cdnImage = post.product_image || '';
+    try {
+      const g = post.gallery_json ? JSON.parse(post.gallery_json) : [];
+      if (Array.isArray(g) && g[0]) cdnImage = g[0];
+    } catch { /* ignore */ }
+    // AliExpress CDN often serves ".jpg_.webp" variants; Instagram can't ingest WebP and
+    // fails the container. Cut back to the underlying JPEG/PNG URL when one is embedded.
+    if (/\.webp(\?|$)/i.test(cdnImage)) {
+      const m = cdnImage.match(/^(.*?\.(?:jpe?g|png))/i);
+      if (m) cdnImage = m[1];
+    }
+
     // The designed frame (enhancement/collage) when this publish prepared one — the same
     // image Telegram uploads — letterboxed server-side onto an Instagram-legal canvas via
-    // ?fit=ig. Otherwise: first gallery image, else the main product image.
+    // ?fit=ig. Otherwise the supplier photo above.
     let image = this.enhancedFrameUrl(post, { fitIg: true }) || '';
     if (!image) {
-      image = post.product_image || '';
-      try {
-        const g = post.gallery_json ? JSON.parse(post.gallery_json) : [];
-        if (Array.isArray(g) && g[0]) image = g[0];
-      } catch { /* ignore */ }
+      image = cdnImage;
       if (!image) throw new Error('אין תמונת מוצר לפרסום באינסטגרם');
-
-      // AliExpress CDN often serves ".jpg_.webp" variants; Instagram can't ingest WebP and
-      // fails the container. Cut back to the underlying JPEG/PNG URL when one is embedded.
-      if (/\.webp(\?|$)/i.test(image)) {
-        const m = image.match(/^(.*?\.(?:jpe?g|png))/i);
-        if (m) image = m[1];
-      }
 
       // Aspect-ratio gate: Instagram rejects anything outside 4:5–1.91:1 with #36003 —
       // supplier fashion shots are routinely taller. When the ratio is illegal, hand
@@ -5080,6 +5084,16 @@ export class PostsService {
       if (isMetaConnectionError(err)) {
         this.logger.warn('instagram container create: connection never reached Meta, retrying once');
         await new Promise((r) => setTimeout(r, 2500));
+        create = await createContainer();
+      } else if (err?.response?.data?.error?.code === 9004 && cdnImage && image !== cdnImage) {
+        // "Only photo or video can be accepted as media type" — Meta fetched the URL and
+        // what came back was not an image. The URL it fetched was OURS (a designed frame,
+        // or the letterboxed variant), so the frame is the suspect, not the product: an
+        // expired in-memory frame answers with a redirect, and a restart between the send
+        // and Meta's fetch loses it entirely. Fall back to the supplier's own CDN photo —
+        // the publish loses its designed frame, which is the cheaper of the two losses.
+        this.logger.warn(`instagram #9004 on ${image} — retrying with the supplier photo ${cdnImage}`);
+        image = cdnImage;
         create = await createContainer();
       } else if (err?.response?.data?.error?.code === 36003) {
         // The letterbox pipeline exists precisely to prevent #36003 — reaching here means
