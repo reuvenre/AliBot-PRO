@@ -40,6 +40,15 @@ function parseTargets(json: string | null): string[] {
   try { const a = json ? JSON.parse(json) : []; return Array.isArray(a) ? a : []; } catch { return []; }
 }
 
+/**
+ * Stored to mean "every autopilot". Mirrors ALL_CAMPAIGNS in the backend's pool-targets.ts.
+ *
+ * An unaimed pool steers NOTHING — it used to steer everything, which is how a Home & Living
+ * bonus put kitchen organisers into a tactical channel with a boost on top. The fan-out is
+ * still available; it just has to be said.
+ */
+const ALL_CAMPAIGNS = '*';
+
 function statusOf(p: IncentiveProgram): { label: string; cls: string } {
   const now = Date.now();
   if (!p.active) return { label: 'כבוי', cls: 'bg-white/5 text-white/40 border-edge' };
@@ -172,9 +181,15 @@ function ProgramCard({ program, campaigns, stats, onChanged }: {
   const status = statusOf(program);
   const keywords = parseKeywords(program.keywords_json);
   const targetIds = parseTargets(program.target_campaigns);
-  const targetNames = targetIds.length
-    ? targetIds.map((id) => campaigns.find((c) => c.id === id)?.name || id).join(', ')
-    : 'כל הטייסים';
+  const steersAll = targetIds.includes(ALL_CAMPAIGNS);
+  // An unaimed pool is the state worth SAYING OUT LOUD: it looks live on this card, and it
+  // is — the bonus still accrues on anything that happens to sell — but no autopilot is
+  // searching for it. Reading "כל הטייסים" here while nothing was actually steered is how
+  // the misconfiguration used to hide.
+  const unaimed = !targetIds.length;
+  const targetNames = steersAll
+    ? 'כל הטייסים'
+    : targetIds.map((id) => campaigns.find((c) => c.id === id)?.name || id).join(', ');
 
   const toggle = async () => {
     setBusy(true);
@@ -196,8 +211,16 @@ function ProgramCard({ program, campaigns, stats, onChanged }: {
             <span className={`text-2xs px-2 py-0.5 rounded-full border ${status.cls}`}>{status.label}</span>
           </div>
           <p className="text-2xs text-white/40 mt-1.5">
-            {new Date(program.starts_at).toLocaleDateString('he-IL')} — {new Date(program.ends_at).toLocaleDateString('he-IL')} · יעד: {targetNames}
+            {new Date(program.starts_at).toLocaleDateString('he-IL')} — {new Date(program.ends_at).toLocaleDateString('he-IL')}
+            {!unaimed && <> · יעד: {targetNames}</>}
           </p>
+          {unaimed && (
+            <button type="button" onClick={() => setEditing(true)}
+              className="mt-1.5 flex items-center gap-1.5 text-2xs text-amber-300/90 hover:text-amber-200 text-right">
+              <AlertTriangle size={11} className="shrink-0" />
+              לא שויך לאף טייס — המילים לא נכנסות לרוטציה. לחץ לבחירת טייסים
+            </button>
+          )}
           {stats && (
             <p className="text-2xs text-white/50 mt-1.5">
               📊 בחלון הקמפיין: <b className="text-white/75">{stats.posts}</b> פוסטים
@@ -316,8 +339,14 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
     }
   };
 
+  const steersAll = targetIds.includes(ALL_CAMPAIGNS);
+
   const toggleTarget = (id: string) =>
     setTargetIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  /** "All" replaces the individual picks rather than sitting alongside them — a saved
+   *  list of both would read as a contradiction on the card. */
+  const toggleAll = () => setTargetIds((prev) => (prev.includes(ALL_CAMPAIGNS) ? [] : [ALL_CAMPAIGNS]));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -373,14 +402,25 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
           </div>
 
           <div>
-            <label className={labelCls}>לאילו טייסים זה רלוונטי (ריק = כל הטייסים)</label>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+            <label className={labelCls}>לאילו טייסים זה רלוונטי</label>
+            {/* The keywords of a pool aimed at the wrong autopilot don't merely earn
+                nothing — they arrive BOOSTED and take the cycle's best slots from products
+                that audience actually wants. So the aim is asked for explicitly, and "all"
+                is one of the answers rather than the silence-default it used to be. */}
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              <label className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
+                ${steersAll ? 'border-amber-500/60 bg-amber-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                <input type="checkbox" checked={steersAll} onChange={toggleAll} className="accent-amber-500" />
+                <span className="text-sm text-white/80 flex-1">כל הטייסים</span>
+              </label>
               {campaigns.map((c) => {
-                const on = targetIds.includes(c.id);
+                const on = steersAll || targetIds.includes(c.id);
                 return (
-                  <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors
-                    ${on ? 'border-amber-500/60 bg-amber-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
-                    <input type="checkbox" checked={on} onChange={() => toggleTarget(c.id)} className="accent-amber-500" />
+                  <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-colors
+                    ${steersAll ? 'opacity-45 cursor-not-allowed border-edge bg-white/[0.03]' : 'cursor-pointer'}
+                    ${on && !steersAll ? 'border-amber-500/60 bg-amber-500/10' : 'border-edge hover:border-edge-hover bg-white/[0.03]'}`}>
+                    <input type="checkbox" checked={on} disabled={steersAll}
+                      onChange={() => toggleTarget(c.id)} className="accent-amber-500" />
                     <span className="text-sm text-white/80 flex-1 truncate">{c.name}</span>
                     {c.status !== 'active' && <span className="text-2xs text-white/30">מושהה</span>}
                   </label>
@@ -388,6 +428,16 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
               })}
               {campaigns.length === 0 && <p className="text-2xs text-white/30">אין טייסים מוגדרים.</p>}
             </div>
+            {targetIds.length === 0 ? (
+              <p className="text-2xs text-amber-300/80 mt-1.5 leading-relaxed">
+                ⚠️ בלי בחירה הפול יירשם ויוצג עם הערכת הבונוס, אבל <b>המילים לא ייכנסו לאף רוטציה</b> —
+                כך מוצר מקטגוריה זרה לא נכנס לקבוצה שלא מתאימה לו.
+              </p>
+            ) : (
+              <p className="text-2xs text-white/30 mt-1.5">
+                מילות הפול ייכנסו לרוטציה של הטייסים שסימנת בלבד, ובעדיפות גבוהה כל עוד החלון פתוח.
+              </p>
+            )}
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}

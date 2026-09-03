@@ -12,6 +12,7 @@ import { Post } from '../posts/post.entity';
 import { Earning } from '../earnings/earning.entity';
 import { AiService } from '../ai/ai.service';
 import { knownPoolKeywords, parsePoolKeywords, POOL_KEYWORDS_SYSTEM, PoolSuggestion } from './pool-keywords';
+import { poolAppliesTo } from './pool-targets';
 
 export interface IncentiveInput {
   name?: string;
@@ -199,9 +200,10 @@ export class IncentiveService {
   // ── What the autopilot consumes ───────────────────────────────────────────
 
   /**
-   * The bonus keywords in force for THIS campaign, right now. A program with no
-   * campaigns of its own applies to all of them; one with a list applies only to those
-   * (a Home & Living bonus must not push kitchen organisers into a tactical channel).
+   * The bonus keywords in force for THIS campaign, right now. A program steers only the
+   * campaigns it names — an unassigned one steers nothing at all, and "every campaign" is
+   * the `*` sentinel the owner picks deliberately (see pool-targets.ts). That is what keeps
+   * a Home & Living bonus from pushing kitchen organisers into a tactical channel.
    *
    * Never throws: a failure here means the campaign runs on its own keywords, which is
    * exactly the pre-bonus behaviour — earning less is not a reason to publish nothing.
@@ -268,13 +270,10 @@ export class IncentiveService {
       // to the rotation as its own (higher) tier.
       const byPool = new Map<string, string[]>();
       for (const r of live) {
-        let own: string[] = [];
-        try { own = r.target_campaigns ? JSON.parse(r.target_campaigns) : []; } catch { own = []; }
-        // LEGACY tolerance: the first version of the screen stored Telegram GROUP ids.
-        // A row saved from a still-cached old page would otherwise match nothing and
-        // silently steer no campaign at all — so a stored id also counts when it is one
-        // of this campaign's target groups.
-        if (own.length && !own.includes(campaignId) && !own.some((id) => channels.includes(id))) continue;
+        // Targeting is an explicit choice, both ways — an unassigned pool steers nothing
+        // and a fan-out across every campaign is the `*` sentinel. See pool-targets.ts for
+        // why the old "empty = everywhere" default cost more than it earned.
+        if (!poolAppliesTo(r.target_campaigns, campaignId, channels)) continue;
         let kws: string[] = [];
         try { kws = JSON.parse(r.keywords_json || '[]'); } catch { kws = []; }
         const clean = cleanKeywords(kws);

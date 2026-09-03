@@ -53,9 +53,20 @@ describe('IncentiveService.keywordsFor', () => {
     expect((await svc.keywordsFor(USER, TACTICAL)).keywords).toEqual([]);
   });
 
-  it('applies to every campaign when no target was chosen', async () => {
+  it('steers NOTHING when no target was chosen', async () => {
+    // This used to be "applies to every campaign", and that default is what put kitchen
+    // organisers into a tactical channel — boosted, taking the cycle's best slots — with
+    // nothing misconfigured. An unaimed pool is a record of money available, not an
+    // instruction to chase it everywhere. See pool-targets.ts.
     const svc = serviceWith([row({ target_campaigns: null })]);
+    expect((await svc.keywordsFor(USER, TACTICAL)).keywords).toEqual([]);
+    expect((await svc.keywordsFor(USER, MAMA)).keywords).toEqual([]);
+  });
+
+  it('still fans out across every campaign when the owner says so', async () => {
+    const svc = serviceWith([row({ target_campaigns: JSON.stringify(['*']) })]);
     expect((await svc.keywordsFor(USER, TACTICAL)).keywords).toHaveLength(2);
+    expect((await svc.keywordsFor(USER, MAMA)).keywords).toHaveLength(2);
   });
 
   it('stops by itself once the window closes', async () => {

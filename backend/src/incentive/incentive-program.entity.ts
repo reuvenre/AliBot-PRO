@@ -31,9 +31,11 @@ export class IncentiveProgram {
   @Column({ type: 'text', default: '[]' })
   keywords_json: string;
 
-  /** The autopilots (campaign ids) this bonus applies to. Empty/null = all of them.
-   *  Campaigns, not groups: a Pinterest campaign publishes to no Telegram group, so a
-   *  group-based target could never reach it. */
+  /** The autopilots (campaign ids) this bonus steers. Empty/null steers NOTHING — the pool
+   *  is recorded and reported, but its keywords reach no rotation until it is aimed; the
+   *  `'*'` sentinel means every campaign (see pool-targets.ts for why that is a choice and
+   *  not a default). Campaigns, not groups: a Pinterest campaign publishes to no Telegram
+   *  group, so a group-based target could never reach it. */
   @Column({ type: 'text', nullable: true })
   target_campaigns: string | null;
 
