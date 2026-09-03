@@ -28,7 +28,7 @@ import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
 import { pruneRunLog, recordFailedRun } from '../campaigns/run-failure-log';
 import { waDelayMs } from './whatsapp-pacing';
 import { snapToHotHour } from './smart-timing';
-import { occupiesCurrentInterval } from './group-pacing';
+import { occupiesCurrentInterval, pacingIntervalMinutes } from './group-pacing';
 import { platformFilterSql } from './platform-filter';
 import { ImportRowInput, composeImportText, extractAliProductId, extractAliProductIdFromHtml, validImportRow } from './import-rows';
 import { PRODUCT_FIT_SYSTEM, ProductFitContext, ProductFitItem, ProductFitVerdict, buildProductFitPrompt, parseProductFitVerdicts } from './product-relevance';
@@ -2284,7 +2284,21 @@ export class PostsService {
     userId: string, groupId: string, notBefore: Date, campaignId?: string,
     stackUntil?: Date | null,
   ): Promise<{ slot: Date; skip: boolean }> {
-    const intervalMin = (await this.channels.getIntervalMinutes(userId, groupId).catch(() => null)) ?? 60;
+    // The group's own interval, else the ACCOUNT's, else an hour.
+    //
+    // The account step was missing, and its absence is why lowering "מרווח בין פוסטים" in
+    // Settings changed nothing for a campaign publishing to a group: the group's own field
+    // is empty by default and reads "גלובלי" on screen, but this fell straight through to a
+    // hardcoded 60. So a campaign set to run every half hour kept publishing hourly — the
+    // pacing gate below still measured against an hour — with the settings screen insisting
+    // otherwise. The scheduler's queue resolves group → account → 60; this is the same
+    // chain, and the two must agree or the same group paces differently depending on which
+    // path released the post.
+    const creds = await this.credentials.getRaw(userId).catch(() => null);
+    const intervalMin = pacingIntervalMinutes(
+      await this.channels.getIntervalMinutes(userId, groupId).catch(() => null),
+      creds?.schedule_interval_minutes,
+    );
     const now = Date.now();
     const recentSentCutoff = new Date(now - intervalMin * 60_000);
 
@@ -2438,7 +2452,6 @@ export class PostsService {
 
     const bookedAhead = groupBusy || notMyTurn;
     const win = await this.channels.getScheduleWindow(userId, groupId).catch(() => null);
-    const creds = await this.credentials.getRaw(userId).catch(() => null);
     const startHour = win?.startHour ?? creds?.schedule_start_hour ?? 9;
     const endHour = win?.endHour ?? creds?.schedule_end_hour ?? 22;
     const tz = process.env.SCHEDULER_TZ || 'Asia/Jerusalem';

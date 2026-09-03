@@ -23,6 +23,32 @@
  */
 export const PACING_GRACE_RATIO = 0.15;
 
+/** The interval every pacing decision falls back to when nothing is configured. */
+export const DEFAULT_INTERVAL_MIN = 60;
+
+/**
+ * The interval this group is actually paced at: its own setting, else the ACCOUNT's, else
+ * an hour.
+ *
+ * The account step is the one that was missing. A group's interval field is empty by
+ * default and the groups screen labels that state "גלובלי", but the pacing gate fell
+ * straight through to a hardcoded 60 — so lowering "מרווח בין פוסטים" in Settings changed
+ * how the queue released posts and did NOT change how campaigns paced against the group.
+ * A campaign set to every half hour went on publishing hourly, with both screens saying it
+ * should not. Same chain as the scheduler's queue, on purpose: one group, one cadence,
+ * however the post was released.
+ */
+export function pacingIntervalMinutes(
+  groupInterval: number | null | undefined,
+  accountInterval: number | null | undefined,
+): number {
+  const usable = (v: number | null | undefined): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0;
+  if (usable(groupInterval)) return groupInterval;
+  if (usable(accountInterval)) return accountInterval;
+  return DEFAULT_INTERVAL_MIN;
+}
+
 /**
  * True when a post anchored at `anchorMs` still occupies the group's current interval.
  * `anchorMs` must be the post's SLOT (scheduled_at), falling back to its send time only

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Plus, X, Loader2, Save, Search, Package, ShoppingCart } from 'lucide-react';
-import { channelsApi } from '@/lib/api-client';
+import { channelsApi, credentialsApi } from '@/lib/api-client';
 import { GroupMultiSelect, type GroupOption } from '@/components/GroupMultiSelect';
 import type { Campaign, CampaignInput, CampaignSource } from '@/types';
 
@@ -51,28 +51,45 @@ const RECOMMENDED_WINDOWS: Record<string, { start: number; end: number; why: str
   'Europe/London':       { start: 15, end: 23, why: 'אחה״צ־ערב בבריטניה' },
 };
 
-/** Frequencies faster than hourly. Split out because they need a warning next to them:
- *  a campaign at this cadence queues 4–2 runs an hour, and every post costs a credit. */
-const SUB_HOURLY_CRONS = new Set(['*/15 * * * *', '*/30 * * * *']);
-
+/**
+ * `everyMin` is how often the cron actually fires, and it exists because the cadence a
+ * campaign is SET to is not always the cadence it PUBLISHES at: a campaign targeting a
+ * Telegram group is paced by that group's interval, so a half-hourly campaign on a
+ * one-per-hour group publishes hourly. The form compares the two and says so — the
+ * alternative is what happened, which is the owner setting "כל חצי שעה", watching hourly
+ * posts, and having nothing on screen explain the gap.
+ */
 const CRON_PRESETS = [
-  // Quarter- and half-hourly. The runner schedules a run's posts from NOW (spaced 15 min),
-  // clamped into the send window — it is not re-paced by the account's queue interval — so
-  // these cadences really do publish every 15/30 minutes, not just fill the queue faster.
-  { label: 'כל רבע שעה',     value: '*/15 * * * *' },
-  { label: 'כל חצי שעה',     value: '*/30 * * * *' },
-  { label: 'כל שעה',         value: '0 * * * *' },
+  { label: 'כל רבע שעה',     value: '*/15 * * * *', everyMin: 15 },
+  { label: 'כל חצי שעה',     value: '*/30 * * * *', everyMin: 30 },
+  { label: 'כל שעה',         value: '0 * * * *',    everyMin: 60 },
   // The step between hourly and 3-hourly was missing, and it is the one a Pinterest
   // campaign wants: the board grows on pin VOLUME spread through the day, while hourly
   // outruns the supply of fresh products (the user-wide dedup skips anything already
   // published) and doubles credit burn for runs that return nothing.
-  { label: 'כל שעתיים',      value: '0 */2 * * *' },
-  { label: 'כל 3 שעות',      value: '0 */3 * * *' },
-  { label: 'כל 6 שעות',      value: '0 */6 * * *' },
-  { label: 'פעם ביום (9:00)', value: '0 9 * * *' },
-  { label: 'פעמיים ביום',     value: '0 9,21 * * *' },
-  { label: 'פעם בשבוע',       value: '0 9 * * 1' },
+  { label: 'כל שעתיים',      value: '0 */2 * * *', everyMin: 120 },
+  { label: 'כל 3 שעות',      value: '0 */3 * * *', everyMin: 180 },
+  { label: 'כל 6 שעות',      value: '0 */6 * * *', everyMin: 360 },
+  { label: 'פעם ביום (9:00)', value: '0 9 * * *',  everyMin: 1440 },
+  { label: 'פעמיים ביום',     value: '0 9,21 * * *', everyMin: 720 },
+  { label: 'פעם בשבוע',       value: '0 9 * * 1',  everyMin: 10080 },
 ];
+
+/** Mirrors the backend's pacingIntervalMinutes: the group's own setting, else the
+ *  account's, else an hour. */
+function pacingInterval(group: number | null | undefined, account: number | null | undefined): number {
+  const ok = (v: number | null | undefined): v is number => typeof v === 'number' && v > 0;
+  return ok(group) ? group : ok(account) ? account : 60;
+}
+
+/** Minutes as the owner would say them: "45 דקות", "שעה", "שעתיים", "3 שעות". */
+function minutesLabel(min: number): string {
+  if (min < 60) return `${min} דקות`;
+  if (min === 60) return 'שעה';
+  if (min === 120) return 'שעתיים';
+  if (min % 60 === 0) return `${min / 60} שעות`;
+  return `${min} דקות`;
+}
 
 /**
  * The create AND edit forms are the same fields, so they share one component — a change to
@@ -94,10 +111,31 @@ export function CampaignForm({
   const [kwInput, setKwInput] = useState('');
   const [form, setForm] = useState<CampaignInput>({ source: 'aliexpress', target_channels: [], ...initial });
   const [channels, setChannels] = useState<GroupOption[]>([]);
+  // What each group is paced at, and what the account is paced at — the two numbers that
+  // decide whether this campaign's chosen cadence is the cadence it will actually publish
+  // at. Keyed by channel_id, which is what target_channels holds.
+  const [groupIntervals, setGroupIntervals] = useState<Record<string, number | null>>({});
+  const [accountInterval, setAccountInterval] = useState<number | null>(null);
   // Custom send window: on when the campaign already carries one (edit mode).
   const [useWindow, setUseWindow] = useState(
     initial.window_start_hour != null || initial.window_end_hour != null || !!initial.window_tz,
   );
+
+  // What this campaign is SET to, and what it will actually PUBLISH at.
+  //
+  // The runner paces a Telegram-publishing campaign against its FIRST target group (see
+  // nextGroupSlot) — so that group's interval, not the cron, is the real floor. A campaign
+  // with no group, or one filtered to platforms other than Telegram, runs on its cron alone.
+  const cronMin = CRON_PRESETS.find((p) => p.value === form.schedule_cron)?.everyMin ?? 60;
+  const pacingChannelId = (form.target_channels ?? [])[0];
+  const pacedByGroup = !!pacingChannelId
+    && (!form.target_platforms?.length || form.target_platforms.includes('telegram'));
+  const groupPacing = pacedByGroup
+    ? pacingInterval(groupIntervals[pacingChannelId], accountInterval)
+    : null;
+  const effectiveMin = Math.max(cronMin, groupPacing ?? 0);
+  const throttled = effectiveMin > cronMin;
+  const pacingGroupName = channels.find((c) => c.channel_id === pacingChannelId)?.name || 'שנבחרה';
 
   const source: CampaignSource = form.source ?? 'aliexpress';
   const isFlylink = source === 'flylink';
@@ -109,8 +147,16 @@ export function CampaignForm({
   // toggle instant.
   useEffect(() => {
     channelsApi.list()
-      .then((list) => setChannels(list.map((c) => ({ id: c.id, name: c.name, channel_id: c.channel_id }))))
+      .then((list) => {
+        setChannels(list.map((c) => ({ id: c.id, name: c.name, channel_id: c.channel_id })));
+        const intervals: Record<string, number | null> = {};
+        for (const c of list) intervals[c.channel_id] = c.schedule_interval_minutes ?? null;
+        setGroupIntervals(intervals);
+      })
       .catch(() => setChannels([]));
+    credentialsApi.get()
+      .then((c) => setAccountInterval(c.schedule_interval_minutes ?? null))
+      .catch(() => {});
   }, []);
 
   const addKeyword = () => {
@@ -509,15 +555,32 @@ export function CampaignForm({
               <p className="text-2xs text-white/30 mt-2">
                 כל הרצה מכניסה פוסטים לתור; הם מתפרסמים לפי חלון התזמון בהגדרות.
               </p>
-              {/* A quarter-hourly campaign is a legitimate choice — but it multiplies both the
-                  credit burn and the demand for FRESH products (the user-wide dedup skips
-                  anything already published), so the owner should see the daily number BEFORE
-                  saving, not on the invoice. */}
-              {SUB_HOURLY_CRONS.has(form.schedule_cron) && (
+
+              {/* THE GAP BETWEEN THE SETTING AND REALITY.
+                  A campaign publishing to a Telegram group is paced by that GROUP's interval
+                  — deliberately, it is what stops two campaigns on one group from colliding.
+                  But it means the cadence chosen here is a ceiling, not a promise, and
+                  nothing said so: the owner set "כל חצי שעה", watched hourly posts, and had
+                  no way to find out why. Now the form does the same arithmetic the runner
+                  does and reports the number that will actually happen. */}
+              {throttled && (
+                <p className="text-2xs text-amber-400/90 mt-1.5 leading-relaxed">
+                  ⚠️ בפועל יפרסם <b>כל {minutesLabel(effectiveMin)}</b>, לא כל {minutesLabel(cronMin)} —
+                  הקבוצה <b>{pacingGroupName}</b> מוגדרת למרווח של {minutesLabel(effectiveMin)} בין פוסטים,
+                  והיא זו שקובעת. כדי שהקצב כאן ייכנס לתוקף, שנה את המרווח של הקבוצה במסך
+                  <b> קבוצות</b> (או את המרווח הכללי ב<b>הגדרות ← תזמון</b>).
+                </p>
+              )}
+
+              {/* A fast cadence is a legitimate choice — but it multiplies both the credit
+                  burn and the demand for FRESH products (the user-wide dedup skips anything
+                  already published), so the daily number belongs on screen BEFORE saving,
+                  not on the invoice. Counted at the EFFECTIVE cadence, so it never promises
+                  posts the group's pacing will not allow. */}
+              {effectiveMin < 60 && !throttled && (
                 <p className="text-2xs text-amber-400/80 mt-1.5 leading-relaxed">
                   ⚡ קצב מהיר — בחלון של 9:00–22:00 זה כ־
-                  <b>{Math.round((13 * 60) / (form.schedule_cron === '*/15 * * * *' ? 15 : 30))
-                    * Math.max(1, Number(form.posts_per_run) || 1)}</b>{' '}
+                  <b>{Math.round((13 * 60) / effectiveMin) * Math.max(1, Number(form.posts_per_run) || 1)}</b>{' '}
                   פוסטים ביום מהקמפיין הזה. כל פוסט צורך קרדיט, וצריך מספיק מוצרים חדשים —
                   מוצר שכבר פורסם לא יחזור.
                 </p>
