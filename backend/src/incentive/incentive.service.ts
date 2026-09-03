@@ -13,6 +13,7 @@ import { Earning } from '../earnings/earning.entity';
 import { AiService } from '../ai/ai.service';
 import { knownPoolKeywords, parsePoolKeywords, POOL_KEYWORDS_SYSTEM, PoolSuggestion } from './pool-keywords';
 import { poolAppliesTo } from './pool-targets';
+import { auditPool, PoolAudit } from './pool-audit';
 
 export interface IncentiveInput {
   name?: string;
@@ -118,6 +119,25 @@ export class IncentiveService {
       this.logger.warn(`pool keyword suggestion failed: ${err?.message}`);
       return { keywords: [], source: 'ai' };
     }
+  }
+
+  /**
+   * Every pool checked against its own name, keyed by pool id.
+   *
+   * Fixing the suggestion button did nothing for pools already filled by the broken one —
+   * those keywords are still in the database and the autopilot is still searching them. This
+   * is how that reaches the screen. Pure computation from the rows: no AI call, no external
+   * request, so it can run on every load of the page.
+   */
+  async audit(userId: string): Promise<Record<string, PoolAudit>> {
+    const rows = await this.repo.find({ where: { user_id: userId } });
+    const out: Record<string, PoolAudit> = {};
+    for (const r of rows) {
+      let keywords: string[] = [];
+      try { keywords = JSON.parse(r.keywords_json || '[]'); } catch { keywords = []; }
+      out[r.id] = auditPool({ name: r.name || '', keywords: Array.isArray(keywords) ? keywords : [] });
+    }
+    return out;
   }
 
   // ── Per-pool performance ──────────────────────────────────────────────────

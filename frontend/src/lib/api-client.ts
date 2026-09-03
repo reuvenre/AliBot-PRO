@@ -370,10 +370,32 @@ export interface IncentivePoolStats {
   bonus_paid_usd: number;
 }
 
+/**
+ * One pool's keywords checked against its own name — see backend pool-audit.ts.
+ *
+ * The point is the pools already in the database: a matcher bug wrote keywords from the
+ * wrong category into them, and fixing the button did nothing for those rows. The autopilot
+ * keeps searching them and the bonus keeps not being paid, silently, until this says so.
+ */
+export interface PoolAudit {
+  /** The category the pool NAME reads as, in Hebrew. null = the name is not recognised. */
+  nameCategory: string | null;
+  /** What the suggestion button would offer for this name now. */
+  suggested: string[];
+  /** Saved keywords that verifiably belong somewhere else, and to which category. */
+  offCategory: Array<{ keyword: string; category: string }>;
+  /** Categories the saved keywords read as — what the pool is actually chasing. */
+  keywordCategories: string[];
+  verdict: 'ok' | 'mismatch' | 'unrecognized';
+}
+
 export const incentiveApi = {
   list: () => http.get<IncentiveProgram[]>('/incentive-programs').then(extract),
   /** Per-pool performance, keyed by program id. */
   stats: () => http.get<Record<string, IncentivePoolStats>>('/incentive-programs/stats').then(extract),
+  /** Each pool's keywords checked against its own name, keyed by program id. Pure
+   *  computation server-side — safe to fetch on every load. */
+  audit: () => http.get<Record<string, PoolAudit>>('/incentive-programs/audit').then(extract),
   /** Keywords for a pool name — the recurring pools answer instantly, else one AI call. */
   suggestKeywords: (name: string) =>
     // `matched` names the category the pool NAME was read as — shown on the screen so a

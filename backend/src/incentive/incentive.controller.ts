@@ -24,6 +24,12 @@ export class IncentiveController {
     return this.svc.stats(this.uid(req));
   }
 
+  /** Every pool checked against its own name — see pool-audit.ts. Pure computation. */
+  @Get('audit')
+  audit(@Req() req: Request) {
+    return this.svc.audit(this.uid(req));
+  }
+
   /** Suggested keywords for a pool name — known pools answer instantly, else one AI call. */
   @Post('suggest-keywords')
   @HttpCode(200)

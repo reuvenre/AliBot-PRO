@@ -6,7 +6,7 @@ import {
   Gift, Loader2, Plus, Power, RefreshCw, Trash2, ExternalLink, AlertTriangle, Wand2,
 } from 'lucide-react';
 import { campaignsApi, incentiveApi, subscriptionApi } from '@/lib/api-client';
-import type { IncentiveProgram, IncentiveInput, IncentivePoolStats } from '@/lib/api-client';
+import type { IncentiveProgram, IncentiveInput, IncentivePoolStats, PoolAudit } from '@/lib/api-client';
 import type { Campaign, PlanId } from '@/types';
 
 /**
@@ -74,16 +74,18 @@ export default function IncentivesPage() {
   const [plan, setPlan] = useState<PlanId>('autopilot');
 
   const [stats, setStats] = useState<Record<string, IncentivePoolStats>>({});
+  const [audit, setAudit] = useState<Record<string, PoolAudit>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, camps, st] = await Promise.all([
+      const [list, camps, st, au] = await Promise.all([
         incentiveApi.list(),
         campaignsApi.list({ limit: 100 }).then((r) => r.data).catch(() => [] as Campaign[]),
         incentiveApi.stats().catch(() => ({} as Record<string, IncentivePoolStats>)),
+        incentiveApi.audit().catch(() => ({} as Record<string, PoolAudit>)),
       ]);
-      setRows(list); setCampaigns(camps); setStats(st); setError('');
+      setRows(list); setCampaigns(camps); setStats(st); setAudit(au); setError('');
     } catch (e: any) {
       setError(e?.response?.data?.message || 'טעינת קמפייני הבונוס נכשלה');
     } finally { setLoading(false); }
@@ -93,6 +95,10 @@ export default function IncentivesPage() {
   useEffect(() => { subscriptionApi.status().then((st) => setPlan(st.plan)).catch(() => {}); }, []);
 
   const liveCount = rows.filter((p) => statusOf(p).label.startsWith('פעיל')).length;
+  // Only a proven mismatch counts toward the banner. An unrecognised NAME is not a fault —
+  // the portal invents names faster than any table can follow — and counting it here would
+  // turn the banner into background noise the owner learns to scroll past.
+  const flagged = rows.filter((p) => audit[p.id]?.verdict === 'mismatch').length;
 
   return (
     <div className="max-w-3xl">
@@ -157,9 +163,24 @@ export default function IncentivesPage() {
           {liveCount > 0 && (
             <p className="text-xs text-emerald-300/80 mb-3">{liveCount} קמפייני בונוס פעילים כרגע ומשפיעים על הטייסים.</p>
           )}
+          {/* One line for "check all my pools". A pool filled by the old matcher looks
+              perfectly healthy on its card — same green badge, same window — while the
+              autopilot searches a category the bonus is not paid on. This is the only place
+              that difference is visible. */}
+          {flagged > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5 mb-3">
+              <p className="text-xs text-white/70 leading-relaxed">
+                <AlertTriangle size={13} className="inline align-[-2px] text-amber-300 me-1.5" />
+                <b className="text-amber-300">{flagged} {flagged === 1 ? 'פול דורש' : 'פולים דורשים'} בדיקה</b> —
+                המילים ששמורות בהם נראות מקטגוריה אחרת מהשם. זה נוצר על ידי באג שתוקן:
+                לחץ <b>ערוך</b> ואז <b>&quot;הצע לי מילים&quot;</b> כדי לקבל את המילים הנכונות.
+              </p>
+            </div>
+          )}
           <div className="space-y-3">
             {rows.map((p) => (
-              <ProgramCard key={p.id} program={p} campaigns={campaigns} stats={stats[p.id]} onChanged={load} />
+              <ProgramCard key={p.id} program={p} campaigns={campaigns}
+                stats={stats[p.id]} audit={audit[p.id]} onChanged={load} />
             ))}
           </div>
         </>
@@ -173,8 +194,9 @@ export default function IncentivesPage() {
   );
 }
 
-function ProgramCard({ program, campaigns, stats, onChanged }: {
-  program: IncentiveProgram; campaigns: Campaign[]; stats?: IncentivePoolStats; onChanged: () => void;
+function ProgramCard({ program, campaigns, stats, audit, onChanged }: {
+  program: IncentiveProgram; campaigns: Campaign[]; stats?: IncentivePoolStats;
+  audit?: PoolAudit; onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -190,6 +212,9 @@ function ProgramCard({ program, campaigns, stats, onChanged }: {
   const targetNames = steersAll
     ? 'כל הטייסים'
     : targetIds.map((id) => campaigns.find((c) => c.id === id)?.name || id).join(', ');
+  /** keyword → the category it actually belongs to, for the flagged ones only. */
+  const offByKeyword: Record<string, string> = {};
+  for (const o of audit?.offCategory || []) offByKeyword[o.keyword.trim().toLowerCase()] = o.category;
 
   const toggle = async () => {
     setBusy(true);
@@ -260,10 +285,49 @@ function ProgramCard({ program, campaigns, stats, onChanged }: {
           )}
           {keywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {keywords.map((k) => (
-                <span key={k} dir="ltr" className="text-2xs bg-white/5 border border-edge rounded-full px-2 py-0.5 text-white/60">{k}</span>
-              ))}
+              {keywords.map((k) => {
+                // A keyword proven to belong elsewhere is marked ON the chip. The banner
+                // says how many pools are affected; this says WHICH WORD to delete, which
+                // is the only part the owner can act on.
+                const off = offByKeyword[k.trim().toLowerCase()];
+                return (
+                  <span key={k} dir="ltr" title={off ? `שייך ל: ${off}` : undefined}
+                    className={`text-2xs rounded-full px-2 py-0.5 border ${off
+                      ? 'bg-red-500/15 border-red-400/40 text-red-200 line-through decoration-red-400/60'
+                      : 'bg-white/5 border-edge text-white/60'}`}>
+                    {k}
+                  </span>
+                );
+              })}
             </div>
+          )}
+
+          {/* The check itself. Three states, and only one of them is a problem. */}
+          {audit?.verdict === 'mismatch' && (
+            <div className="mt-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
+              <p className="text-2xs text-amber-200 leading-relaxed">
+                ⚠️ השם נקרא כ־<b>{audit.nameCategory}</b>, אבל{' '}
+                {audit.offCategory.length === 1 ? 'מילה אחת שמורה כאן שייכת' : `${audit.offCategory.length} מילים שמורות כאן שייכות`}{' '}
+                לקטגוריה אחרת ({Array.from(new Set(audit.offCategory.map((o) => o.category))).join(', ')}).
+                המוצרים שיפורסמו מהן לא מזכים בבונוס של הפול הזה.
+              </p>
+              <button type="button" onClick={() => setEditing(true)}
+                className="mt-1.5 text-2xs font-semibold text-amber-300 hover:text-amber-200 underline">
+                תקן — ערוך והצע לי מילים מחדש
+              </button>
+            </div>
+          )}
+          {audit?.verdict === 'ok' && audit.nameCategory && (
+            <p className="text-2xs text-emerald-300/70 mt-2">✓ זוהה כ־{audit.nameCategory} — המילים תואמות</p>
+          )}
+          {audit?.verdict === 'unrecognized' && (
+            <p className="text-2xs text-white/35 mt-2">
+              השם לא זוהה בטבלה — לא נבדק אוטומטית
+              {audit.keywordCategories.length > 0 && (
+                <>. המילים שאצלך נקראות כ־<b className="text-white/55">{audit.keywordCategories.join(', ')}</b> —
+                  ודא שזו הקטגוריה שבפורטל</>
+              )}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">

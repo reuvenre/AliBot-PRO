@@ -168,6 +168,26 @@ function fragmentRe(fragment: string): RegExp {
   return new RegExp(`\\b${body}(?:e?s)?\\b`, 'i');
 }
 
+/**
+ * keyword → the labels whose list contains it. Built once from the table above.
+ *
+ * Read by pool-audit.ts to answer "which category does this saved keyword belong to". A
+ * keyword in two lists ("jewelry organizer" is both beauty and jewellery) stays ambiguous
+ * there rather than being resolved arbitrarily.
+ */
+export const KNOWN_POOL_KEYWORD_INDEX: ReadonlyMap<string, string[]> = (() => {
+  const index = new Map<string, string[]>();
+  for (const pool of KNOWN_POOLS) {
+    for (const k of pool.keywords) {
+      const key = k.trim().toLowerCase();
+      const labels = index.get(key);
+      if (labels) { if (!labels.includes(pool.label)) labels.push(pool.label); }
+      else index.set(key, [pool.label]);
+    }
+  }
+  return index;
+})();
+
 /** Compiled once — this runs on every suggestion click. */
 const COMPILED: Array<{ pool: KnownPool; res: Array<{ re: RegExp; len: number }> }> =
   KNOWN_POOLS.map((pool) => ({
