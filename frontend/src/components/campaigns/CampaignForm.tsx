@@ -51,7 +51,16 @@ const RECOMMENDED_WINDOWS: Record<string, { start: number; end: number; why: str
   'Europe/London':       { start: 15, end: 23, why: 'אחה״צ־ערב בבריטניה' },
 };
 
+/** Frequencies faster than hourly. Split out because they need a warning next to them:
+ *  a campaign at this cadence queues 4–2 runs an hour, and every post costs a credit. */
+const SUB_HOURLY_CRONS = new Set(['*/15 * * * *', '*/30 * * * *']);
+
 const CRON_PRESETS = [
+  // Quarter- and half-hourly. The runner schedules a run's posts from NOW (spaced 15 min),
+  // clamped into the send window — it is not re-paced by the account's queue interval — so
+  // these cadences really do publish every 15/30 minutes, not just fill the queue faster.
+  { label: 'כל רבע שעה',     value: '*/15 * * * *' },
+  { label: 'כל חצי שעה',     value: '*/30 * * * *' },
   { label: 'כל שעה',         value: '0 * * * *' },
   // The step between hourly and 3-hourly was missing, and it is the one a Pinterest
   // campaign wants: the board grows on pin VOLUME spread through the day, while hourly
@@ -500,6 +509,19 @@ export function CampaignForm({
               <p className="text-2xs text-white/30 mt-2">
                 כל הרצה מכניסה פוסטים לתור; הם מתפרסמים לפי חלון התזמון בהגדרות.
               </p>
+              {/* A quarter-hourly campaign is a legitimate choice — but it multiplies both the
+                  credit burn and the demand for FRESH products (the user-wide dedup skips
+                  anything already published), so the owner should see the daily number BEFORE
+                  saving, not on the invoice. */}
+              {SUB_HOURLY_CRONS.has(form.schedule_cron) && (
+                <p className="text-2xs text-amber-400/80 mt-1.5 leading-relaxed">
+                  ⚡ קצב מהיר — בחלון של 9:00–22:00 זה כ־
+                  <b>{Math.round((13 * 60) / (form.schedule_cron === '*/15 * * * *' ? 15 : 30))
+                    * Math.max(1, Number(form.posts_per_run) || 1)}</b>{' '}
+                  פוסטים ביום מהקמפיין הזה. כל פוסט צורך קרדיט, וצריך מספיק מוצרים חדשים —
+                  מוצר שכבר פורסם לא יחזור.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

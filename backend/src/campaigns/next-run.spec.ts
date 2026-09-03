@@ -25,6 +25,19 @@ describe('nextRunAt', () => {
     expect(nextRunAt('* * * * *')).toBeInstanceOf(Date);
   });
 
+  // The quarter- and half-hourly presets the campaign form offers. They are the only
+  // frequencies whose fire lands mid-hour, and the whole cycle logic (stacking, spacing,
+  // nextPublishAt) keys off this function — so the expressions those buttons send are
+  // pinned here rather than trusted to read correctly.
+  it('reads the sub-hourly frequencies the form offers', () => {
+    const from = new Date('2026-08-01T10:07:00Z');
+    expect(nextRunAt('*/15 * * * *', from)?.toISOString()).toBe('2026-08-01T10:15:00.000Z');
+    expect(nextRunAt('*/30 * * * *', from)?.toISOString()).toBe('2026-08-01T10:30:00.000Z');
+    // And from a fire minute they step to the NEXT one, never return the same moment.
+    expect(nextRunAt('*/15 * * * *', new Date('2026-08-01T10:15:00Z'))?.toISOString())
+      .toBe('2026-08-01T10:30:00.000Z');
+  });
+
   it('returns a future Date when given no starting point', () => {
     const next = nextRunAt('0 9 * * *');
     expect(next).toBeInstanceOf(Date);
