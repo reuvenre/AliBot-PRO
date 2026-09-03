@@ -376,7 +376,9 @@ export const incentiveApi = {
   stats: () => http.get<Record<string, IncentivePoolStats>>('/incentive-programs/stats').then(extract),
   /** Keywords for a pool name — the recurring pools answer instantly, else one AI call. */
   suggestKeywords: (name: string) =>
-    http.post<{ keywords: string[]; source: 'known' | 'ai' }>(
+    // `matched` names the category the pool NAME was read as — shown on the screen so a
+    // mis-recognition is visible before the autopilot spends a month searching it.
+    http.post<{ keywords: string[]; source: 'known' | 'ai'; matched?: string }>(
       '/incentive-programs/suggest-keywords', { name }, { timeout: AI_TIMEOUT },
     ).then(extract),
   create: (data: IncentiveInput) =>

@@ -311,7 +311,13 @@ function ProgramModal({ program, campaigns, onClose, onSaved }: {
       const r = await incentiveApi.suggestKeywords(name.trim());
       if (!r.keywords.length) { setSuggestNote('לא הצלחתי להציע — כתוב מילים ידנית'); return; }
       setKeywords(r.keywords.join(', '));
-      setSuggestNote(r.source === 'known' ? 'הוצע לפי הפול המוכר ✓' : 'הוצע על ידי ה-AI ✓');
+      // Name the category that was recognised, never just "✓". A suggestion typed into the
+      // field looks authoritative, and if the name was read as the wrong category the
+      // autopilot searches it for a month and the pool's bonus is never earned. Seeing
+      // "זוהה כ־חיות מחמד" on a textiles pool is how that gets caught in two seconds.
+      setSuggestNote(r.matched
+        ? `זוהה כ־${r.matched} — ודא שזו הקטגוריה שבפורטל, ותקן אם לא`
+        : 'הוצע על ידי ה-AI — ודא שהמילים תואמות לקטגוריה שבפורטל');
     } catch (e: any) {
       setSuggestNote(e?.response?.data?.message || 'ההצעה נכשלה');
     } finally { setSuggesting(false); }

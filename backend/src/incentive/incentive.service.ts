@@ -101,7 +101,9 @@ export class IncentiveService {
    */
   async suggestKeywords(userId: string, name: string): Promise<PoolSuggestion> {
     const known = knownPoolKeywords(name);
-    if (known) return { keywords: known, source: 'known' };
+    // `matched` travels to the screen: a table hit reads as authoritative, and the way a
+    // mis-recognition gets caught is by the owner seeing WHAT was recognised.
+    if (known) return { keywords: known.keywords, source: 'known', matched: known.label };
     try {
       const creds = await this.credentials.getRaw(userId);
       if (!creds || !this.ai.hasAnyKey(creds)) return { keywords: [], source: 'ai' };
