@@ -21,7 +21,7 @@ import { soloCampaignSlot } from './solo-campaign-slot';
 import { manualQueueTurn } from './queue-fairness';
 import { publishTimeoutVerdict } from './ig-container-status';
 import { bonusCopyHint } from './bonus-copy';
-import { FLYLINK_TRUST_MARK, flylinkTrustBlock, isFlylinkPost, PostPlatform } from './flylink-trust';
+import { flylinkTrustBlock, hasFlylinkTrustBlock, isFlylinkPost, PostPlatform } from './flylink-trust';
 import { BRAND_PLUS_MARK, brandPlusLine } from './brand-plus';
 import { mergeDeliveredChannels } from './delivered-channels';
 import { cronTypicalIntervalMin } from '../watchdog/cron-interval';
@@ -3683,7 +3683,10 @@ export class PostsService {
     // send time so verbatim re-posts and already-queued posts get it too. Mirrors the
     // coupon rule above: source inferred from the link. The block's replica line rides
     // along on the owner's own group channels only (see flylink-trust.ts).
-    if (isFlylinkPost(post.affiliate_url) && !body.includes(FLYLINK_TRUST_MARK)) {
+    // hasFlylinkTrustBlock, not a single-mark check: the opening line IS the "already has
+    // one" test, so a reworded block would stack a second trailer onto every post carrying
+    // the previous wording.
+    if (isFlylinkPost(post.affiliate_url) && !hasFlylinkTrustBlock(body)) {
       body = `${body}\n\n${flylinkTrustBlock(platform)}`;
     }
 

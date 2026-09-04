@@ -24,7 +24,22 @@ export function isFlylinkPost(affiliateUrl: string | null | undefined): boolean 
 }
 
 /** First line doubles as the dedup marker in buildPostBody — keep it stable. */
-export const FLYLINK_TRUST_MARK = '📸 מהמפעל ישירות לצרכן';
+export const FLYLINK_TRUST_MARK = '✅ מה שבתמונה = מה שבקופסה';
+
+/**
+ * Marks earlier versions of this block used to open with.
+ *
+ * The first line IS the "already has a trailer" test, so changing it silently breaks that
+ * test for every post carrying the old one — a verbatim re-post would be handed a second
+ * trailer stacked on the first. Retiring a mark means keeping it here, never deleting it.
+ */
+export const FLYLINK_LEGACY_MARKS = ['📸 מהמפעל ישירות לצרכן'] as const;
+
+/** Does this body already carry a trust trailer, in any version? */
+export function hasFlylinkTrustBlock(body: string): boolean {
+  const text = String(body || '');
+  return text.includes(FLYLINK_TRUST_MARK) || FLYLINK_LEGACY_MARKS.some((m) => text.includes(m));
+}
 
 /** Where a post is going. Decides whether the replica line rides along. */
 export type PostPlatform = 'telegram' | 'whatsapp' | 'facebook' | 'instagram' | 'pinterest';
@@ -50,14 +65,28 @@ export function showsReplicaLine(platform?: PostPlatform): boolean {
   return !!platform && REPLICA_PLATFORMS.has(platform);
 }
 
-/** The owner's wording (19.08) — questions go to DM. */
+/**
+ * The trailer, written as an EXPECTATION CONTRACT.
+ *
+ * The previous version opened with "מהמפעל ישירות לצרכן — מה שרואים בתמונות זה מה שמגיע",
+ * which is the sentence every dropshipper writes and therefore proves nothing. This one
+ * states the deal in the buyer's own terms and then says why the photo can be trusted:
+ * these are the warehouse shots OF THIS ITEM, not catalogue renders. That second line is
+ * the whole asset — it is unusual, it is true, and it is the reason the first line is not
+ * just a slogan.
+ *
+ * "צילומי המחסן של הפריט הזה" is as far as the claim goes on purpose. Not "לא מהיצרן"
+ * (the warehouse may well be the manufacturer's), not a count of photos (a post can carry
+ * one), not a delivery estimate. Every line here has to survive a buyer quoting it back.
+ */
 export function flylinkTrustBlock(platform?: PostPlatform): string {
   return [
-    `${FLYLINK_TRUST_MARK} — מה שרואים בתמונות זה מה שמגיע`,
+    `${FLYLINK_TRUST_MARK} — אותו פריט, אותו צבע, אותם פרטים`,
+    '📸 אלה צילומי המחסן של הפריט הזה, לא תמונות קטלוג',
     // Right after the photo promise and before logistics: this is where a buyer decides
     // what he is actually buying.
     ...(showsReplicaLine(platform) ? [FLYLINK_REPLICA_LINE] : []),
-    '📦 קבלת מספר מעקב ישירות למייל ומשלוח מהיר',
-    '💬 מתלבטים? שלחו הודעה לפרטי לפני ההזמנה ונסייע בשמחה',
+    '📦 מספר מעקב ישירות למייל · משלוח מהיר',
+    '💬 שאלה לפני ההזמנה? שלחו הודעה לפרטי ונענה בשמחה',
   ].join('\n');
 }
