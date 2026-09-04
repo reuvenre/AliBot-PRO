@@ -80,6 +80,32 @@ const UUID_RE = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
  *  plain sendMessage allows 4096; over this we split image + text into two messages. */
 const TG_CAPTION_LIMIT = 1024;
 
+/**
+ * What a campaign searches on ONE run, and how many posts that run gets.
+ *
+ * Both runners — the plain one and the agents one — read this, so the seasonal calendar and
+ * the bonus pools reach a campaign the same way whichever path it takes.
+ */
+export interface CampaignKeywordPlan {
+  /** Own keywords plus the seasonal and bonus terms in force, before pauses. */
+  kwList: string[];
+  /** The same list minus keywords the manager paused for 24h. */
+  kwEffective: string[];
+  /** kwEffective repeated by weight and spread across the cycle. */
+  rotationList: string[];
+  /** Where in the rotation this run starts. */
+  baseCursor: number;
+  /** Posts this run — the owner's number, plus the seasonal window's extra one. */
+  perPost: number;
+  /** One keyword per post slot. */
+  slotKeywords: string[];
+  distinctKeywords: string[];
+  /** One line of season context for the copywriter, or null outside every window. */
+  seasonHint: string | null;
+  /** Lowercased bonus-pool keywords — the per-post copy angle keys off this. */
+  bonusKeywordSet: Set<string>;
+}
+
 /** Outcome of one campaign cycle — reported to the user instead of a blind "queued". */
 export interface CampaignRunResult {
   /** Posts added to the auto-send queue (they publish per the schedule, not immediately). */
@@ -2525,19 +2551,21 @@ export class PostsService {
     return out;
   }
 
-  async runCampaign(campaign: Campaign, userId: string, opts?: { fromScheduler?: boolean }): Promise<CampaignRunResult> {
-    const creds = await this.credentials.getRaw(userId);
-    if (!creds) throw new BadRequestException('חסרים פרטי חיבור — הגדר אותם במסך ההגדרות');
-
-    // Skip scheduled runs outside the send window so overnight runs don't pile up at open.
-    if (opts?.fromScheduler && !(await this.isCampaignWindowOpen(userId, campaign, creds))) {
-      return { queued: 0, failed: 0, keyword: '', searched: '', errors: ['מחוץ לחלון הפרסום — דילוג'] };
-    }
-
-    // Campaign currency override: an English/US-audience campaign prices in USD (identity
-    // pair → rate 1) while the account default stays ILS. Fallback = account currency.
-    const currencyPair = campaign.currency_pair?.trim() || creds.currency_pair || 'USD_ILS';
-    const rate = await this.rates.getRate(currencyPair);
+  /**
+   * WHICH KEYWORDS THIS CAMPAIGN SEARCHES ON THIS RUN, and how many posts it gets.
+   *
+   * Extracted so BOTH runners share one definition. The agents path (use_agents → the
+   * OrchestratorAgent) used to hand `campaign.keywords` straight to the ProductAgent, which
+   * meant the 🗓️ seasonal toggle and every registered bonus pool silently did nothing there
+   * — the owner set them, saw no holiday products, and there was nothing on screen to say
+   * why. Two runners deciding the same question separately is how that happens; one
+   * function is how it stops.
+   *
+   * Advances the campaign's keyword cursor as a side effect: one call per run.
+   */
+  async campaignKeywordPlan(
+    campaign: Campaign, userId: string, creds: DecryptedCredentials,
+  ): Promise<CampaignKeywordPlan> {
     // Round-robin PER POST: each post this run takes the NEXT keyword, so a 2-post run
     // covers 2 different search families instead of doubling down on one. Pins from a
     // single keyword published minutes apart just compete with each other in the same
@@ -2636,6 +2664,31 @@ export class PostsService {
     const slotKeywords: string[] = [];
     for (let i = 0; i < perPost; i++) slotKeywords.push(rotationList[(baseCursor + i) % rotationList.length]);
     const distinctKeywords = Array.from(new Set(slotKeywords));
+
+    return {
+      kwList, kwEffective, rotationList, baseCursor, perPost,
+      slotKeywords, distinctKeywords, seasonHint, bonusKeywordSet,
+    };
+  }
+
+  async runCampaign(campaign: Campaign, userId: string, opts?: { fromScheduler?: boolean }): Promise<CampaignRunResult> {
+    const creds = await this.credentials.getRaw(userId);
+    if (!creds) throw new BadRequestException('חסרים פרטי חיבור — הגדר אותם במסך ההגדרות');
+
+    // Skip scheduled runs outside the send window so overnight runs don't pile up at open.
+    if (opts?.fromScheduler && !(await this.isCampaignWindowOpen(userId, campaign, creds))) {
+      return { queued: 0, failed: 0, keyword: '', searched: '', errors: ['מחוץ לחלון הפרסום — דילוג'] };
+    }
+
+    // Campaign currency override: an English/US-audience campaign prices in USD (identity
+    // pair → rate 1) while the account default stays ILS. Fallback = account currency.
+    const currencyPair = campaign.currency_pair?.trim() || creds.currency_pair || 'USD_ILS';
+    const rate = await this.rates.getRate(currencyPair);
+
+    const {
+      kwList, kwEffective, baseCursor, perPost,
+      slotKeywords, distinctKeywords, seasonHint, bonusKeywordSet,
+    } = await this.campaignKeywordPlan(campaign, userId, creds);
 
     // Products this campaign already posted — from the DURABLE de-dup table (survives
     // post deletion; the old posts-table query lost history whenever posts were deleted,

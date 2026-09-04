@@ -61,6 +61,18 @@ export class OrchestratorAgent {
       const currencySymbol = CURRENCY_SYMBOLS[targetCurrency] || '₪';
       const rate = await this.rates.getRate(currencyPair);
 
+      // WHICH keywords this run searches, decided by the SAME function the plain runner
+      // uses. It used to be `campaign.keywords` verbatim, and that one word is why the 🗓️
+      // seasonal toggle and every registered bonus pool did nothing on an agents campaign:
+      // the owner turned them on, watched ordinary products keep coming, and no screen
+      // could explain it. The plan also carries the season line for the copywriter and the
+      // window's extra post.
+      const plan = await this.posts.campaignKeywordPlan(campaign, userId, creds);
+      if (plan.seasonHint || plan.kwList.length > campaign.keywords.length) {
+        this.logger.log(`[Orchestrator] campaign ${campaign.id}: searching ${plan.distinctKeywords.join(', ')}`
+          + ` (own ${campaign.keywords.length} → ${plan.kwList.length} with seasonal/bonus)`);
+      }
+
       // 1. Product Agent — find best products, steered by the account's PROVEN price band
       // (what its buyers actually pay, from real orders; null on thin accounts).
       const soldBand = await this.posts.soldPriceBandFor(userId).catch(() => null);
@@ -68,14 +80,17 @@ export class OrchestratorAgent {
         + (soldBand ? ` (sales profile: $${soldBand.low}–$${soldBand.high})` : ''));
       const { products, tokens: productTokens } = await this.productAgent.findBestProducts(
         userId,
-        campaign.keywords,
+        // This run's slot keywords, not the raw campaign list: the agent searches only the
+        // first few it is given, so handing it the full list would bury a seasonal term at
+        // the bottom and search for it never. These ARE the ones the rotation chose.
+        plan.distinctKeywords,
         {
           category_id: campaign.category_id,
           min_price: campaign.min_price,
           max_price: campaign.max_price,
           min_discount: campaign.min_discount,
         },
-        campaign.posts_per_run,
+        plan.perPost,
         soldBand,
       );
       totalTokens += productTokens;
@@ -94,6 +109,7 @@ export class OrchestratorAgent {
             currencySymbol,
             campaign.post_template,
             creds,
+            plan.seasonHint,
           );
           totalTokens += contentTokens;
 

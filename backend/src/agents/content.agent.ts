@@ -43,6 +43,11 @@ export class ContentAgent {
     currencySymbol: string,
     template?: string,
     creds?: DecryptedCredentials | null,
+    /** One line of commercial-calendar context ("it is the Tishrei holiday season…"),
+     *  or null outside every window. Appended to the system prompt exactly as the plain
+     *  runner does it — the agents path used to receive nothing, so an agents campaign
+     *  wrote holiday-blind copy all through the holidays. */
+    seasonHint?: string | null,
   ): Promise<GeneratedContent> {
     const tools: Anthropic.Tool[] = [
       {
@@ -65,7 +70,10 @@ export class ContentAgent {
       ? `${(product.orders_count / 1000).toFixed(1)}K+`
       : `${product.orders_count}`;
 
-    const systemPrompt = buildSystemPrompt(language, template);
+    let systemPrompt = buildSystemPrompt(language, template);
+    // Same placement the plain runner uses, so a product published through either path
+    // reads the same during a holiday window.
+    if (seasonHint) systemPrompt += `\n\n${seasonHint}`;
 
     const productBrief = `Product details:
 - Name: ${product.title}
