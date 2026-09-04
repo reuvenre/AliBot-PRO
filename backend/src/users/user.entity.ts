@@ -65,8 +65,17 @@ export class User {
 
   /** Current credit balance; refilled to the plan's monthly amount each cycle.
    *  Default matches the Free plan's monthly_credits. */
-  @Column({ type: 'int', default: 100 })
+  @Column({ type: 'int', default: 450 })
   credits_remaining: number;
+
+  /**
+   * While this is in the future, FEATURE gates are checked at the trial tier instead of the
+   * user's own plan (see effectivePlan in plans.const.ts). Credits and group count are NOT
+   * affected, so nothing has to be taken away when it lapses — the gates just close again.
+   * Null on accounts that predate the trial, which is simply "no trial".
+   */
+  @Column({ nullable: true, type: 'timestamp' })
+  trial_ends_at: Date | null;
 
   /** When the next monthly credit refill happens (lazy — applied on first use after). */
   @Column({ nullable: true, type: 'timestamp' })

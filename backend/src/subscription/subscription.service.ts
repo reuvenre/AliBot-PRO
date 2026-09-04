@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import {
   BillingCycle, CREDIT_COSTS, CREDIT_PACKS, FEATURE_MIN_PLAN, FeatureKey, PLANS, PlanId,
-  WHATSAPP_CONNECTIONS, planAllows, planOf,
+  TRIAL_DAYS, WHATSAPP_CONNECTIONS, effectivePlan, planAllows, planOf, trialDaysLeft,
 } from './plans.const';
 import { MailService } from '../mail/mail.service';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -45,6 +45,17 @@ export interface SubscriptionStatus {
   renews_at: string | null;
   /** Admin accounts never consume credits — the UI shows ∞ instead of a balance. */
   unlimited: boolean;
+  /**
+   * The tier FEATURES are actually checked against right now — the user's plan, or the
+   * trial tier while a trial runs. `plan` above stays the real one on purpose: the pricing
+   * screen must show what the account is subscribed to, not what it is borrowing.
+   */
+  effective_plan: PlanId;
+  /** Whole days left in the trial; 0 when none is running. */
+  trial_days_left: number;
+  trial_ends_at: string | null;
+  /** How long a trial lasts, so the UI never hardcodes the number. */
+  trial_days: number;
 }
 
 /**
@@ -164,6 +175,10 @@ export class SubscriptionService {
       max_groups: plan.max_groups,
       renews_at: user.plan_renews_at ? new Date(user.plan_renews_at).toISOString() : null,
       unlimited: user.role === 'admin',
+      effective_plan: effectivePlan(user.subscription_plan, user.trial_ends_at),
+      trial_days_left: trialDaysLeft(user.trial_ends_at),
+      trial_ends_at: user.trial_ends_at ? new Date(user.trial_ends_at).toISOString() : null,
+      trial_days: TRIAL_DAYS,
     };
   }
 
@@ -213,7 +228,8 @@ export class SubscriptionService {
     }
     if (!user) return true; // genuinely-absent user: preserve internal/system-flow contract
     if (user.role === 'admin') return true;
-    return planAllows(user.subscription_plan, feature);
+    // A running trial opens every gate up to the trial tier — see effectivePlan.
+    return planAllows(effectivePlan(user.subscription_plan, user.trial_ends_at), feature);
   }
 
   /** Throw the standard Hebrew upgrade message when the plan lacks a feature. */
@@ -239,7 +255,8 @@ export class SubscriptionService {
     const all = ['telegram', 'facebook', 'instagram', 'pinterest', 'whatsapp'];
     const user = await this.users.findOne({ where: { id: userId } }).catch(() => null);
     if (!user) return new Set(all);
-    return new Set(all.filter((p) => planAllows(user.subscription_plan, `platform_${p}` as FeatureKey)));
+    const tier = effectivePlan(user.subscription_plan, user.trial_ends_at);
+    return new Set(all.filter((p) => planAllows(tier, `platform_${p}` as FeatureKey)));
   }
 
   /**

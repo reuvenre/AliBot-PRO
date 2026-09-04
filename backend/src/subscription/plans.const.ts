@@ -26,10 +26,18 @@ export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: 'free', name: 'חינם',
     price_monthly: 0, price_annual: 0,
-    // A genuine free tier: try the product on Telegram with AliExpress, capped low so it
-    // converts to paid. Tune the numbers as needed — this is the "no paid tier for free"
-    // fix, not a final pricing decision.
-    monthly_credits: 100, max_groups: 1, popular: false,
+    /**
+     * 450 credits ≈ ONE POST A DAY for a month (a post costs 15: 5 to write, 10 to publish).
+     *
+     * It was 100 — about six posts, total. This product's value is what happens over TIME:
+     * the autopilot runs unattended, the rotation learns, clicks accumulate. None of that
+     * is visible in six posts, and at a small group's click rate a free user was likely to
+     * see ZERO clicks before deciding the thing does not work. A daily post for a month
+     * crosses that threshold, which is the only job this tier has.
+     *
+     * Still one group, still Telegram + AliExpress only: the ceiling is what converts.
+     */
+    monthly_credits: 450, max_groups: 1, popular: false,
   },
   starter: {
     id: 'starter', name: 'Starter',
@@ -57,6 +65,59 @@ export const DEFAULT_PLAN: PlanId = 'free';
 
 /** Ordered tiers for "plan X and above" checks. */
 export const PLAN_ORDER: PlanId[] = ['free', 'starter', 'growth', 'autopilot', 'scale'];
+
+// ── Free trial ────────────────────────────────────────────────────────────────
+/**
+ * Every new account opens every FEATURE gate for two weeks.
+ *
+ * The reason it unlocks features and not credits: what is impressive here — the agents,
+ * the nightly optimizer, the seasonal calendar, publishing to five platforms at once — all
+ * sits at Autopilot. A free user on Telegram alone never feels any of it, so however many
+ * posts you give them, the expensive tiers stay abstract. Volume is what a subscription
+ * buys; INTELLIGENCE is what a trial has to demonstrate.
+ *
+ * Deliberately NOT extended to credits or group count. The trial account keeps the free
+ * tier's 450 credits and its single group, which means nothing has to be taken away when
+ * the trial ends: no orphaned channels, no balance to claw back, no cleanup job. The gates
+ * simply close again, and the user has by then seen exactly what closing them costs.
+ */
+export const TRIAL_DAYS = 14;
+/** The tier a trial gates at. */
+export const TRIAL_PLAN: PlanId = 'autopilot';
+
+/** When a trial started now would end. */
+export function trialEndsAt(from: Date = new Date()): Date {
+  return new Date(from.getTime() + TRIAL_DAYS * 24 * 3600_000);
+}
+
+/**
+ * The tier to CHECK FEATURES against: the user's own plan, or the trial tier while a trial
+ * is running — whichever is higher.
+ *
+ * "Whichever is higher" matters: a Scale customer inside their first two weeks must not be
+ * demoted to Autopilot by their own trial.
+ */
+export function effectivePlan(
+  plan: string | null | undefined, trial_ends_at: Date | string | null | undefined,
+  now: Date = new Date(),
+): PlanId {
+  const own = planOf(plan).id;
+  if (!trial_ends_at) return own;
+  const ends = new Date(trial_ends_at).getTime();
+  if (!Number.isFinite(ends) || ends <= now.getTime()) return own;
+  return PLAN_ORDER.indexOf(TRIAL_PLAN) > PLAN_ORDER.indexOf(own) ? TRIAL_PLAN : own;
+}
+
+/** Whole days left in a running trial; 0 when none is running. Rounded UP, because a
+ *  banner saying "0 ימים" on the last afternoon reads as already expired. */
+export function trialDaysLeft(
+  trial_ends_at: Date | string | null | undefined, now: Date = new Date(),
+): number {
+  if (!trial_ends_at) return 0;
+  const ms = new Date(trial_ends_at).getTime() - now.getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  return Math.ceil(ms / (24 * 3600_000));
+}
 
 /**
  * Feature gating — the MINIMAL plan tier each feature unlocks at. This is the single
@@ -132,7 +193,8 @@ export const WHATSAPP_CONNECTIONS: Record<PlanId, number> = {
   free: 0, starter: 0, growth: 1, autopilot: 2, scale: 3,
 };
 
-/** True when `plan` is at or above the feature's minimal tier. */
+/** True when `plan` is at or above the feature's minimal tier. Callers that must honour a
+ *  running trial pass `effectivePlan(...)` in, rather than the stored plan. */
 export function planAllows(plan: string | null | undefined, feature: FeatureKey): boolean {
   const tier = PLAN_ORDER.indexOf(planOf(plan).id);
   const need = PLAN_ORDER.indexOf(FEATURE_MIN_PLAN[feature] as PlanId);

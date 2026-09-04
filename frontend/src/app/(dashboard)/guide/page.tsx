@@ -14,8 +14,12 @@ import type { PlanId } from '@/types';
  * current truth (unlike a PDF that ages the moment it's sent).
  */
 
-const PLAN_ORDER: Record<PlanId, number> = { starter: 0, growth: 1, autopilot: 2, scale: 3 };
-const PLAN_NAME: Record<PlanId, string> = { starter: 'Starter', growth: 'Growth', autopilot: 'Autopilot', scale: 'Scale' };
+// 'free' sits below Starter. It was missing entirely, which meant a free account fell back
+// to the default and was shown the Starter guide — sections it does not have.
+const PLAN_ORDER: Record<PlanId, number> = { free: 0, starter: 1, growth: 2, autopilot: 3, scale: 4 };
+const PLAN_NAME: Record<PlanId, string> = {
+  free: 'חינם', starter: 'Starter', growth: 'Growth', autopilot: 'Autopilot', scale: 'Scale',
+};
 
 interface GuideSection {
   id: string;
@@ -38,7 +42,7 @@ const B = ({ children }: { children: React.ReactNode }) => <b className="text-wh
 
 const SECTIONS: GuideSection[] = [
   {
-    id: 'quickstart', emoji: '🚀', title: 'התחלה מהירה — 5 צעדים ראשונים', minPlan: 'starter',
+    id: 'quickstart', emoji: '🚀', title: 'התחלה מהירה — 5 צעדים ראשונים', minPlan: 'free',
     body: (
       <>
         <P>ככה מגיעים מפוסט ראשון לפרסום אוטומטי מלא:</P>
@@ -53,7 +57,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'credits', emoji: '💳', title: 'קרדיטים — מה עולה כמה', minPlan: 'starter',
+    id: 'credits', emoji: '💳', title: 'קרדיטים — מה עולה כמה', minPlan: 'free',
     body: (
       <>
         <P>כל תוכנית מתחדשת מדי חודש עם מכסת קרדיטים. שתי פעולות צורכות קרדיטים:</P>
@@ -66,7 +70,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'autopilot', emoji: '✈️', title: 'הטייס האוטומטי — לב המערכת', minPlan: 'starter',
+    id: 'autopilot', emoji: '✈️', title: 'הטייס האוטומטי — לב המערכת', minPlan: 'free',
     body: (
       <>
         <P>טייס = קמפיין שרץ לבד: מחפש מוצרים, כותב פוסטים ומפרסם — לפי ההגדרות שלך.</P>
@@ -84,7 +88,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'scheduling', emoji: '🕐', title: 'תזמון וחלון שליחה', minPlan: 'starter',
+    id: 'scheduling', emoji: '🕐', title: 'תזמון וחלון שליחה', minPlan: 'free',
     body: (
       <>
         <P>בהגדרות ← תזמון קובעים את <B>חלון השליחה</B> (ברירת מחדל 9:00–22:00 שעון ישראל) ואת <B>הקצב</B> — כמה זמן מינימום בין פוסט לפוסט בכל קבוצה. פוסטים שנוצרים בלילה מחכים לפתיחת החלון; שתי קמפיינים לאותה קבוצה לעולם לא יתנגשו — המערכת מרווחת אותם אוטומטית.</P>
@@ -93,7 +97,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'links', emoji: '🔗', title: 'לינקים חכמים ומעקב קליקים', minPlan: 'starter',
+    id: 'links', emoji: '🔗', title: 'לינקים חכמים ומעקב קליקים', minPlan: 'free',
     body: (
       <>
         <P>כל פוסט יוצא עם לינק מעקב קצר על הדומיין של המערכת. גולש שלוחץ מגיע ללינק האפילייט שלך כרגיל (העמלה לא מושפעת) — אבל בדרך <B>הקליק נספר</B>. בטלגרם הלינק בכלל מוסתר מאחורי טקסט לחיץ נקי: &quot;🛒 לרכישה — לחצו כאן 🛒&quot;.</P>
@@ -102,7 +106,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'templates', emoji: '📝', title: 'תבניות, פוטרים וקופונים', minPlan: 'starter',
+    id: 'templates', emoji: '📝', title: 'תבניות, פוטרים וקופונים', minPlan: 'free',
     body: (
       <>
         <P><B>תבניות</B> — במסך התבניות מגדירים סגנון כתיבה קבוע (גוף/פוטר). תבנית ברירת מחדל חלה על כל הפוסטים; לכל קבוצה אפשר סגנון משלה. <B>קופונים</B> — קודי הנחה של AliExpress שמוזנים במסך הקופונים מצורפים אוטומטית לפוסטים כשהמוצר עומד בתנאי הקוד, ומוסרים כשהקוד פג.</P>
@@ -111,7 +115,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'smart-intake', emoji: '🪄', title: 'קליטה חכמה מקישור', minPlan: 'starter',
+    id: 'smart-intake', emoji: '🪄', title: 'קליטה חכמה מקישור', minPlan: 'free',
     body: (
       <>
         <P>ראיתם מוצר שווה ב-AliExpress? מעתיקים את הקישור (גם קישור מקוצר של s.click) ומדביקים בכפתור <B>&quot;קליטה מקישור&quot;</B> במסך הפוסטים. המערכת מזהה את המוצר, יוצרת מילת מפתח באנגלית, <B>משייכת אוטומטית לטייס עם הקהל המתאים</B> — ומתזמנת פוסט דרך ההגדרות שלו (קבוצות, שפה, מטבע, קצב).</P>
@@ -121,7 +125,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'post-editing', emoji: '🖼️', title: 'עריכת פוסט מתקדמת ופרסום מחדש', minPlan: 'starter',
+    id: 'post-editing', emoji: '🖼️', title: 'עריכת פוסט מתקדמת ופרסום מחדש', minPlan: 'free',
     body: (
       <>
         <P>לחיצה על עריכה בכל פוסט פותחת עורך מלא: שם, מחיר, קישורים, תמונה וטקסט.</P>
@@ -249,7 +253,7 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'faq', emoji: '❓', title: 'שאלות נפוצות ותקלות', minPlan: 'starter',
+    id: 'faq', emoji: '❓', title: 'שאלות נפוצות ותקלות', minPlan: 'free',
     body: (
       <>
         <H>&quot;פורסם חלקית&quot; על פוסט</H>
@@ -303,8 +307,11 @@ export default function GuidePage() {
   const [planName, setPlanName] = useState('Starter');
 
   useEffect(() => {
+    // The guide marks which sections your plan includes, so it has to read the tier the
+    // gates ACTUALLY use — during a trial that is the trial tier, and a guide telling you
+    // a feature is locked while you are using it is worse than no guide.
     subscriptionApi.status()
-      .then((s) => { setPlan(s.plan); setPlanName(s.plan_name); })
+      .then((s) => { setPlan(s.effective_plan ?? s.plan); setPlanName(s.plan_name); })
       .catch(() => {});
   }, []);
 

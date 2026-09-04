@@ -50,7 +50,10 @@ export interface BroadcastResult {
 
 // ─── Subscription ────────────────────────────────────────────────────────────
 
-export type PlanId = 'starter' | 'growth' | 'autopilot' | 'scale';
+// 'free' belongs here — the backend has had a free tier for a while and this type never
+// learned about it, so every screen comparing against a plan id was quietly excluding the
+// one plan most accounts are actually on.
+export type PlanId = 'free' | 'starter' | 'growth' | 'autopilot' | 'scale';
 export type BillingCycle = 'monthly' | 'annual';
 
 export interface PlanDef {
@@ -74,6 +77,16 @@ export interface SubscriptionStatus {
   renews_at: string | null;
   /** Admin accounts never consume credits — show ∞ instead of a balance. */
   unlimited?: boolean;
+  /**
+   * The tier FEATURES are checked against right now — the account's plan, or the trial tier
+   * while a trial runs. Gate feature AVAILABILITY on this; keep showing `plan` wherever the
+   * question is what the account is subscribed to, which a trial does not change.
+   */
+  effective_plan?: PlanId;
+  /** Whole days left in the trial; 0 when none is running. */
+  trial_days_left?: number;
+  trial_ends_at?: string | null;
+  trial_days?: number;
 }
 
 /** One-time purchasable credit top-up. */

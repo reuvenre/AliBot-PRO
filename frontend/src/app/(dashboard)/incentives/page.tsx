@@ -92,7 +92,12 @@ export default function IncentivesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { subscriptionApi.status().then((st) => setPlan(st.plan)).catch(() => {}); }, []);
+  // effective_plan, not plan: during the trial the SERVER steers the rotation, so showing
+  // the "locked, upgrade to Autopilot" notice here would contradict what is actually
+  // happening — and teach the owner that this screen's notices mean nothing.
+  useEffect(() => {
+    subscriptionApi.status().then((st) => setPlan(st.effective_plan ?? st.plan)).catch(() => {});
+  }, []);
 
   const liveCount = rows.filter((p) => statusOf(p).label.startsWith('פעיל')).length;
   // Only a proven mismatch counts toward the banner. An unrecognised NAME is not a fault —

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { TrialBanner } from '@/components/TrialBanner';
 import { Loader2, Menu, X } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -93,6 +94,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main — sidebar margin only on desktop */}
       <main className="lg:mr-[220px] min-h-screen">
         <div className="max-w-[1100px] mx-auto px-4 py-5 lg:px-7 lg:py-8">
+          {/* Above every screen on purpose: a countdown only works if it is seen on the
+              days it is counting, and the features it names are spread across the app. */}
+          <TrialBanner />
           {children}
         </div>
       </main>

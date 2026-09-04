@@ -4,6 +4,7 @@ import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { User } from './user.entity';
+import { trialEndsAt } from '../subscription/plans.const';
 
 /** Reset tokens are 256-bit random, so a fast cryptographic hash is sufficient
  *  (and lets us look them up by an indexed equality match instead of scanning). */
@@ -159,7 +160,12 @@ export class UsersService implements OnModuleInit {
     if (exists) throw new ConflictException('Email already registered');
     const password_hash = await bcrypt.hash(password, 12);
     const role = email.toLowerCase() === ADMIN_EMAIL ? 'admin' : 'user';
-    const user = this.repo.create({ email, password_hash, role, name: name?.trim() || null });
+    // Two weeks with every feature gate open — see TRIAL_DAYS in plans.const.ts for why the
+    // trial lifts FEATURES and not credits. Set at creation so it is the account's own
+    // clock, not something a later screen has to remember to start.
+    const user = this.repo.create({
+      email, password_hash, role, name: name?.trim() || null, trial_ends_at: trialEndsAt(),
+    });
     return this.repo.save(user);
   }
 
