@@ -68,7 +68,9 @@ import { seasonalKeywords, seasonalHint } from '../common/seasonal';
 import { seasonalPostsPerRun } from './seasonal-boost';
 import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
-import { facebookErrorText, isTransientFacebookError, isMetaConnectionError } from '../common/facebook-errors';
+import {
+  facebookErrorText, isTransientFacebookError, isMetaConnectionError, isMetaTimeoutError,
+} from '../common/facebook-errors';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
 
@@ -5085,10 +5087,15 @@ export class PostsService {
     // 1) Create the media container. A connection-level failure (request never reached
     // Meta — the "Instagram: שגיאה לא ידועה" partial publish) gets one paused retry:
     // no container was created, so a resend cannot duplicate anything.
+    //
+    // 45s, not 15s: Meta FETCHES image_url before it answers, and that URL is usually our
+    // own /posts/ig-image route, which itself pulls from the supplier CDN (12s budget) and
+    // re-encodes. A slow CDN alone could push the round trip past 15 seconds — which is how
+    // a perfectly healthy post ended up filed as "published partially".
     const createContainer = () => axios.post(
       `${base}/media`,
       new URLSearchParams({ image_url: image, caption, access_token: token }).toString(),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 },
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 45_000 },
     );
     let create;
     try {
@@ -5098,6 +5105,26 @@ export class PostsService {
         this.logger.warn('instagram container create: connection never reached Meta, retrying once');
         await new Promise((r) => setTimeout(r, 2500));
         create = await createContainer();
+      } else if (isMetaTimeoutError(err)) {
+        // A timeout HERE is not the ambiguous kind. Creating a container publishes nothing
+        // — it stages an upload, and the media goes live only on media_publish — so a
+        // resend cannot duplicate a post. Worst case Meta did create the container and only
+        // the reply was lost, which leaks one unused container that Instagram expires by
+        // itself within a day.
+        //
+        // Until now this fell through to `throw err`, and the generic timeout text told the
+        // owner "ייתכן שהפרסום כן בוצע — בדוק בחשבון": it sent him to look for a post that
+        // could not exist, on the one step where the answer is knowable.
+        this.logger.warn('instagram container create timed out — this step publishes nothing, retrying once');
+        await new Promise((r) => setTimeout(r, 2500));
+        try {
+          create = await createContainer();
+        } catch (again: any) {
+          if (isMetaTimeoutError(again)) {
+            throw new Error('אינסטגרם לא השיבה בזמן בעת העלאת התמונה — הפוסט לא פורסם. לחץ "נסה שוב".');
+          }
+          throw again;
+        }
       } else if (err?.response?.data?.error?.code === 9004 && cdnImage && image !== cdnImage) {
         // "Only photo or video can be accepted as media type" — Meta fetched the URL and
         // what came back was not an image. The URL it fetched was OURS (a designed frame,

@@ -1,4 +1,7 @@
-import { facebookError, facebookErrorText, isTransientFacebookError, isMetaConnectionError } from './facebook-errors';
+import {
+  facebookError, facebookErrorText, isTransientFacebookError, isMetaConnectionError,
+  isMetaTimeoutError,
+} from './facebook-errors';
 
 const graph = (code: number, message: string, error_subcode?: number) =>
   ({ response: { data: { error: { code, message, ...(error_subcode ? { error_subcode } : {}) } } } });
@@ -199,5 +202,49 @@ describe('connection-level Meta failures', () => {
       expect(isMetaConnectionError(new Error('anything'))).toBe(false);
       expect(isMetaConnectionError({})).toBe(false);
     });
+  });
+});
+
+/**
+ * Watchdog #67: one Instagram post filed as "published partially" with
+ * "אינסטגרם לא השיבה בזמן. ייתכן שהפרסום כן בוצע — בדוק בחשבון".
+ *
+ * It timed out CREATING the media container — a step that publishes nothing — so that
+ * sentence sent the owner looking for a post that could not exist. The distinction this
+ * predicate draws is which resends are safe, and it is not the same question
+ * isMetaConnectionError answers.
+ */
+describe('isMetaTimeoutError', () => {
+  const timeout = (code?: string, message = 'timeout of 15000ms exceeded') =>
+    Object.assign(new Error(message), code ? { code } : {});
+
+  it('recognises an axios timeout in both of its shapes', () => {
+    expect(isMetaTimeoutError(timeout('ECONNABORTED'))).toBe(true);
+    expect(isMetaTimeoutError(timeout('ETIMEDOUT'))).toBe(true);
+    // Older axios builds carry the reason only in the message.
+    expect(isMetaTimeoutError(timeout(undefined))).toBe(true);
+  });
+
+  it('says no when Meta actually answered', () => {
+    // A Graph error is a verdict, not a timeout — resending it repeats the same failure.
+    expect(isMetaTimeoutError({ response: { data: { error: { code: 100 } } } })).toBe(false);
+  });
+
+  it('leaves a wire failure to isMetaConnectionError', () => {
+    // Both are resendable, but they are different findings and the send path branches on
+    // the connection case first. Reporting a socket error as a timeout would hide it.
+    const reset = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+    expect(isMetaConnectionError(reset)).toBe(true);
+    expect(isMetaTimeoutError(reset)).toBe(false);
+    // Happy-Eyeballs connect timeouts are the connection case too, by the same rule.
+    const connect = Object.assign(new AggregateError([Object.assign(new Error(''), { code: 'ETIMEDOUT' })], ''), {});
+    expect(isMetaConnectionError(connect)).toBe(true);
+    expect(isMetaTimeoutError(connect)).toBe(false);
+  });
+
+  it('says no to an ordinary error', () => {
+    expect(isMetaTimeoutError(new Error('Instagram container creation failed'))).toBe(false);
+    expect(isMetaTimeoutError(null)).toBe(false);
+    expect(isMetaTimeoutError(undefined)).toBe(false);
   });
 });

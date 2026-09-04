@@ -58,6 +58,23 @@ export function isMetaConnectionError(err: any): boolean {
   return codes.length > 0 && codes.every((c) => CONNECTION_CODES.has(c));
 }
 
+/**
+ * True when Meta never answered in time — the request may or may not have arrived.
+ *
+ * Deliberately NOT merged into isMetaConnectionError: that one means the request provably
+ * never reached Meta, so it is safe to resend anywhere. A timeout is only safe to resend at
+ * a step that publishes NOTHING, and only the call site knows which step it is at. Creating
+ * an Instagram media container is such a step — it stages an upload, and the media goes
+ * live only on media_publish — while a timeout on media_publish itself is the genuinely
+ * ambiguous case that has to ask the container what happened.
+ */
+export function isMetaTimeoutError(err: any): boolean {
+  if (err?.response) return false;               // Meta answered; whatever this is, it is not a timeout
+  if (isMetaConnectionError(err)) return false;  // died at the wire — the other, broader case
+  if (errorCodes(err).some((c) => c === 'ETIMEDOUT' || c === 'ECONNABORTED')) return true;
+  return /timeout|timed out/i.test(String(err?.message || ''));
+}
+
 export function facebookError(err: any, platform: MetaPlatform = 'facebook'): FacebookErrorInfo {
   const e = err?.response?.data?.error ?? err?.error;
   const code: number | null = typeof e?.code === 'number' ? e.code : null;
