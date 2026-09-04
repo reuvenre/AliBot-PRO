@@ -139,15 +139,31 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'facebook', emoji: '📘', title: 'פייסבוק ואינסטגרם', minPlan: 'growth',
+    // Split from the old joint "פייסבוק ואינסטגרם" section when Facebook moved down to
+    // Starter: one section covering two features at two different tiers can only be wrong
+    // for somebody — either a Starter reader is told Facebook is locked, or they are handed
+    // Instagram instructions for a platform they cannot publish to.
+    id: 'facebook', emoji: '📘', title: 'פייסבוק', minPlan: 'starter',
     body: (
       <>
         <H>חיבור</H>
-        <P>הגדרות ← אינטגרציות ← פייסבוק: מזינים Page ID ו-Page Access Token (מ-Graph API Explorer, אחרי Extend ל-60 יום). אינסטגרם עסקי רוכב על אותו טוקן — מזינים רק את ה-Instagram Business ID, וכפתור &quot;בדוק חיבור&quot; אפילו מאתר אותו אוטומטית אם טעיתם.</P>
+        <P>הגדרות ← אינטגרציות ← פייסבוק: מזינים Page ID ו-Page Access Token (מ-Graph API Explorer, אחרי Extend ל-60 יום). כפתור &quot;בדוק חיבור&quot; מאשר שהכול תקין לפני הפוסט הראשון.</P>
         <H>התראות תפוגת טוקן</H>
         <P>טוקן של מטא פג כל ~60 יום. המערכת עוקבת: ספירה לאחור בהגדרות, באנר בדשבורד מ-14 יום לפני, ומייל התראה מ-7 ימים לפני — כדי שהפרסום לא ייעצר בהפתעה.</P>
+        <H>האטה חכמה</H>
+        <P>פייסבוק חוסמת דפים שמפרסמים בקצב גבוה מדי. המערכת שומרת מרווח מינימלי בין פוסטים לאותו דף — גם כשהטייס רץ מהר יותר — כדי שהדף לא ייחסם.</P>
+      </>
+    ),
+  },
+  {
+    id: 'instagram', emoji: '📸', title: 'אינסטגרם', minPlan: 'growth',
+    body: (
+      <>
+        <H>חיבור</H>
+        <P>אינסטגרם עסקי רוכב על <B>אותו טוקן</B> של דף הפייסבוק — אז אם פייסבוק כבר מחובר, נשאר רק להזין את ה-Instagram Business ID. כפתור &quot;בדוק חיבור&quot; אפילו מאתר אותו אוטומטית אם טעיתם.</P>
         <H>ייחודיות אינסטגרם</H>
-        <P>לינקים בפוסט אינסטגרם אינם לחיצים — לכן המערכת מסירה אותם ומסיימת ב&quot;הלינק בביו&quot;. שימו בביו את דף הנחיתה שלכם. פייסבוק כולל האטה חכמה (מרווח מינימלי בין פוסטים לדף) נגד חסימות ספאם.</P>
+        <P>לינקים בפוסט אינסטגרם אינם לחיצים — לכן המערכת מסירה אותם ומסיימת ב&quot;הלינק בביו&quot;. שימו בביו את דף הנחיתה שלכם.</P>
+        <P>אינסטגרם גם דוחה תמונות ביחס גובה-רוחב חריג. המערכת מרפדת אוטומטית כל תמונה לקנבס חוקי (בלי לחתוך את המוצר), אז תמונות ספק גבוהות מתפרסמות כרגיל.</P>
       </>
     ),
   },

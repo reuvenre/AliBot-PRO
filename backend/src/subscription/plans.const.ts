@@ -130,8 +130,16 @@ export const FEATURE_MIN_PLAN = {
   // ── Publishing platforms ──
   /** Telegram publishing — every tier, including Free. */
   platform_telegram: 'free',
-  /** Facebook page publishing (native or via Make relay). */
-  platform_facebook: 'growth',
+  /**
+   * Facebook page publishing (native or via Make relay).
+   *
+   * At Starter, not Growth, because Starter had NOTHING of its own: same single group, same
+   * Telegram-only reach as Free, differing only in credit count. A tier whose entire pitch
+   * is "the same thing, more of it" is a tier nobody steps up to — and raising the free
+   * quota to a post a day would have squeezed it flat. Now the ladder reads as reach:
+   * Free is one channel, Starter is two, Growth is all five.
+   */
+  platform_facebook: 'starter',
   /** Instagram business publishing. */
   platform_instagram: 'growth',
   /** Pinterest pin publishing. */

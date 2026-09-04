@@ -1,5 +1,6 @@
 import {
-  DEFAULT_PLAN, PLANS, TRIAL_DAYS, effectivePlan, planAllows, planOf, trialDaysLeft, trialEndsAt,
+  DEFAULT_PLAN, FEATURE_MIN_PLAN, PLANS, TRIAL_DAYS, effectivePlan, planAllows, planOf,
+  trialDaysLeft, trialEndsAt,
 } from './plans.const';
 
 describe('plans.const feature gating', () => {
@@ -108,5 +109,38 @@ describe('trialEndsAt', () => {
     const from = new Date('2026-09-04T12:00:00Z');
     expect(trialEndsAt(from).toISOString()).toBe('2026-09-18T12:00:00.000Z');
     expect(trialDaysLeft(trialEndsAt(from), from)).toBe(TRIAL_DAYS);
+  });
+});
+
+/**
+ * The reach ladder. Starter used to be Free with a bigger number attached — same one group,
+ * same Telegram-only reach — which is not a step anyone takes, and raising the free quota to
+ * a post a day would have flattened it completely. Facebook is what gives it a shape.
+ */
+describe('the ladder each tier actually buys', () => {
+  it('Free is one channel', () => {
+    expect(planAllows('free', 'platform_telegram')).toBe(true);
+    expect(planAllows('free', 'platform_facebook')).toBe(false);
+  });
+
+  it('Starter adds Facebook — its own reason to exist', () => {
+    expect(planAllows('starter', 'platform_facebook')).toBe(true);
+    // And stops there: Instagram, Pinterest and WhatsApp are still the Growth story.
+    expect(planAllows('starter', 'platform_instagram')).toBe(false);
+    expect(planAllows('starter', 'platform_pinterest')).toBe(false);
+    expect(planAllows('starter', 'platform_whatsapp')).toBe(false);
+  });
+
+  it('Growth opens the rest of the platforms', () => {
+    for (const p of ['telegram', 'facebook', 'instagram', 'pinterest', 'whatsapp'] as const) {
+      expect(planAllows('growth', `platform_${p}`)).toBe(true);
+    }
+  });
+
+  it('Starter is no longer indistinguishable from Free', () => {
+    // The property that was violated: some feature, any feature, must separate them.
+    const features = Object.keys(FEATURE_MIN_PLAN) as Array<keyof typeof FEATURE_MIN_PLAN>;
+    const gained = features.filter((f) => planAllows('starter', f) && !planAllows('free', f));
+    expect(gained.length).toBeGreaterThan(0);
   });
 });
