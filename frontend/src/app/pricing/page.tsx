@@ -7,7 +7,7 @@ import type { ActiveDeal } from '@/types';
 export const metadata: Metadata = {
   title: 'Nexlify — תמחור פשוט ושקוף',
   description:
-    'תוכניות Nexlify: מ-Starter ועד Scale — אוטומציית שיווק שותפים עם AI, פרסום ל-5 פלטפורמות ומדידת עמלות. התחילו בחינם.',
+    'תוכניות Nexlify: מתוכנית חינם ועד Scale — אוטומציית שיווק שותפים עם AI, פרסום ל-5 פלטפורמות ומדידת עמלות. 14 יום עם כל הפיצ׳רים פתוחים, בלי כרטיס אשראי.',
   alternates: { canonical: 'https://nexlify.win-solutions.co.il/pricing' },
 };
 
@@ -16,42 +16,56 @@ export const metadata: Metadata = {
  * FEATURE_MIN_PLAN). This page is static marketing (SSG); the numbers are the
  * same ones GET /subscription/plans serves. If the gating map changes, update
  * here too — never promise a feature the backend doesn't unlock at that tier.
+ *
+ * The ladder each step buys, stated once so the bullets below stay honest:
+ * Free is one channel, Starter is two, Growth is all five, Autopilot is the
+ * system deciding for you, Scale is selling to a second market.
  */
 const PLANS = [
   {
-    id: 'starter', name: 'Starter', tagline: 'התחילו עכשיו',
-    monthly: 89, annual: 71, credits: '1,500', groups: 'קבוצה אחת',
+    id: 'free', name: 'חינם', tagline: 'לראות שזה עובד',
+    monthly: 0, annual: 0, credits: '450', groups: 'קבוצה אחת',
     popular: false,
-    includes: 'התחילו בחינם עם:',
+    includes: 'בלי כרטיס אשראי:',
     features: [
       'מקור מוצרים: AliExpress',
       'פרסום ל-Telegram',
-      'AI כותב פוסטים, אתם מאשרים',
+      'AI כותב את הפוסטים',
       'לינקים חכמים + מעקב קליקים',
+      'טייס אוטומטי — פוסט ביום, רץ לבד',
+    ],
+  },
+  {
+    id: 'starter', name: 'Starter', tagline: 'ערוץ שני',
+    monthly: 89, annual: 71, credits: '1,500', groups: 'קבוצה אחת',
+    popular: false,
+    includes: 'כל מה שבחינם, וגם:',
+    features: [
+      'פרסום ל-Facebook',
+      'פי 3 קרדיטים — כ-100 פוסטים בחודש',
       'סנכרון הזמנות ועמלות אוטומטי',
     ],
   },
   {
-    id: 'growth', name: 'Growth', tagline: 'הסוכן הראשון שלכם',
+    id: 'growth', name: 'Growth', tagline: 'כל הפלטפורמות',
     monthly: 199, annual: 159, credits: '5,000', groups: '5 קבוצות',
     popular: true,
     includes: 'כל מה שב-Starter, וגם:',
     features: [
-      'פרסום ל-Facebook, Instagram ו-Pinterest',
+      'פרסום ל-Instagram ו-Pinterest',
       'חיבור WhatsApp אחד',
-      'סוכן AI לגילוי מוצרים',
       'משפר תמונות AI',
       'תור פרסום חכם',
       'דוח "מה מכניס כסף" — עמלות עד רמת הפוסט',
     ],
   },
   {
-    id: 'autopilot', name: 'Autopilot', tagline: 'טייס אוטומטי מלא',
+    id: 'autopilot', name: 'Autopilot', tagline: 'המערכת מחליטה לבד',
     monthly: 275, annual: 220, credits: '7,000', groups: '10 קבוצות',
     popular: false,
     includes: 'כל מה שב-Growth, וגם:',
     features: [
-      'מצב טייס אוטומטי. מגילוי ועד פרסום, אפס קלט',
+      'סוכן AI לגילוי מוצרים — מגילוי ועד פרסום, אפס קלט',
       '🧠 מנוע אופטימיזציה לומד — מכוונן מילות מפתח לפי עמלות אמיתיות, כל לילה',
       'דו"ח בוקר יומי: מה נמכר, מה שונה ולמה',
       'סוכני AI לניהול הקמפיינים',
@@ -63,7 +77,7 @@ const PLANS = [
     ],
   },
   {
-    id: 'scale', name: 'Scale', tagline: 'צי סוכנים',
+    id: 'scale', name: 'Scale', tagline: 'שוק שני',
     monthly: 449, annual: 359, credits: '50,000', groups: 'קבוצות ללא הגבלה',
     popular: false,
     includes: 'כל מה שב-Autopilot, וגם:',
@@ -140,12 +154,23 @@ export default async function PricingPage() {
           <p className="text-white/50 text-lg">
             בחרו מסלול שמתאים לכם — אפשר לשדרג בכל רגע.
           </p>
+          {/* The trial is the headline, not a footnote: it is the only thing on this page
+              that lets someone judge the product instead of reading about it. */}
+          <div className="mt-6 inline-flex items-center gap-2.5 bg-violet-500/12 border border-violet-400/35 rounded-full px-5 py-2.5">
+            <Sparkles size={15} className="text-violet-300" />
+            <span className="text-sm text-white/80">
+              <b className="text-violet-200">14 יום עם הכל פתוח</b> לכל הרשמה — סוכני AI, המנוע
+              הלומד וכל חמש הפלטפורמות. בלי כרטיס אשראי.
+            </span>
+          </div>
         </div>
       </section>
 
       {/* Cards */}
       <section className="max-w-7xl mx-auto px-6 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 items-stretch">
+        {/* Five tiers now that Free is on the page — 5 across only on the widest screens,
+            so the cards never squeeze to the point where the bullets wrap word-by-word. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-5 items-stretch">
           {PLANS.map((plan) => (
             <div
               key={plan.id}
@@ -163,7 +188,11 @@ export default async function PricingPage() {
               )}
 
               {(() => {
-                const deal = dealFor(deals, 'plan', plan.id);
+                // A free tier has no price to discount and no annual cycle to save on —
+                // "₪0 לחודש בחיוב שנתי (חסכו 20%)" is the kind of line that makes a whole
+                // pricing page look automated rather than written.
+                const isFree = plan.monthly === 0;
+                const deal = isFree ? null : dealFor(deals, 'plan', plan.id);
                 const promoPrice = deal ? dealPrice(plan.monthly, deal) : null;
                 const onSale = promoPrice != null && promoPrice < plan.monthly;
                 return (
@@ -179,11 +208,13 @@ export default async function PricingPage() {
                         <span className="text-xl font-semibold text-white/35 line-through">{plan.monthly}</span>
                       )}
                       <span className={`text-5xl font-extrabold tracking-tight ${onSale ? 'text-amber-300' : ''}`}>
-                        {onSale ? promoPrice : plan.monthly}
+                        {isFree ? '0' : onSale ? promoPrice : plan.monthly}
                       </span>
                       <span className="text-sm text-white/40">₪ / חודש</span>
                     </div>
-                    {onSale && endsInLabel(deal!.ends_at) ? (
+                    {isFree ? (
+                      <p className="text-xs text-emerald-400/90 mt-1.5">לתמיד — לא תקופת ניסיון</p>
+                    ) : onSale && endsInLabel(deal!.ends_at) ? (
                       <p className="text-xs text-amber-400/90 mt-1.5">⏳ {endsInLabel(deal!.ends_at)}</p>
                     ) : (
                       <p className="text-xs text-emerald-400/90 mt-1.5">₪{plan.annual} לחודש בחיוב שנתי (חסכו 20%)</p>
