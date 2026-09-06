@@ -783,6 +783,10 @@ export interface Channel {
   /** Whether this channel has its own Facebook Page token (never the token itself). */
   has_fb_token: boolean;
   fb_token_masked: string | null;
+  /** When THIS group's own Page token dies. null = unknown, or the token never expires. */
+  fb_token_expires_at?: string | null;
+  /** Days until that expiry; null = unknown. Negative once it has passed. */
+  fb_token_days_left?: number | null;
   /** Opt-in: nudge this group's posts into its learned golden hours. */
   smart_timing?: boolean;
   /** Per-group send queue. null on any field = inherit the global schedule setting. */

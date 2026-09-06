@@ -51,6 +51,21 @@ export class Channel {
   facebook_page_token_enc: string;
 
   /**
+   * When the token above dies, per Graph. Null = unknown (never resolved, or a token that
+   * does not expire) and must never be read as "expired" — see meta-token.ts.
+   *
+   * This existed for the account-level token and not for these, so a group token could
+   * lapse in silence and take that group's Facebook and Instagram publishing with it.
+   */
+  @Column({ nullable: true, type: 'timestamp' })
+  facebook_token_expires_at: Date | null;
+
+  /** Last time the owner was emailed about THIS token expiring — throttles the re-nag and
+   *  is cleared whenever a fresh token is saved. */
+  @Column({ nullable: true, type: 'timestamp' })
+  facebook_token_notified_at: Date | null;
+
+  /**
    * Instagram Business account id for THIS group. A second brand has its own Instagram,
    * and the account-wide id can only ever point at one of them — so a post routed here
    * publishes to this group's account. Null → the user's global Instagram.

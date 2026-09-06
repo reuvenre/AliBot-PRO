@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import axios from 'axios';
@@ -13,9 +13,12 @@ import { describeGreenSendResult, GreenSendResult } from './green-send-result';
 import {
   canPublish, describeMissingScopes, missingScopes, parseGrantedScopes,
 } from '../pinterest/pinterest-scopes';
+import { daysUntil, resolveMetaTokenExpiry } from '../common/meta-token';
 
 @Injectable()
 export class ChannelsService {
+  private readonly logger = new Logger(ChannelsService.name);
+
   constructor(
     @InjectRepository(Channel)
     private readonly repo: Repository<Channel>,
@@ -31,8 +34,31 @@ export class ChannelsService {
 
     // Refresh member counts from Telegram in the background (fire-and-forget)
     this.refreshMemberCounts(channels).catch(() => {});
+    // Same for token expiries that were never resolved — tokens saved before this was
+    // tracked. In the background so opening the Groups screen never waits on Graph; the
+    // countdown appears on the next load, which is soon enough for a 60-day clock.
+    this.backfillTokenExpiries(channels).catch(() => {});
 
     return channels.map((c) => this.toPublic(c));
+  }
+
+  /**
+   * Resolve `facebook_token_expires_at` for group tokens that have none.
+   *
+   * Lazy rather than a migration: resolving means one Graph call per token, and a migration
+   * is the wrong place to depend on a third party answering. Only ever fills a BLANK — a
+   * known expiry is left alone, so this cannot churn on every list.
+   */
+  private async backfillTokenExpiries(channels: Channel[]): Promise<void> {
+    for (const c of channels) {
+      if (!c.facebook_page_token_enc || c.facebook_token_expires_at) continue;
+      try {
+        const exp = await resolveMetaTokenExpiry(decrypt(c.facebook_page_token_enc));
+        if (exp) await this.repo.update(c.id, { facebook_token_expires_at: exp });
+      } catch (err: any) {
+        this.logger.warn(`token expiry backfill failed for channel ${c.id}: ${err?.message}`);
+      }
+    }
   }
 
   async create(userId: string, dto: CreateChannelDto) {
@@ -60,6 +86,12 @@ export class ChannelsService {
       bot_token_enc: dto.bot_token ? encrypt(dto.bot_token) : null,
       facebook_page_token_enc: dto.facebook_page_token?.trim() ? encrypt(dto.facebook_page_token.trim()) : null,
     });
+    // Ask Graph when this token dies, so the countdown and the warning email have something
+    // to work with from the first save. Best-effort: an unreachable Graph leaves it null
+    // ("unknown"), which the lazy backfill in list() resolves later.
+    if (dto.facebook_page_token?.trim()) {
+      channel.facebook_token_expires_at = await resolveMetaTokenExpiry(dto.facebook_page_token.trim());
+    }
     await this.repo.save(channel);
     return this.toPublic(channel);
   }
@@ -77,7 +109,13 @@ export class ChannelsService {
     if (dto.bot_token?.trim()) channel.bot_token_enc = encrypt(dto.bot_token.trim());
     // Only overwrite the FB token when a new one is actually provided (the form sends the
     // field blank unless the user re-enters it), so editing other fields never wipes it.
-    if (dto.facebook_page_token?.trim()) channel.facebook_page_token_enc = encrypt(dto.facebook_page_token.trim());
+    if (dto.facebook_page_token?.trim()) {
+      channel.facebook_page_token_enc = encrypt(dto.facebook_page_token.trim());
+      channel.facebook_token_expires_at = await resolveMetaTokenExpiry(dto.facebook_page_token.trim());
+      // A fresh token restarts the warning cycle — otherwise the 3-day throttle would keep
+      // the owner silent right after they fixed the thing we nagged them about.
+      channel.facebook_token_notified_at = null;
+    }
     if (dto.smart_timing !== undefined) channel.smart_timing = dto.smart_timing === true;
     // Per-group queue overrides — an explicit null clears the override (back to inherit).
     if (dto.schedule_enabled !== undefined) channel.schedule_enabled = dto.schedule_enabled;
@@ -857,6 +895,10 @@ export class ChannelsService {
       // FB token status only — never return the token itself; masked for display.
       has_fb_token: !!c.facebook_page_token_enc,
       fb_token_masked: c.facebook_page_token_enc ? mask(decrypt(c.facebook_page_token_enc)) : null,
+      // The countdown on the card. null = unknown (never resolved, or a non-expiring token)
+      // and the UI must say "unknown" rather than imply a problem.
+      fb_token_expires_at: c.facebook_token_expires_at ?? null,
+      fb_token_days_left: daysUntil(c.facebook_token_expires_at),
       smart_timing: c.smart_timing === true,
       // Per-group queue settings — null means "inherit the global schedule".
       schedule_enabled: c.schedule_enabled ?? null,

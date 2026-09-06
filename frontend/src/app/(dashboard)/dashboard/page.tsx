@@ -67,6 +67,11 @@ export default function DashboardPage() {
   // Facebook token countdown — a dead token silently kills IG/FB publishing, so the
   // dashboard warns from 14 days out.
   const [tokenDaysLeft, setTokenDaysLeft] = useState<number | null>(null);
+  // Groups that carry their OWN Facebook page token and are running out. The account-level
+  // banner below says "הטוקן הראשי" and nothing about these, so a group token used to lapse
+  // with no warning anywhere — and an owner with several pages could not tell which token an
+  // alert was even about. Each of these names its group.
+  const [expiringGroups, setExpiringGroups] = useState<Array<{ id: string; name: string; days: number }>>([]);
   // Active commercial-calendar seasons (auto keywords + copy context in campaigns).
   const [seasons, setSeasons] = useState<Array<{ key: string; name: string; emoji: string }>>([]);
 
@@ -89,6 +94,13 @@ export default function DashboardPage() {
         const today = new Date().toDateString();
         return p.sent_at && new Date(p.sent_at).toDateString() === today;
       });
+
+      setExpiringGroups(
+        (channels || [])
+          .filter((c) => c.has_fb_token && c.fb_token_days_left != null && c.fb_token_days_left <= 14)
+          .map((c) => ({ id: c.id, name: c.name, days: c.fb_token_days_left as number }))
+          .sort((a, b) => a.days - b.days),
+      );
 
       setStats({
         campaigns: camps.total,
@@ -152,12 +164,33 @@ export default function DashboardPage() {
           <AlertCircle size={18} className="shrink-0" />
           <div className="flex-1 text-sm">
             {tokenDaysLeft < 0
-              ? 'טוקן הפייסבוק פג תוקף — פרסום לאינסטגרם ופייסבוק מושבת! לחץ לחידוש הטוקן בהגדרות.'
-              : `טוקן הפייסבוק יפוג בעוד ${tokenDaysLeft} ימים — חדש אותו כדי שהפרסום לאינסטגרם ופייסבוק לא ייעצר.`}
+              ? 'הטוקן הראשי של פייסבוק (הגדרות ← אינטגרציות) פג תוקף — פרסום לאינסטגרם ופייסבוק מושבת! לחץ לחידוש.'
+              : `הטוקן הראשי של פייסבוק (הגדרות ← אינטגרציות) יפוג בעוד ${tokenDaysLeft} ימים — חדש אותו כדי שהפרסום לאינסטגרם ופייסבוק לא ייעצר.`}
           </div>
           <ChevronLeft size={16} className="shrink-0 opacity-60" />
         </Link>
       )}
+
+      {/* One banner PER GROUP that has its own token running out — named, because
+          "טוקן הפייסבוק" is exactly what left the owner unable to tell which one. */}
+      {expiringGroups.map((g) => (
+        <Link
+          key={g.id}
+          href="/groups"
+          className={`flex items-center gap-3 rounded-xl border px-4 py-3 mb-6 transition-all hover:opacity-90
+            ${g.days <= 7
+              ? 'bg-red-500/10 border-red-500/30 text-red-300'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}
+        >
+          <AlertCircle size={18} className="shrink-0" />
+          <div className="flex-1 text-sm">
+            {g.days < 0
+              ? `הטוקן של הקבוצה "${g.name}" פג תוקף — הפרסום שלה לפייסבוק ולאינסטגרם מושבת. שאר הקבוצות ממשיכות כרגיל.`
+              : `הטוקן של הקבוצה "${g.name}" יפוג בעוד ${g.days} ימים — חדש אותו במסך קבוצות.`}
+          </div>
+          <ChevronLeft size={16} className="shrink-0 opacity-60" />
+        </Link>
+      ))}
 
       {/* Active commercial seasons — the campaigns are automatically riding these. */}
       {seasons.length > 0 && (

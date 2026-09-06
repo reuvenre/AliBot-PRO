@@ -4,6 +4,8 @@ import { Cron } from '@nestjs/schedule';
 import { IsNull, Not, Repository } from 'typeorm';
 import { MailService } from '../mail/mail.service';
 import { CredentialSet } from './credential-set.entity';
+import { Channel } from '../channels/channel.entity';
+import { daysUntil, resolveMetaTokenExpiry, tokenNeedsWarning } from '../common/meta-token';
 import { CredentialSetDto } from './dto/credential-set.dto';
 import { encrypt, decrypt, mask } from '../common/crypto';
 import { verifyState } from '../pinterest/pinterest-oauth';
@@ -106,25 +108,16 @@ export class CredentialsService {
   constructor(
     @InjectRepository(CredentialSet)
     private readonly repo: Repository<CredentialSet>,
+    // The repo, not ChannelsService: that service already depends on THIS one, and the
+    // scan below needs nothing but rows.
+    @InjectRepository(Channel)
+    private readonly channels: Repository<Channel>,
     @Optional() private readonly mail?: MailService,
   ) {}
 
-  /**
-   * The token's real expiry per Graph debug_token (a token can debug itself — no app
-   * secret needed). Returns null for never-expiring tokens (expires_at=0) or when the
-   * lookup fails — expiry tracking must never block saving credentials.
-   */
-  private async resolveTokenExpiry(token: string): Promise<Date | null> {
-    try {
-      const res = await axios.get(
-        `https://graph.facebook.com/${GRAPH_VERSION}/debug_token`,
-        { params: { input_token: token, access_token: token }, timeout: 8000, validateStatus: () => true },
-      );
-      const exp = res.data?.data?.expires_at;
-      return typeof exp === 'number' && exp > 0 ? new Date(exp * 1000) : null;
-    } catch {
-      return null;
-    }
+  /** See meta-token.ts — shared with the per-GROUP tokens, which ask the same question. */
+  private resolveTokenExpiry(token: string): Promise<Date | null> {
+    return resolveMetaTokenExpiry(token);
   }
 
   /** Facebook token expiry for the Settings countdown badge + dashboard banner. */
@@ -199,6 +192,66 @@ export class CredentialsService {
         this.logger.log(`token-expiry warning emailed to ${email} (${daysLeft} days left)`);
       } catch (err: any) {
         this.logger.warn(`token-expiry email to ${email} failed: ${err.message}`);
+      }
+    }
+
+    await this.warnExpiringGroupTokens(renotifyBefore).catch((err) =>
+      this.logger.error(`group token-expiry scan failed: ${err?.message}`));
+  }
+
+  /**
+   * The same warning for a GROUP's own Page token — and it NAMES the group.
+   *
+   * A channel publishing to its own Facebook page carries its own token, and none of them
+   * were watched: one could lapse in silence and take that group's Facebook and Instagram
+   * publishing with it, discovered days later via a failed post. Worse, the account-level
+   * warning above says only "טוקן הפייסבוק", so even an owner who got an email had no way
+   * to tell WHICH token to renew. Every line here says the group's name.
+   *
+   * Runs from the same daily cron as a second pass rather than its own, so the two cannot
+   * drift to different schedules or thresholds.
+   */
+  private async warnExpiringGroupTokens(renotifyBefore: Date): Promise<void> {
+    if (!this.mail) return;
+    const channels = await this.channels.find({
+      where: { facebook_page_token_enc: Not(IsNull()) },
+      relations: ['user'],
+    });
+
+    for (const ch of channels) {
+      if (!tokenNeedsWarning(ch.facebook_token_expires_at)) continue;   // healthy, or expiry unknown
+      if (ch.facebook_token_notified_at && ch.facebook_token_notified_at > renotifyBefore) continue;
+      const email = ch.user?.email;
+      if (!email) continue;
+
+      const exp = ch.facebook_token_expires_at as Date;
+      const daysLeft = daysUntil(exp) ?? 0;
+      const expired = daysLeft < 0;
+      const subject = expired
+        ? `🔴 Nexlify — טוקן הפייסבוק של "${ch.name}" פג! הפרסום לקבוצה הזו מושבת`
+        : `⚠️ Nexlify — טוקן הפייסבוק של "${ch.name}" יפוג בעוד ${daysLeft} ימים`;
+      const html = `
+        <div dir="rtl" style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0f1117;color:#e5e7eb;border-radius:12px">
+          <h2 style="margin:0 0 12px">הטוקן של הקבוצה <span style="color:#fbbf24">${ch.name}</span> ${expired ? 'פג תוקף' : 'עומד לפוג'}</h2>
+          <p style="line-height:1.7;color:#cbd5e1">
+            לקבוצה הזו הוגדר <b>Page Access Token משלה</b> (היא מפרסמת לדף פייסבוק אחר מהדף הראשי).
+            ${expired
+              ? 'הטוקן פג — הפרסומים לפייסבוק ולאינסטגרם של הקבוצה הזו נכשלים כרגע. שאר הקבוצות לא מושפעות.'
+              : `הוא יפוג בתאריך <b>${exp.toLocaleDateString('he-IL')}</b>, ואז הפרסומים של הקבוצה הזו לפייסבוק ולאינסטגרם יתחילו להיכשל. שאר הקבוצות לא מושפעות.`}
+          </p>
+          <p style="line-height:1.7;color:#cbd5e1">
+            לחידוש: Graph API Explorer ← Generate Access Token ← בחר את <b>הדף של הקבוצה הזו</b> ←
+            Access Token Tool ← <b>Extend Access Token</b> ← הדבק ב-Nexlify:
+            <b>קבוצות ← ${ch.name} ← Page Access Token ← שמור</b>.
+          </p>
+          <p style="color:#64748b;font-size:12px;margin-top:20px">נשלח אוטומטית על-ידי מערכת ההתראות של Nexlify.</p>
+        </div>`;
+      try {
+        await this.mail.sendHtml(email, subject, html);
+        await this.channels.update(ch.id, { facebook_token_notified_at: new Date() });
+        this.logger.log(`group token-expiry warning emailed to ${email} for "${ch.name}" (${daysLeft} days left)`);
+      } catch (err: any) {
+        this.logger.warn(`group token-expiry email to ${email} failed: ${err.message}`);
       }
     }
   }

@@ -22,7 +22,7 @@ function ChannelFormFields({
   footerTemplateId, setFooterTemplateId, footerTemplates,
   facebookPageId, setFacebookPageId,
   instagramBusinessId, setInstagramBusinessId,
-  facebookPageToken, setFacebookPageToken, hasFbToken,
+  facebookPageToken, setFacebookPageToken, hasFbToken, fbTokenDaysLeft,
   isEdit,
 }: {
   name: string; setName: (v: string) => void;
@@ -36,6 +36,8 @@ function ChannelFormFields({
   instagramBusinessId: string; setInstagramBusinessId: (v: string) => void;
   facebookPageToken: string; setFacebookPageToken: (v: string) => void;
   hasFbToken?: boolean;
+  /** Days until THIS group's own token dies; null = unknown or no token. */
+  fbTokenDaysLeft?: number | null;
   isEdit?: boolean;
 }) {
   const [showFbToken, setShowFbToken] = useState(false);
@@ -177,6 +179,25 @@ function ChannelFormFields({
         <p className="text-2xs text-white/25 mt-1">
           הטוקן שייך לעמוד ספציפי. אם הקבוצה הזו על עמוד אחר מהשאר — הזן כאן את הטוקן שלו. ריק = הטוקן הכללי מ-הגדרות ← אינטגרציות.
         </p>
+
+        {/* The countdown for THIS group's token. It exists because the account-level warning
+            says only "טוקן הפייסבוק", which left an owner with several pages unable to tell
+            which one to renew — and a group token used to expire with no warning at all. */}
+        {hasFbToken && fbTokenDaysLeft != null && (
+          <p className={`text-2xs mt-1.5 ${fbTokenDaysLeft < 0 ? 'text-red-400'
+            : fbTokenDaysLeft <= 7 ? 'text-amber-400' : 'text-emerald-400/80'}`}>
+            {fbTokenDaysLeft < 0
+              ? `🔴 הטוקן של הקבוצה הזו פג לפני ${Math.abs(fbTokenDaysLeft)} ימים — הפרסום שלה לפייסבוק ולאינסטגרם מושבת`
+              : fbTokenDaysLeft <= 7
+                ? `⚠️ הטוקן של הקבוצה הזו יפוג בעוד ${fbTokenDaysLeft} ימים — חדש אותו כאן`
+                : `✓ הטוקן של הקבוצה הזו בתוקף עוד ${fbTokenDaysLeft} ימים`}
+          </p>
+        )}
+        {hasFbToken && fbTokenDaysLeft == null && (
+          <p className="text-2xs text-white/30 mt-1.5">
+            תוקף הטוקן טרם נבדק מול פייסבוק — יופיע בטעינה הבאה של המסך.
+          </p>
+        )}
 
         <button
           type="button"
@@ -428,6 +449,7 @@ function EditChannelModal({
             facebookPageId={facebookPageId} setFacebookPageId={setFacebookPageId}
             instagramBusinessId={instagramBusinessId} setInstagramBusinessId={setInstagramBusinessId}
             facebookPageToken={facebookPageToken} setFacebookPageToken={setFacebookPageToken} hasFbToken={channel.has_fb_token}
+            fbTokenDaysLeft={channel.fb_token_days_left ?? null}
             isEdit
           />
 
