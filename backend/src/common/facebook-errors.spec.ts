@@ -194,6 +194,16 @@ describe('connection-level Meta failures', () => {
       expect(isMetaConnectionError(aggregate(['ETIMEDOUT', 'ECONNREFUSED']))).toBe(true);
     });
 
+    it('accepts an aggregate that carries ETIMEDOUT on ITSELF, with illegible inners', () => {
+      // Watchdog #69's shape, on the Meta side of the same rule: Node stamps the code on the
+      // aggregate and the inner attempts arrive with nothing readable. The aggregate is the
+      // proof of the connect phase, so this is a socket that never opened — not the
+      // ambiguous response-phase timeout a bare ETIMEDOUT would otherwise read as.
+      const outer = Object.assign(new AggregateError([new Error(''), new Error('')], ''), { code: 'ETIMEDOUT' });
+      expect(isMetaConnectionError(outer)).toBe(true);
+      expect(isMetaTimeoutError(outer)).toBe(false);
+    });
+
     it('rejects timeouts, HTTP responses and plain errors', () => {
       // A TOP-LEVEL timeout is response-phase — the request may have arrived.
       expect(isMetaConnectionError(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }))).toBe(false);

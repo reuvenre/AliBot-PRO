@@ -50,7 +50,17 @@ export function isTelegramConnectionError(err: any): boolean {
   // post's error_message read a blank "Telegram: ". Retryable only when every inner failure
   // is connection-level — a mix means something unknown happened, and unknown never retries.
   const inner = (err as AggregateError)?.errors;
-  return Array.isArray(inner) && inner.length > 0
+  if (!Array.isArray(inner)) return false;
+  // Being an AggregateError is ITSELF the connect-phase proof — Node builds one nowhere
+  // else — so a top-level connect code on one (ETIMEDOUT included) is a handshake that
+  // never completed, even when the inner failures carry no legible code of their own.
+  //
+  // Watchdog #69 was exactly that shape: empty message, `code: 'ETIMEDOUT'`, unreadable
+  // inners. The rule below saw "no usable inner codes", called it unknown, and left the
+  // error untagged — so the one safe retry never fired and the post was filed as
+  // "published partially" while the group's slot was already spent.
+  if (AGGREGATE_CONNECT_ERRORS.has(err?.code)) return true;
+  return inner.length > 0
     && inner.every((e: any) => AGGREGATE_CONNECT_ERRORS.has(e?.code));
 }
 

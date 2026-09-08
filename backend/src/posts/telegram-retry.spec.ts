@@ -60,6 +60,19 @@ describe('isTelegramConnectionError', () => {
     expect(isTelegramConnectionError(Object.assign(new Error(''), { code: 'ETIMEDOUT' }))).toBe(false);
   });
 
+  it('retries an aggregate that reports ETIMEDOUT on ITSELF, with illegible inners', () => {
+    // Watchdog #69: "Telegram: שגיאת חיבור לטלגרם (ETIMEDOUT)" — no [net] tag, so no retry,
+    // so a partial publish. That text can only come from an EMPTY message plus a code, and
+    // the only failure that has both is a Happy Eyeballs aggregate: Node stamps ETIMEDOUT on
+    // the aggregate itself and the inner attempts arrive with nothing readable on them.
+    //
+    // Being an aggregate at all is the proof — Node builds one only in the connect loop —
+    // so the handshake never completed and nothing reached Telegram.
+    const outer = Object.assign(new AggregateError([new Error(''), new Error('')], ''), { code: 'ETIMEDOUT' });
+    expect(isTelegramConnectionError(outer)).toBe(true);
+    expect(telegramErrorText(outer)).toBe('שגיאת חיבור לטלגרם (ETIMEDOUT) [net]');
+  });
+
   it('does NOT retry an AggregateError containing an unknown failure code', () => {
     const mixed = new AggregateError([
       Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),

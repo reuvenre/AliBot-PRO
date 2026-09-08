@@ -48,12 +48,18 @@ function errorCodes(err: any): string[] {
  */
 export function isMetaConnectionError(err: any): boolean {
   if (err?.response) return false;
-  const inner = Array.isArray((err as AggregateError)?.errors) ? (err as AggregateError).errors : [];
+  const isAggregate = Array.isArray((err as AggregateError)?.errors);
+  const inner = isAggregate ? (err as AggregateError).errors : [];
   const innerCodes = inner
     .map((e: any) => e?.code)
     .filter((c: any): c is string => typeof c === 'string' && !!c);
   // Aggregate (connect-phase) failures may include ETIMEDOUT — see AGGREGATE_CONNECT_CODES.
   if (innerCodes.length) return innerCodes.every((c: string) => AGGREGATE_CONNECT_CODES.has(c));
+  // Being an AggregateError is itself the connect-phase proof, so a top-level ETIMEDOUT on
+  // one counts even when the inner failures carry no legible code (watchdog #69, on the
+  // Telegram side of the same shape). Without this it fell through to the check below,
+  // where a bare ETIMEDOUT reads as the ambiguous response-phase timeout it is not.
+  if (isAggregate && AGGREGATE_CONNECT_CODES.has(err?.code)) return true;
   const codes = errorCodes(err);
   return codes.length > 0 && codes.every((c) => CONNECTION_CODES.has(c));
 }
