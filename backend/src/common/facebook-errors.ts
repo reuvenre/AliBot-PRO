@@ -75,8 +75,30 @@ export function isMetaTimeoutError(err: any): boolean {
   return /timeout|timed out/i.test(String(err?.message || ''));
 }
 
+/** The Graph error payload hiding in a failure, whichever shape it arrived in: thrown by
+ *  axios (`response.data.error`) or read out of a body by a `validateStatus: () => true`
+ *  call and re-thrown via {@link metaGraphError} (`error`). One lookup, so every classifier
+ *  in this file sees the same thing. */
+function graphPayload(err: any): any {
+  return err?.response?.data?.error ?? err?.error;
+}
+
+/**
+ * Wrap a Graph error PAYLOAD in a real Error that this file can still classify.
+ *
+ * A call made with `validateStatus: () => true` never throws — the error arrives as a body,
+ * and re-throwing it as `new Error(error.message)` drops the CODE, and with it every mapping
+ * below. That is how an Instagram publish that failed on Graph's own transient #2 reached the
+ * owner as a bare English sentence in a Hebrew UI, with no retry and nothing to act on.
+ */
+export function metaGraphError(payload: any): Error & { error?: any } {
+  const err = new Error(payload?.message || 'שגיאה לא ידועה') as Error & { error?: any };
+  err.error = payload;
+  return err;
+}
+
 export function facebookError(err: any, platform: MetaPlatform = 'facebook'): FacebookErrorInfo {
-  const e = err?.response?.data?.error ?? err?.error;
+  const e = graphPayload(err);
   const code: number | null = typeof e?.code === 'number' ? e.code : null;
   const subcode: number | null = typeof e?.error_subcode === 'number' ? e.error_subcode : null;
   const raw = e?.message || err?.response?.data?.message || err?.message || 'שגיאה לא ידועה';
@@ -223,6 +245,6 @@ export function facebookErrorText(err: any, platform: MetaPlatform = 'facebook')
  * put the post on the page twice (see the long-timeout comment at the send site).
  */
 export function isTransientFacebookError(err: any): boolean {
-  const e = err?.response?.data?.error;
+  const e = graphPayload(err);
   return typeof e?.code === 'number' && (e.code === 1 || e.code === 2);
 }

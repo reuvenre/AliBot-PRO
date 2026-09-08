@@ -70,6 +70,7 @@ import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
 import {
   facebookErrorText, isTransientFacebookError, isMetaConnectionError, isMetaTimeoutError,
+  metaGraphError,
 } from '../common/facebook-errors';
 
 const ALI_API = 'https://api-sg.aliexpress.com/sync';
@@ -5191,6 +5192,14 @@ export class PostsService {
         this.logger.warn(`instagram #9004 on ${image} — retrying with the supplier photo ${cdnImage}`);
         image = cdnImage;
         create = await createContainer();
+      } else if (isTransientFacebookError(err)) {
+        // Graph's #1/#2 family — it ANSWERED, said "please retry your request later", and
+        // created nothing. Safe to send again, and the container step is where a retry costs
+        // the least. Without this, Meta having a bad second filed a healthy post as
+        // "published partially" and left the owner an English sentence to decipher.
+        this.logger.warn(`instagram container create hit a transient Meta error, retrying once: ${err?.response?.data?.error?.message}`);
+        await new Promise((r) => setTimeout(r, 4000));
+        create = await createContainer();
       } else if (err?.response?.data?.error?.code === 36003) {
         // The letterbox pipeline exists precisely to prevent #36003 — reaching here means
         // some URL slipped past it. Name the URL Instagram actually measured, so the next
@@ -5201,7 +5210,7 @@ export class PostsService {
         throw err;
       }
     }
-    if (create.data?.error) throw new Error(create.data.error.message);
+    if (create.data?.error) throw metaGraphError(create.data.error);
     const creationId = create.data?.id;
     if (!creationId) throw new Error('Instagram container creation failed');
 
@@ -5233,7 +5242,8 @@ export class PostsService {
     // 3) Publish the container. A container can report FINISHED and still need a moment —
     // retry the known not-ready error a few times before giving up.
     let lastErr = '';
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let lastGraphErr: any = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
       let publish;
       try {
         publish = await axios.post(
@@ -5274,11 +5284,29 @@ export class PostsService {
         post.instagram_post_id = publish.data.id;
         return;
       }
-      lastErr = publish.data?.error?.message || 'Instagram publish failed';
-      if (!/Media ID is not available/i.test(lastErr)) break; // a different error won't heal with retries
-      await new Promise((r) => setTimeout(r, 4000));
+      // This call runs with validateStatus:()=>true, so a Graph failure arrives as a BODY,
+      // never as a thrown axios error. Keep the payload: re-throwing only its `message`
+      // strips the code, and with it every mapping in facebook-errors — which is how a
+      // transient #2 reached the owner as raw English with no guidance.
+      lastGraphErr = publish.data?.error ?? null;
+      lastErr = lastGraphErr?.message || 'Instagram publish failed';
+      // The container can report FINISHED and still need a moment.
+      if (/Media ID is not available/i.test(lastErr)) {
+        await new Promise((r) => setTimeout(r, 4000));
+        continue;
+      }
+      // Graph's #1/#2 family: Meta answered with an error, so NOTHING was published and a
+      // retry cannot duplicate the post. Its own message asks for exactly this ("please
+      // retry your request later") — obeying it is the difference between a post that goes
+      // out a few seconds late and a post filed as "published partially".
+      if (isTransientFacebookError({ error: lastGraphErr })) {
+        this.logger.warn(`instagram publish hit a transient Meta error, retrying: ${lastErr}`);
+        await new Promise((r) => setTimeout(r, 4000));
+        continue;
+      }
+      break; // a different error won't heal with retries
     }
-    throw new Error(lastErr);
+    throw lastGraphErr ? metaGraphError(lastGraphErr) : new Error(lastErr);
   }
 
   /** A media container's status_code, or undefined when the check itself fails — the

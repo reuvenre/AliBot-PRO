@@ -1,6 +1,6 @@
 import {
   facebookError, facebookErrorText, isTransientFacebookError, isMetaConnectionError,
-  isMetaTimeoutError,
+  isMetaTimeoutError, metaGraphError,
 } from './facebook-errors';
 
 const graph = (code: number, message: string, error_subcode?: number) =>
@@ -246,5 +246,44 @@ describe('isMetaTimeoutError', () => {
     expect(isMetaTimeoutError(new Error('Instagram container creation failed'))).toBe(false);
     expect(isMetaTimeoutError(null)).toBe(false);
     expect(isMetaTimeoutError(undefined)).toBe(false);
+  });
+});
+
+/**
+ * Watchdog #68: an Instagram post filed as "published partially" with the bare English
+ * sentence "An unexpected error has occurred. Please retry your request later."
+ *
+ * That is Graph's transient #2 — but it reached the owner unclassified, because the
+ * media_publish call runs with `validateStatus: () => true`: the error arrives as a BODY,
+ * and re-throwing `new Error(error.message)` threw the code away. With no code, no mapping
+ * in this file could fire, so there was neither a retry nor a Hebrew explanation.
+ */
+describe('metaGraphError — a Graph error read out of a body', () => {
+  const payload = { code: 2, message: 'An unexpected error has occurred. Please retry your request later.' };
+
+  it('stays classifiable: the same verdict as if axios had thrown it', () => {
+    const fromBody = facebookError(metaGraphError(payload), 'instagram');
+    const fromThrow = facebookError({ response: { data: { error: payload } } }, 'instagram');
+    expect(fromBody).toEqual(fromThrow);
+    expect(fromBody.code).toBe(2);
+    expect(fromBody.message).toContain('זמנית');       // Hebrew, not Graph's English
+    expect(fromBody.needsUserAction).toBe(false);      // nothing on the owner's side is wrong
+  });
+
+  it('is still recognised as retryable — which is the whole point', () => {
+    expect(isTransientFacebookError(metaGraphError(payload))).toBe(true);
+    // The publish loop tests the raw payload it just read, before wrapping it.
+    expect(isTransientFacebookError({ error: payload })).toBe(true);
+    expect(isTransientFacebookError({ error: null })).toBe(false);
+  });
+
+  it('keeps the code in the one-line report', () => {
+    expect(facebookErrorText(metaGraphError(payload), 'instagram')).toMatch(/^\(#2\)/);
+  });
+
+  it('does not invent a verdict for a payload that carries no code', () => {
+    const codeless = metaGraphError({ message: 'no code here' });
+    expect(facebookError(codeless).message).toBe('no code here');
+    expect(isTransientFacebookError(codeless)).toBe(false);
   });
 });
