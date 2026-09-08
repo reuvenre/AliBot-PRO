@@ -24,6 +24,7 @@ import { driftVerdict } from './drift-verdict';
 import { countRecentFailedRuns } from '../campaigns/run-failure-log';
 import { isTierBlockError } from '../pinterest/pinterest-scopes';
 import { feasibleCadenceMin } from './cadence-feasible';
+import { forgetOldPartials, unreportedPartials } from './partial-alerts';
 
 /** The window a campaign is judged on, and the stretch of its own past it is judged against.
  *  Three weeks of baseline absorbs a single odd week; one week of "recent" still reacts fast. */
@@ -62,6 +63,9 @@ export interface WatchdogAlert {
   details?: string[];
   /** Set when only the user can fix it — surfaced prominently instead of "Claude will handle it". */
   action?: string;
+  /** Post ids this alert is ABOUT, remembered once it goes out so the same one-off failure
+   *  is never re-reported while it lingers in the scan window (see partial-alerts.ts). */
+  postIds?: string[];
 }
 
 @Injectable()
@@ -70,6 +74,9 @@ export class WatchdogService implements OnModuleInit {
   private running = false;
   /** anomaly key → last-reported ms; suppresses repeats for THROTTLE_MS. */
   private readonly reported = new Map<string, number>();
+  /** post id → reported-at ms, for the one-off failures the key throttle cannot hold
+   *  (see partial-alerts.ts). */
+  private readonly partialsReported = new Map<string, number>();
   private static readonly THROTTLE_MS = 6 * 60 * 60 * 1000;
 
   constructor(
@@ -92,6 +99,9 @@ export class WatchdogService implements OnModuleInit {
         const last = this.reported.get(a.key) || 0;
         if (Date.now() - last < WatchdogService.THROTTLE_MS) continue;
         this.reported.set(a.key, Date.now());
+        // Remembered HERE, not when the alert was composed: one dropped by the throttle
+        // above must stay reportable on a later tick.
+        for (const id of a.postIds || []) this.partialsReported.set(id, Date.now());
         this.logger.warn(`Watchdog: ${a.key} — ${a.title}`);
         await this.reportGithub(a).catch((err) => this.logger.warn(`watchdog github failed: ${err?.message}`));
         await this.reportTelegram(a).catch((err) => this.logger.warn(`watchdog telegram failed: ${err?.message}`));
@@ -847,31 +857,39 @@ export class WatchdogService implements OnModuleInit {
           .join(' | '),
       }))
       .filter((p) => p.error_message);
+    // A partial publish is a one-off event, but the query behind it is a rolling 6h window,
+    // so the same failed post keeps answering it long after it was reported and fixed. The
+    // platform-set key cannot hold that line — it changes as companions age out of the
+    // window, and every subset dodges the throttle afresh (#68 → #69 → #70: three issues
+    // for two failures, the last two naming a post already closed). Remember the posts.
+    forgetOldPartials(this.partialsReported, now);
+    const freshPartials = unreportedPartials(partials, this.partialsReported);
     // EVERY partial publish alerts — the owner asked for exactly this after finding a
     // "פורסם חלקית" by eye that the old ≥2 threshold had classified as channel noise. A
     // single miss IS actionable now that transient Meta failures get an automatic retry:
     // whatever still fails after that deserves eyes. The 6h per-key throttle keeps a
     // repeating platform from spamming an issue per post.
-    if (partials.length >= 1) {
+    if (freshPartials.length >= 1) {
       // The platform tokens involved ("Instagram", "Facebook"…) key the alert, so a new
       // platform starting to fail is its own alert instead of riding an old throttle.
-      const platforms = Array.from(new Set(partials.flatMap((p) =>
+      const platforms = Array.from(new Set(freshPartials.flatMap((p) =>
         String(p.error_message).split('|').map((s) => s.trim().split(':')[0]).filter(Boolean)))).sort();
       out.push({
         key: `partial_publish:${platforms.join(',').slice(0, 60)}`,
-        title: `${partials.length} פוסטים פורסמו חלקית ב-6 שעות (${platforms.join(', ')})`,
+        title: `${freshPartials.length} פוסטים פורסמו חלקית ב-6 שעות (${platforms.join(', ')})`,
         body: [
           '**בדיקה:** פוסטים בסטטוס sent שנושאים error_message — הגיעו לחלק מהערוצים ונכשלו באחר.',
           'אף בדיקה אחרת לא רואה אותם: הם "נשלחו", אז ערוץ יכול להתדרדר בשקט ימים.',
           '',
-          ...partials.slice(0, 8).map((p) =>
+          ...freshPartials.slice(0, 8).map((p) =>
             `- \`${p.id}\` · ${new Date(p.sent_at).toISOString()} · ${String(p.error_message).slice(0, 160)}`),
           '',
           'כיווני חקירה: השגיאה עצמה אומרת את הערוץ ואת הסיבה (facebook-errors ממפה קודים).',
           'שגיאה חוזרת באותו ערוץ = תקלה מערכתית (טוקן, פורמט תמונה, מזהה) — לא רעש רשת.',
         ].join('\n'),
-        details: partials.slice(0, 3).map((p) =>
+        details: freshPartials.slice(0, 3).map((p) =>
           `פורסם חלקית · ${String(p.error_message).split('|')[0].trim().slice(0, 80)}`),
+        postIds: freshPartials.map((p) => String(p.id)),
       });
     }
 
