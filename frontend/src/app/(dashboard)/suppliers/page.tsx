@@ -479,6 +479,21 @@ function PostComposer({ productId, channels, defaultChannel, onSent }: {
   productId: string; channels: Channel[]; defaultChannel?: string; onSent?: () => void;
 }) {
   const [channelIds, setChannelIds] = useState<string[]>(defaultChannel ? [defaultChannel] : []);
+  // The catalog's linked group is a MOUNT-TIME initialiser, and it is not always known at
+  // mount: the catalog list loads asynchronously, so a composer opened first got `''`, left
+  // the selection empty, and an empty selection is not "no group" — it publishes to the
+  // ACCOUNT's default channel. That is how a product from one catalog quietly went out to
+  // another group. Adopt the linked group whenever it arrives, until the owner picks for
+  // himself — after that the screen is his and nothing overwrites it.
+  const pickedOwnGroups = useRef(false);
+  useEffect(() => {
+    if (pickedOwnGroups.current) return;
+    setChannelIds(defaultChannel ? [defaultChannel] : []);
+  }, [defaultChannel]);
+  const chooseChannels = (ids: string[]) => {
+    pickedOwnGroups.current = true;
+    setChannelIds(ids);
+  };
   const primaryChannel = channelIds[0] || ''; // the group whose template/footer drives the preview
   const [postLang, setPostLang] = useState('he');
   const [template, setTemplate] = useState<PostTemplate>(BUILTIN_DEFAULT_TEMPLATE);
@@ -687,8 +702,16 @@ function PostComposer({ productId, channels, defaultChannel, onSent }: {
         )}
         <div className="bg-surface-secondary border border-edge rounded-xl p-3">
           <Field label="קבוצות פרסום" hint="בחר קבוצה אחת או כמה — יפורסם לכולן בו-זמנית (קרדיט אחד)">
-            <GroupMultiSelect channels={channels} value={channelIds} onChange={setChannelIds} disabled={posting} />
+            <GroupMultiSelect channels={channels} value={channelIds} onChange={chooseChannels} disabled={posting} />
           </Field>
+          {/* An empty selection is not "nowhere" — it is the account's default channel, which
+              is a different group than the catalog's. Say which one, so nobody discovers it
+              from where the post landed. */}
+          {channelIds.length === 0 && (
+            <p className="text-2xs text-amber-400 mt-1.5">
+              לא נבחרה קבוצה — הפוסט יתפרסם לערוץ ברירת המחדל של החשבון (הגדרות ← אינטגרציות), ולא לקבוצה של הקטלוג.
+            </p>
+          )}
         </div>
         <TemplatePanel selectedId={template.id} onSelect={setTemplate} />
       </div>
