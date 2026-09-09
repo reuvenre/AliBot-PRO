@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Plus, X, Loader2, Save, Search, Package, ShoppingCart } from 'lucide-react';
-import { channelsApi, credentialsApi } from '@/lib/api-client';
+import { channelsApi, credentialsApi, suppliersApi } from '@/lib/api-client';
 import { GroupMultiSelect, type GroupOption } from '@/components/GroupMultiSelect';
 import type { Campaign, CampaignInput, CampaignSource } from '@/types';
 
@@ -116,6 +116,8 @@ export function CampaignForm({
   // at. Keyed by channel_id, which is what target_channels holds.
   const [groupIntervals, setGroupIntervals] = useState<Record<string, number | null>>({});
   const [accountInterval, setAccountInterval] = useState<number | null>(null);
+  /** Supplier catalogs and the group each one is linked to — the FLYLINK shelf map. */
+  const [catalogs, setCatalogs] = useState<{ id: string; name: string; target_channel_id: string }[]>([]);
   // Custom send window: on when the campaign already carries one (edit mode).
   const [useWindow, setUseWindow] = useState(
     initial.window_start_hour != null || initial.window_end_hour != null || !!initial.window_tz,
@@ -143,6 +145,14 @@ export function CampaignForm({
   const needsKeywords = !isFlylink;            // AliExpress + Amazon keyword-search
   const needsGroups = isFlylink || isAmazon;   // FLYLINK + Amazon require a target group
 
+  // WHICH SHELF this autopilot rotates. A catalog linked to a group belongs to that group,
+  // and only a campaign publishing there may draw from it; an unlinked catalog belongs to
+  // nobody in particular and stays open to all. Mirrors catalogsForCampaign on the server —
+  // shown here so the answer is visible at edit time rather than read off where posts landed.
+  const chosenGroups = form.target_channels ?? [];
+  const rotatedCatalogs = catalogs.filter((c) => !c.target_channel_id || chosenGroups.includes(c.target_channel_id));
+  const otherCatalogs = catalogs.filter((c) => c.target_channel_id && !chosenGroups.includes(c.target_channel_id));
+
   // Groups are only needed to pick FLYLINK targets, but loading them upfront keeps the
   // toggle instant.
   useEffect(() => {
@@ -157,6 +167,14 @@ export function CampaignForm({
     credentialsApi.get()
       .then((c) => setAccountInterval(c.schedule_interval_minutes ?? null))
       .catch(() => {});
+    // Supplier catalogs decide WHICH products a FLYLINK autopilot may rotate — a catalog
+    // linked to a group is that group's shelf. Load them so the screen can say so before a
+    // save, instead of the owner discovering it from where the posts landed.
+    suppliersApi.listCatalogs()
+      .then((list) => setCatalogs(list.map((c) => ({
+        id: c.id, name: c.name, target_channel_id: c.target_channel_id || '',
+      }))))
+      .catch(() => setCatalogs([]));
   }, []);
 
   const addKeyword = () => {
@@ -387,6 +405,35 @@ export function CampaignForm({
               value={form.target_channels ?? []}
               onChange={(ids) => setForm((f) => ({ ...f, target_channels: ids }))}
             />
+
+            {/* Which catalogs this autopilot will actually rotate. Until the server honoured
+                the catalog's linked group, a FLYLINK campaign drew from EVERY catalog — so
+                the tactical autopilot published brand items to the tactical group and the
+                dedup then locked the mama campaign out of them. */}
+            {isFlylink && catalogs.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-edge">
+                <p className="text-2xs text-white/40 mb-2">קטלוגים שהטייס הזה יסובב:</p>
+                {rotatedCatalogs.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {rotatedCatalogs.map((c) => (
+                      <span key={c.id} className="text-2xs bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded-lg px-2.5 py-1">
+                        {c.name}{!c.target_channel_id && ' · לא מקושר לקבוצה'}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-2xs text-amber-400">
+                    אף קטלוג לא מקושר לקבוצות שבחרת — הטייס לא ימצא מוצרים לפרסום. קשר קטלוג
+                    לקבוצה במסך הספקים, או נקה שם את &quot;קבוצה מקושרת&quot; כדי לפתוח אותו לכל הטייסים.
+                  </p>
+                )}
+                {otherCatalogs.length > 0 && (
+                  <p className="text-2xs text-white/30 mt-2">
+                    לא ייגע ב: {otherCatalogs.map((c) => c.name).join(', ')} — מקושרים לקבוצות אחרות.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -11,6 +11,7 @@ import { openPostClash } from './flylink-dedup';
 import { coverFirst } from './gallery-order';
 import { dedupeProductImages, yupooPhotoKey } from './yupoo-image';
 import { handPickedElsewhere } from './hand-picked-lock';
+import { catalogsForCampaign } from './catalog-scope';
 import { codeFromResolvedUrl, codesFromTitle, parseBulkLinks, titleFromHtml } from './flylink-bulk';
 import { EMPTY_ENRICHMENT, Enrichment, hasAnything, parseEnrichment } from './store-enrich-parse';
 import { CATEGORY_LIST_PROMPT } from '../storefront/store-categories';
@@ -881,22 +882,46 @@ export class SupplierProductsService {
 
     const limit = Math.max(1, Math.min(20, campaign.posts_per_run || 1));
 
+    // WHOSE SHELF: honour the catalog's "קבוצה מקושרת" the same way a manual send does.
+    // Without this the autopilot rotated every product the account owns regardless of which
+    // catalog it came from, so the tactical campaign published brand items to the tactical
+    // group — and the per-group dedup then locked the mama campaign out of them. An unlinked
+    // catalog declares nothing and stays open to every campaign (see catalog-scope.ts).
+    const catalogs = await this.repo.manager.find(SupplierCatalog, { where: { user_id: userId } });
+    const allowedCatalogs = catalogsForCampaign(catalogs, targets);
+    if (catalogs.length && !allowedCatalogs.length) {
+      throw new BadRequestException(
+        'אף קטלוג ספקים לא מקושר לקבוצות היעד של הקמפיין — קשר קטלוג לקבוצה במסך הספקים, '
+        + 'או נקה את "קבוצה מקושרת" כדי לאפשר לכל הקמפיינים לסובב אותו',
+      );
+    }
+
     // Oldest-first rotation: NULLS FIRST puts never-posted products at the head, so a fresh
     // catalog publishes everything once before anything repeats. in_stock IS DISTINCT FROM
     // false keeps NULL (never-checked) AND true, dropping only confirmed-dead links.
-    const candidates = await this.repo.createQueryBuilder('p')
+    const query = this.repo.createQueryBuilder('p')
       .where('p.user_id = :userId', { userId })
       .andWhere('p.status = :status', { status: 'active' })
       .andWhere('p.in_stock IS DISTINCT FROM false')
       // The owner's per-product opt-out: never rotated by the autopilot (manual sends only).
       .andWhere('p.no_auto_post IS DISTINCT FROM true')
-      .andWhere("p.flylink_url IS NOT NULL AND p.flylink_url <> ''")
+      .andWhere("p.flylink_url IS NOT NULL AND p.flylink_url <> ''");
+    if (allowedCatalogs.length) {
+      query.andWhere('p.supplier_catalog_id IN (:...allowedCatalogs)', { allowedCatalogs });
+    }
+    const candidates = await query
       .orderBy('p.last_posted_at', 'ASC', 'NULLS FIRST')
       .addOrderBy('p.created_at', 'ASC')
       .take(Math.max(limit * 5, 50)) // room to skip products this campaign already posted
       .getMany();
 
-    if (!candidates.length) throw new BadRequestException('אין מוצרי FLYLINK זמינים במלאי לפרסום');
+    if (!candidates.length) {
+      // Name the scope when it is the reason — "the whole catalog is empty" would send him
+      // looking at products that exist and are simply another group's.
+      throw new BadRequestException(allowedCatalogs.length < catalogs.length
+        ? 'אין מוצרי FLYLINK זמינים בקטלוגים המקושרים לקבוצות היעד של הקמפיין'
+        : 'אין מוצרי FLYLINK זמינים במלאי לפרסום');
+    }
 
     // CROSS-ORIGIN dedup — the same per-group signal the AliExpress runner uses: exclude
     // any product that ANY post (a manual queue/schedule from the catalog included) already
