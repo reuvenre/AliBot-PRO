@@ -204,6 +204,28 @@ describe('connection-level Meta failures', () => {
       expect(isMetaTimeoutError(outer)).toBe(false);
     });
 
+    it('sees the aggregate axios hid in `cause`', () => {
+      // Watchdog #71's shape on the Meta side: axios rebuilds the failure, copies the empty
+      // message and ETIMEDOUT across, and leaves the aggregate — the only thing proving the
+      // socket never opened — in `cause`. From the top it is indistinguishable from the
+      // ambiguous timeout that must not be resent.
+      const inner = new AggregateError(
+        [Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' })], '',
+      );
+      const axiosLike = Object.assign(new Error(''), { code: 'ETIMEDOUT', cause: inner });
+      expect(isMetaConnectionError(axiosLike)).toBe(true);
+      expect(isMetaTimeoutError(axiosLike)).toBe(false);
+    });
+
+    it('still refuses a wrapped timeout with no aggregate under it', () => {
+      const wrapped = Object.assign(new Error('timeout of 15000ms exceeded'), {
+        code: 'ETIMEDOUT',
+        cause: Object.assign(new Error('socket timeout'), { code: 'ETIMEDOUT' }),
+      });
+      expect(isMetaConnectionError(wrapped)).toBe(false);
+      expect(isMetaTimeoutError(wrapped)).toBe(true);   // ambiguous, and named as such
+    });
+
     it('rejects timeouts, HTTP responses and plain errors', () => {
       // A TOP-LEVEL timeout is response-phase — the request may have arrived.
       expect(isMetaConnectionError(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }))).toBe(false);

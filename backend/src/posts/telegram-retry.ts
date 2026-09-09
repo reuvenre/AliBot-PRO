@@ -28,6 +28,28 @@ const CONNECTION_ERRORS = new Set([
 const AGGREGATE_CONNECT_ERRORS = new Set([...CONNECTION_ERRORS, 'ETIMEDOUT']);
 
 /**
+ * The failure and everything it wraps.
+ *
+ * axios does not re-throw the error it caught: it builds an AxiosError, copies `message` and
+ * `code` across, and hangs the original off `cause`. So when the underlying failure is a
+ * Happy Eyeballs AggregateError, what the caller receives has an EMPTY message (copied from
+ * the aggregate), `code: 'ETIMEDOUT'` — and NO `errors` array, because that array never left
+ * the original. Reading `err.errors` therefore sees an ordinary timeout and treats a
+ * provably-safe connect failure as the one case that must never be retried.
+ *
+ * Bounded: a cause chain is two or three links in practice, and a cycle must not hang a send.
+ */
+function causeChain(err: any, max = 4): any[] {
+  const chain: any[] = [];
+  let cur = err;
+  while (cur && chain.length < max && !chain.includes(cur)) {
+    chain.push(cur);
+    cur = cur.cause;
+  }
+  return chain;
+}
+
+/**
  * True when a failed Telegram send never reached Telegram and may be retried.
  *
  * Excluded on purpose:
@@ -42,26 +64,27 @@ const AGGREGATE_CONNECT_ERRORS = new Set([...CONNECTION_ERRORS, 'ETIMEDOUT']);
  */
 export function isTelegramConnectionError(err: any): boolean {
   if (err?.response) return false;
-  if (CONNECTION_ERRORS.has(err?.code)) return true;
+  const chain = causeChain(err);
+  if (chain.some((e) => CONNECTION_ERRORS.has(e?.code))) return true;
   // Node's Happy Eyeballs connect (v18+) tries IPv4 and IPv6 and, when EVERY attempt dies,
   // throws an AggregateError whose own `code` is unset and whose `message` is often EMPTY —
   // the real codes live in `errors[]`. This is still "the request never left the machine",
   // but the plain code check above missed it, so the one safe retry never happened and the
   // post's error_message read a blank "Telegram: ". Retryable only when every inner failure
   // is connection-level — a mix means something unknown happened, and unknown never retries.
-  const inner = (err as AggregateError)?.errors;
-  if (!Array.isArray(inner)) return false;
+  const aggregate = chain.find((e) => Array.isArray(e?.errors));
+  if (!aggregate) return false;
   // Being an AggregateError is ITSELF the connect-phase proof — Node builds one nowhere
-  // else — so a top-level connect code on one (ETIMEDOUT included) is a handshake that
+  // else — so a connect code anywhere in the chain (ETIMEDOUT included) is a handshake that
   // never completed, even when the inner failures carry no legible code of their own.
   //
-  // Watchdog #69 was exactly that shape: empty message, `code: 'ETIMEDOUT'`, unreadable
-  // inners. The rule below saw "no usable inner codes", called it unknown, and left the
-  // error untagged — so the one safe retry never fired and the post was filed as
-  // "published partially" while the group's slot was already spent.
-  if (AGGREGATE_CONNECT_ERRORS.has(err?.code)) return true;
-  return inner.length > 0
-    && inner.every((e: any) => AGGREGATE_CONNECT_ERRORS.has(e?.code));
+  // Watchdog #69 was that shape one level up; #71 was the same failure wearing an AxiosError
+  // (empty message, `code: 'ETIMEDOUT'`, aggregate hidden in `cause`), which is why looking
+  // at `err.errors` alone kept missing it and the post was filed as "published partially"
+  // while the group's slot was already spent.
+  if (chain.some((e) => AGGREGATE_CONNECT_ERRORS.has(e?.code))) return true;
+  return aggregate.errors.length > 0
+    && aggregate.errors.every((e: any) => AGGREGATE_CONNECT_ERRORS.has(e?.code));
 }
 
 /**
@@ -88,7 +111,10 @@ export function telegramErrorText(err: any): string {
   // A response means Telegram answered — never taggable, whatever it says.
   if (desc) return String(desc);
   if (err?.message) return `${String(err.message)}${tag}`;
-  const inner = (err as AggregateError)?.errors;
+  // Empty message = the aggregate shape (its own message is ''). Its codes are the only
+  // diagnosis there is, and they may be a level down in `cause` — look there too rather
+  // than reporting a bare "connection failure" for a failure that named itself.
+  const inner = causeChain(err).find((e) => Array.isArray(e?.errors))?.errors;
   const codes = Array.isArray(inner)
     ? Array.from(new Set(inner.map((e: any) => e?.code || e?.message).filter(Boolean)))
     : [];

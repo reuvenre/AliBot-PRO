@@ -73,6 +73,37 @@ describe('isTelegramConnectionError', () => {
     expect(telegramErrorText(outer)).toBe('שגיאת חיבור לטלגרם (ETIMEDOUT) [net]');
   });
 
+  it('sees the aggregate axios hid in `cause`', () => {
+    // Watchdog #71, and the reason #69's fix did not catch it: axios never re-throws what it
+    // caught. It builds an AxiosError, copies `message` (empty, from the aggregate) and
+    // `code` across, and leaves the original — the only thing carrying `errors[]` — in
+    // `cause`. Read from the top this looks exactly like the ambiguous timeout that must
+    // never be retried, so the safe retry never fired.
+    const inner = new AggregateError(
+      [Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' })], '',
+    );
+    const axiosLike = Object.assign(new Error(''), { code: 'ETIMEDOUT', cause: inner });
+    expect(isTelegramConnectionError(axiosLike)).toBe(true);
+    // And the codes still reach the owner, from a level down.
+    expect(telegramErrorText(axiosLike)).toBe('שגיאת חיבור לטלגרם (ETIMEDOUT) [net]');
+  });
+
+  it('still refuses a wrapped timeout with NO aggregate under it', () => {
+    // The doctrine is unchanged: without the connect-loop proof, a timeout may have
+    // published. A cause chain is not itself evidence of anything.
+    const wrapped = Object.assign(new Error('timeout of 45000ms exceeded'), {
+      code: 'ETIMEDOUT',
+      cause: Object.assign(new Error('socket timeout'), { code: 'ETIMEDOUT' }),
+    });
+    expect(isTelegramConnectionError(wrapped)).toBe(false);
+  });
+
+  it('survives a cause chain that loops back on itself', () => {
+    const a: any = Object.assign(new Error('a'), { code: 'ETIMEDOUT' });
+    a.cause = a;
+    expect(isTelegramConnectionError(a)).toBe(false);
+  });
+
   it('does NOT retry an AggregateError containing an unknown failure code', () => {
     const mixed = new AggregateError([
       Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
