@@ -15,6 +15,14 @@ export interface RankedProduct {
   category: string;
   currency: string;
   score: number;
+  /**
+   * The search keyword this product came from, as the agent reports it.
+   *
+   * Optional because it is the model's word, not the search layer's: a product with no
+   * keyword is treated as attributable to nothing, which is why the caller must default to
+   * the QUIETER behaviour (no occasion framing) rather than the louder one.
+   */
+  keyword?: string;
 }
 
 @Injectable()
@@ -70,7 +78,8 @@ After searching, select the top ${count} products by score and return them as JS
         content: `Find the top ${count} best-converting products for these keywords: "${keywordsText}".
 Filters: ${filtersText}.
 Search for 1-2 keywords, rank all results by score, return the top ${count} as JSON array.
-Format: [{ product_id, title, sale_price, original_price, discount_percent, orders_count, rating, image_url, category, currency, score }]`,
+Format: [{ product_id, title, sale_price, original_price, discount_percent, orders_count, rating, image_url, category, currency, score, keyword }]
+"keyword" must be the exact search keyword you passed to search_products for that product — copied verbatim, not paraphrased or translated. It decides which seasonal angle the copy is allowed to take, so guessing it is worse than omitting it.`,
       },
     ];
 

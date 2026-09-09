@@ -22,7 +22,9 @@ describe('OrchestratorAgent — seasonal and bonus keywords reach the agents pat
     perPost: 2,                                   // the seasonal window's extra post
     slotKeywords: ['שרשראות תאורה לסוכה', 'tactical flashlight'],
     distinctKeywords: ['שרשראות תאורה לסוכה', 'tactical flashlight'],
-    seasonHint: 'זו תקופת חגי תשרי — חבר את הכתיבה לאווירת החג.',
+    occasionHint: 'זו תקופת חגי תשרי — חבר את הכתיבה לאווירת החג.',
+    saleSeasonHint: null,
+    seasonalKeywordSet: new Set(['שרשראות תאורה לסוכה']),
     bonusKeywordSet: new Set(['storage box']),
   };
 
@@ -70,18 +72,53 @@ describe('OrchestratorAgent — seasonal and bonus keywords reach the agents pat
     expect((findBestProducts.mock.calls[0] as any[])[3]).toBe(2);
   });
 
-  it('gives the copywriter the season context', async () => {
-    const { agent, generateOptimizedContent } = build();
+  const seasonArg = (mock: jest.Mock) => (mock.mock.calls[0] as any[])[8];
+
+  it('gives the copywriter the occasion context for a product a SEASONAL keyword found', async () => {
+    const { agent, generateOptimizedContent } = build(PLAN, [
+      { product_id: 'p1', title: 'מגש הגשה', keyword: 'שרשראות תאורה לסוכה' },
+    ]);
     await agent.run(campaign, USER);
-    expect((generateOptimizedContent.mock.calls[0] as any[])[8]).toBe(PLAN.seasonHint);
+    expect(seasonArg(generateOptimizedContent)).toBe(PLAN.occasionHint);
+  });
+
+  it('withholds it from a product the campaign\'s OWN keyword found', async () => {
+    // The reported symptom: the holiday angle landing on every product in the feed, so a
+    // tactical belt and army fatigues were written up as holiday-table items. The occasion
+    // line follows the keyword that found the product, not the calendar.
+    const { agent, generateOptimizedContent } = build(PLAN, [
+      { product_id: 'p1', title: 'חגורה טקטית', keyword: 'tactical flashlight' },
+    ]);
+    await agent.run(campaign, USER);
+    expect(seasonArg(generateOptimizedContent)).toBeNull();
+  });
+
+  it('withholds it from a product the agent did not attribute', async () => {
+    // The keyword is the model's word, so it can be missing. Unknown must fall to the
+    // QUIETER side: a missing label is not a licence to frame a product as a holiday buy.
+    const { agent, generateOptimizedContent } = build(PLAN, [{ product_id: 'p1', title: 'פנס טקטי' }]);
+    await agent.run(campaign, USER);
+    expect(seasonArg(generateOptimizedContent)).toBeNull();
+  });
+
+  it('gives the SALE-season line to every product, attributed or not', async () => {
+    // 11.11 and Black Friday say nothing about what the product is — they are a fact about
+    // the week's prices, and that is true of a tactical belt too.
+    const sale = 'הקשר: עונת בלאק פריידיי — מסגר את הדיל בהתאם.';
+    const { agent, generateOptimizedContent } = build(
+      { ...PLAN, occasionHint: null, saleSeasonHint: sale },
+      [{ product_id: 'p1', title: 'חגורה טקטית', keyword: 'tactical flashlight' }],
+    );
+    await agent.run(campaign, USER);
+    expect(seasonArg(generateOptimizedContent)).toBe(sale);
   });
 
   it('passes no season line outside every window', async () => {
     // Silence is the correct output when no window is open — a stale holiday line in
     // November reads worse than none at all.
-    const { agent, generateOptimizedContent } = build({ ...PLAN, seasonHint: null });
+    const { agent, generateOptimizedContent } = build({ ...PLAN, occasionHint: null, saleSeasonHint: null });
     await agent.run(campaign, USER);
-    expect((generateOptimizedContent.mock.calls[0] as any[])[8]).toBeNull();
+    expect(seasonArg(generateOptimizedContent)).toBeNull();
   });
 
   it('still reports a clean run when the plan yields no products', async () => {

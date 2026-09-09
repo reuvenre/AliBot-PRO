@@ -68,7 +68,7 @@ export class OrchestratorAgent {
       // could explain it. The plan also carries the season line for the copywriter and the
       // window's extra post.
       const plan = await this.posts.campaignKeywordPlan(campaign, userId, creds);
-      if (plan.seasonHint || plan.kwList.length > campaign.keywords.length) {
+      if (plan.occasionHint || plan.saleSeasonHint || plan.kwList.length > campaign.keywords.length) {
         this.logger.log(`[Orchestrator] campaign ${campaign.id}: searching ${plan.distinctKeywords.join(', ')}`
           + ` (own ${campaign.keywords.length} → ${plan.kwList.length} with seasonal/bonus)`);
       }
@@ -100,6 +100,17 @@ export class OrchestratorAgent {
       for (const product of products) {
         try {
           this.logger.log(`[Orchestrator] Generating content for "${product.title}"`);
+          // Season context for THIS product, by the same rule the plain runner uses: the
+          // sale-season line is about the calendar and fits anything, while the occasion
+          // line asks the copywriter to tie the product to the holiday and only fits a
+          // product a seasonal keyword found. A product the agent did not attribute gets
+          // no occasion framing — an unlabelled tactical belt must not be handed the
+          // holiday table.
+          const foundBy = String(product.keyword || '').trim().toLowerCase();
+          const seasonHint = [
+            foundBy && plan.seasonalKeywordSet.has(foundBy) ? plan.occasionHint : null,
+            plan.saleSeasonHint,
+          ].filter(Boolean).join('\n') || null;
           const { text, tokens: contentTokens } = await this.contentAgent.generateOptimizedContent(
             userId,
             campaign.id,
@@ -109,7 +120,7 @@ export class OrchestratorAgent {
             currencySymbol,
             campaign.post_template,
             creds,
-            plan.seasonHint,
+            seasonHint,
           );
           totalTokens += contentTokens;
 

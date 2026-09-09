@@ -64,7 +64,7 @@ import {
 } from '../pinterest/pinterest-scopes';
 import { CollageService } from '../collage/collage.service';
 import { signAliexpress } from '../common/aliexpress-sign';
-import { seasonalKeywords, seasonalHint } from '../common/seasonal';
+import { seasonalKeywords, seasonalCopyHints } from '../common/seasonal';
 import { seasonalPostsPerRun } from './seasonal-boost';
 import { normalizeTelegramChatId } from '../common/crypto';
 import { assertSafeOutboundUrl } from '../common/ssrf';
@@ -101,8 +101,16 @@ export interface CampaignKeywordPlan {
   /** One keyword per post slot. */
   slotKeywords: string[];
   distinctKeywords: string[];
-  /** One line of season context for the copywriter, or null outside every window. */
-  seasonHint: string | null;
+  /**
+   * Occasion context for the copywriter (connect the product to the holiday) — for the
+   * posts whose product a SEASONAL keyword found, and only those. Applied to every post it
+   * told a tactical channel to tie army fatigues to the holiday table.
+   */
+  occasionHint: string | null;
+  /** Sale-season context (11.11 / Black Friday) — true of every product in the feed. */
+  saleSeasonHint: string | null;
+  /** Lowercased seasonal keywords in this run — decides who gets the occasion hint. */
+  seasonalKeywordSet: Set<string>;
   /** Lowercased bonus-pool keywords — the per-post copy angle keys off this. */
   bonusKeywordSet: Set<string>;
 }
@@ -2585,10 +2593,12 @@ export class PostsService {
     // into a tactical-gear channel every July — off-brand posts the owner never asked for.
     // A campaign that wants seasonal stock sets `seasonal_keywords`; the hint costs nothing
     // either way, because it only angles the wording of a product the campaign chose itself.
-    let seasonHint: string | null = null;
+    let occasionHint: string | null = null;
+    let saleSeasonHint: string | null = null;
     // The seasonal terms actually in this run's rotation. They earn a boost below — an
     // extra post and a proven keyword's emphasis — because the window is short and the
-    // intent inside it is the highest of the year (see seasonal-boost.ts).
+    // intent inside it is the highest of the year (see seasonal-boost.ts). They also decide
+    // WHICH posts get the occasion hint, below.
     const seasonalInRotation: string[] = [];
     if (creds.seasonal_enabled !== false
       && (await this.subscription.allows(userId, 'seasonal_calendar').catch(() => true))) {
@@ -2598,7 +2608,13 @@ export class PostsService {
           seasonalInRotation.push(kw);
         }
       }
-      seasonHint = seasonalHint(campaign.language || 'he');
+      // The occasion hint is NOT unconditional. It asks the copywriter to tie the product to
+      // the holiday, which is right for a serving platter and wrong for a tactical belt —
+      // and "when relevant" in the prompt did not hold the line. It now rides the keyword
+      // that found the product, so a campaign that never searches seasonal terms never
+      // frames its products as holiday products. The sale-season line is different: it is a
+      // fact about the calendar, not about the product, so it stays on every post.
+      ({ occasion: occasionHint, saleSeason: saleSeasonHint } = seasonalCopyHints(campaign.language || 'he'));
     }
 
     // BONUS POOLS (AliExpress incentive campaigns the owner registered for in the portal):
@@ -2668,7 +2684,10 @@ export class PostsService {
 
     return {
       kwList, kwEffective, rotationList, baseCursor, perPost,
-      slotKeywords, distinctKeywords, seasonHint, bonusKeywordSet,
+      slotKeywords, distinctKeywords,
+      occasionHint, saleSeasonHint,
+      seasonalKeywordSet: new Set(seasonalInRotation.map((k) => k.trim().toLowerCase())),
+      bonusKeywordSet,
     };
   }
 
@@ -2688,7 +2707,8 @@ export class PostsService {
 
     const {
       kwList, kwEffective, baseCursor, perPost,
-      slotKeywords, distinctKeywords, seasonHint, bonusKeywordSet,
+      slotKeywords, distinctKeywords,
+      occasionHint, saleSeasonHint, seasonalKeywordSet, bonusKeywordSet,
     } = await this.campaignKeywordPlan(campaign, userId, creds);
 
     // Products this campaign already posted — from the DURABLE de-dup table (survives
@@ -3070,6 +3090,13 @@ export class PostsService {
             ? Math.round((1 - parts.saleUsd / parts.origUsd) * 100) : 0;
           hints.push(bonusCopyHint(pct, campaign.language));
         }
+        // Season context for THIS post. The sale-season line is about the calendar and fits
+        // anything; the occasion line is about the product and only fits one a seasonal
+        // keyword actually found — same rule the bonus angle above follows.
+        const seasonHint = [
+          seasonalKeywordSet.has(slotKeyword.trim().toLowerCase()) ? occasionHint : null,
+          saleSeasonHint,
+        ].filter(Boolean).join('\n') || null;
         const text = await this.generateText(
           product, campaign.language, rate, creds, template || undefined, parts.localOverride,
           undefined, undefined, false,

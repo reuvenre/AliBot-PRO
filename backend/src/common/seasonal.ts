@@ -165,13 +165,43 @@ export function seasonalKeywords(language: string, now = new Date(), cap = 3): s
   return out;
 }
 
-/** One combined copy hint (first active event with a hint wins — one context line, not a lecture). */
-export function seasonalHint(language: string, now = new Date()): string | null {
+/**
+ * The two kinds of copy context a season can supply — and they are NOT interchangeable.
+ *
+ * An OCCASION event (Tishrei, Hanukkah, Valentine's, summer) asks the copywriter to connect
+ * the PRODUCT to the occasion. That only makes sense for a product the occasion is about: a
+ * serving platter, yes; a tactical belt or army fatigues, no. Applied to every post it turns
+ * a tactical channel into a holiday channel — the reported symptom. Its hint therefore
+ * belongs only on posts whose product was FOUND by that season's keywords.
+ *
+ * A SALE-SEASON event (11.11, Black Friday) says nothing about what the product is. It is a
+ * fact about the retail calendar — this week's price is a season price — and it is true of
+ * every product in the feed, so its hint applies to all of them.
+ *
+ * The data already draws the line: an event that contributes product-search keywords is
+ * about WHAT to sell; an event with none is about WHEN everything is sold. No new field,
+ * and nothing for the owner to configure.
+ */
+export interface SeasonalCopyHints {
+  /** Only for products the season's own keywords found. */
+  occasion: string | null;
+  /** For every post while the window is open. */
+  saleSeason: string | null;
+}
+
+export function seasonalCopyHints(language: string, now = new Date()): SeasonalCopyHints {
+  let occasion: string | null = null;
+  let saleSeason: string | null = null;
   for (const ev of activeSeasonalEvents(language, now)) {
     const hint = language === 'en' ? ev.hint_en : ev.hint_he;
-    if (hint) return hint;
+    if (!hint) continue;
+    // Keywords for THIS language: an event may be an occasion for one audience and carry
+    // nothing for another (activeSeasonalEvents has already dropped the wrong audiences).
+    const sellsSomething = (language === 'en' ? ev.keywords_en : ev.keywords_he).length > 0;
+    if (sellsSomething) occasion ??= hint;
+    else saleSeason ??= hint;
   }
-  return null;
+  return { occasion, saleSeason };
 }
 
 /** Active + soon-to-open events (any audience) for the dashboard strip. */
